@@ -1,0 +1,35 @@
+{
+  "name": "neurex-core-native",
+  "version": "1.0.0",
+  "description": "This library contains exported collections of functions from native bindings to be used by the Neurex library.",
+  "main": "",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "node-gyp configure build",
+    "prebuild": "prebuildify --napi"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KarkAngelo114/neurex-core-native.git"
+  },
+  "dependencies": {
+    "node-addon-api": "8.5.0"
+  },
+  "devDependencies": {
+    "node-gyp": "11.5.0",
+    "prebuildify": "^6.0.1"
+  },
+  "keywords": [
+    "core",
+    "Neurex",
+    "native",
+    "bindings"
+  ],
+  "author": "Kark Angelo V. Pada",
+  "license": "MIT",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/KarkAngelo114/neurex-core-native/issues"
+  },
+  "homepage": "https://github.com/KarkAngelo114/neurex-core-native#readme"
+}
