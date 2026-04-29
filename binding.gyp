@@ -1,42 +1,3 @@
-# {
-#   "targets": [
-#     {
-#       "target_name": "neurex-core-native",
-#       "sources": [
-#         "src/main.cpp",
-#         "src/matmul.cpp",
-#         "src/activations.cpp",
-#         "src/convolve.cpp",
-#         "src/gradientsComputation.cpp",
-#         "src/optimizer_internals.cpp",
-#         "src/gradientScaler.cpp",
-#         "src/math.cpp",
-#         "src/pooling.cpp",
-#       ],
-#       "defines": [ "NAPI_CPP_EXCEPTIONS" ],
-#       "include_dirs": [
-#         "<!@(node -p \"require('node-addon-api').include\")"
-#       ],
-#       "dependencies": [
-#         "<!(node -p \"require('node-addon-api').gyp\")"
-#       ],
-#       "cflags_cc": [ "-fexceptions" ],
-#       "conditions": [
-#         ["OS=='win'", {
-#           "msvs_settings": {
-#             "VCCLCompilerTool": { "ExceptionHandling": 1 }
-#           }
-#         }],
-#         ["OS=='mac'", {
-#           "xcode_settings": {
-#             "GCC_ENABLE_CPP_EXCEPTIONS": "YES"
-#           }
-#         }]
-#       ]
-#     }
-#   ]
-# }
-
 
 {
   "variables": {
@@ -55,7 +16,9 @@
         "src/gradientScaler.cpp",
         "src/math.cpp",
         "src/pooling.cpp",
-        "src/gpuTest.cpp"
+        "src/gpuTest.cpp",
+        "src/init.cpp",
+        "src/gpu/gpu_context.cpp"
       ],
       "include_dirs": [
         "<!@(node -p \"require('node-addon-api').include\")",
@@ -69,7 +32,8 @@
         "NAPI_CPP_EXCEPTIONS",
         "NAPI_VERSION=8",
         "EIGEN_MPL2_ONLY",
-        "EIGEN_NO_DEBUG"
+        "EIGEN_NO_DEBUG",
+        "CL_TARGET_OPENCL_VERSION=120"
       ],
       "cflags!": [ "-fno-exceptions" ],
       "cflags_cc!": [ "-fno-exceptions" ],
@@ -79,11 +43,11 @@
           "cflags_cc": [ "-march=x86-64-v3", "-fopenmp" ],
           "ldflags": [ "-fopenmp" ],
           "libraries": [ "-lOpenCL" ],
-          # "include_dirs": [
-          #   "/usr/include"
-          # ]
         }],
         ["OS=='mac'", {
+          "defines": [ 
+            "CL_SILENCE_DEPRECATION"
+          ],
           "libraries": [
             "-framework OpenCL"
           ],
