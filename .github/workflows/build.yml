@@ -2,7 +2,7 @@ name: Build Prebuilds
 
 on:
   push:
-    branches: [ main ]
+    branches: [ Main ]
     tags:     [ 'v*' ]
   pull_request:
   workflow_dispatch:
