@@ -17,6 +17,7 @@
         "src/math.cpp",
         "src/pooling.cpp",
         "src/gpuTest.cpp",
+        "src/utils.cpp",
         "src/init.cpp",
         "src/gpu/gpu_context.cpp"
       ],
