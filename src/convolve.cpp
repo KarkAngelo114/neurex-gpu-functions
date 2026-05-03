@@ -9,7 +9,7 @@ using FloatArray = std::vector<float>;
 
 
 // ======================= UTILS ================================ //
-static Array Vectorize(const Napi::Array& arr) {
+static IntArray Vectorize(const Napi::Array& arr) {
     IntArray VectorArray;
     VectorArray.reserve(arr.Length());
     for (uint32_t i = 0; i < arr.Length(); i++) {
