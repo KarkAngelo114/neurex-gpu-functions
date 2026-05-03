@@ -4,8 +4,8 @@
 #include <fstream>
 #include <sstream>
 #include <filesystem>
-using Array = std::vector<float>;
-using Matrix = std::vector<Array>;
+using FloatArray = std::vector<float>;
+using Matrix = std::vector<FloatArray>;
 
 struct kernelDef {
     std::string file;

@@ -1,6 +1,6 @@
 #include <napi.h>
 #include <vector>
-#include "gpu_context.h"
+#include "src/gpu/gpu_context.h"
 #include "globals.h"
 using Array = std::vector<float>;
 using Matrix = std::vector<Array>;

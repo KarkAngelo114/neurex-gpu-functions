@@ -3,8 +3,8 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
-using Array = std::vector<float>;
-using Matrix = std::vector<Array>;
+using FloatArray = std::vector<float>;
+using Matrix = std::vector<FloatArray>;
 
 class GpuContext {
     public:
