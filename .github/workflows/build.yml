@@ -1,3 +1,82 @@
+# name: Build Prebuilds
+
+# on:
+#   push:
+#     branches: [ Main ]
+#     tags:     [ 'v*' ]
+#   pull_request:
+#   workflow_dispatch:
+
+# jobs:
+#   build:
+#     name: ${{ matrix.os }} (${{ matrix.arch }})
+#     runs-on: ${{ matrix.os }}
+#     strategy:
+#       fail-fast: false
+#       matrix:
+#         include:
+#           - { os: ubuntu-latest,  arch: x64 }
+#           - { os: macos-latest,   arch: arm64 }
+#           - { os: windows-latest, arch: x64 }
+
+#     container: ${{ matrix.os == 'ubuntu-latest' && 'node:20-bullseye' || null }}
+
+#     steps:
+#       - name: Checkout repository
+#         uses: actions/checkout@v4
+#         with:
+#           submodules: recursive       # only matters if you vendor Eigen as a submodule
+
+#       - name: Install Linux build tools (container)
+#         if: matrix.os == 'ubuntu-latest'
+#         run: |
+#           apt-get update
+#           apt-get install -y --no-install-recommends \
+#             build-essential \
+#             python3 \
+#             binutils \
+#             ocl-icd-opencl-dev \
+#             opencl-headers \
+#             pkg-config
+      
+#       - name: Install OpenCL (Windows)
+#         if: matrix.os == 'windows-latest'
+#         shell: pwsh
+#         run: |
+#           vcpkg install opencl:x64-windows
+#           New-Item -ItemType Directory -Force -Path deps/opencl/CL | Out-Null
+#           Copy-Item "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows/include/CL/*" deps/opencl/CL/ -Recurse -Force
+
+#       - name: Setup Node.js
+#         if: matrix.os != 'ubuntu-latest'
+#         uses: actions/setup-node@v4
+#         with:
+#           node-version: 20
+#           cache: npm
+
+#       - name: Fetch Eigen
+#         shell: bash
+#         run: |
+#           if [ ! -d deps/eigen/Eigen ]; then
+#             mkdir -p deps
+#             curl -L https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz -o eigen.tgz
+#             tar -xzf eigen.tgz
+#             mv eigen-3.4.0 deps/eigen
+#             rm eigen.tgz
+#           fi
+
+#       - name: Install dependencies
+#         run: npm ci
+
+#       - name: Build prebuilt binaries
+#         run: npx prebuildify --napi --strip --arch=${{ matrix.arch }}
+
+#       - name: Upload prebuilds artifact
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: prebuilds-${{ matrix.os }}-${{ matrix.arch }}
+#           path: prebuilds/
+
 name: Build Prebuilds
 
 on:
@@ -38,7 +117,11 @@ jobs:
             ocl-icd-opencl-dev \
             opencl-headers \
             pkg-config
-      
+
+      - name: Install libomp (macOS)
+        if: matrix.os == 'macos-latest'
+        run: brew install libomp
+
       - name: Install OpenCL (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
@@ -76,18 +159,3 @@ jobs:
         with:
           name: prebuilds-${{ matrix.os }}-${{ matrix.arch }}
           path: prebuilds/
-
-  # collect:
-  #   name: Collect all prebuilds
-  #   needs: build
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/download-artifact@v4
-  #       with:
-  #         path: prebuilds-all
-  #         pattern: prebuilds-*
-  #         merge-multiple: true
-  #     - uses: actions/upload-artifact@v4
-  #       with:
-  #         name: prebuilds
-  #         path: prebuilds-all/

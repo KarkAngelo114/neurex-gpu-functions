@@ -1,4 +1,5 @@
 #include <napi.h>
+#include <omp.h>
 #include <vector>
 #include <cstring>
 #include <algorithm>
@@ -114,17 +115,17 @@ Napi::Value Convolve_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
-    int strides = info[1].As<Napi::Number>().Int32Value();
-    int output_height = info[2].As<Napi::Number>().Int32Value();
-    int output_width = info[3].As<Napi::Number>().Int32Value();
-    int num_filters = info[4].As<Napi::Number>().Int32Value();
-    int kernel_height = info[5].As<Napi::Number>().Int32Value();
-    int kernel_width = info[6].As<Napi::Number>().Int32Value();
-    int depth = info[7].As<Napi::Number>().Int32Value();
-    int input_height = info[8].As<Napi::Number>().Int32Value();
-    int input_width = info[9].As<Napi::Number>().Int32Value();
-    int pointer = info[10].As<Napi::Number>().Int32Value();
-    int outputPointer = info[11].As<Napi::Number>().Int32Value();
+    size_t strides = info[1].As<Napi::Number>().Int32Value();
+    size_t output_height = info[2].As<Napi::Number>().Int32Value();
+    size_t output_width = info[3].As<Napi::Number>().Int32Value();
+    size_t num_filters = info[4].As<Napi::Number>().Int32Value();
+    size_t kernel_height = info[5].As<Napi::Number>().Int32Value();
+    size_t kernel_width = info[6].As<Napi::Number>().Int32Value();
+    size_t depth = info[7].As<Napi::Number>().Int32Value();
+    size_t input_height = info[8].As<Napi::Number>().Int32Value();
+    size_t input_width = info[9].As<Napi::Number>().Int32Value();
+    size_t pointer = info[10].As<Napi::Number>().Int32Value();
+    size_t outputPointer = info[11].As<Napi::Number>().Int32Value();
 
     const auto& kernels_array = getGlobalWeights(pointer);
     const auto& biases_array = getGlobalBiases(pointer);
@@ -136,6 +137,7 @@ Napi::Value Convolve_CPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array output = Napi::Float32Array::New(env, output_height * output_width * num_filters);
     float* outData = output.Data();
 
+    #pragma omp for schedule(static)
     for (size_t f = 0; f < num_filters; f++) {
         float bias = biases[f];
 
@@ -147,12 +149,12 @@ Napi::Value Convolve_CPU(const Napi::CallbackInfo& info) {
                     for (size_t kw = 0; kw < kernel_width; kw++) {
                         for (size_t c = 0; c < depth; c++) {
 
-                            int inY = (oh * strides) + kh;
-                            int inX = (ow * strides) + kw;
+                            size_t inY = (oh * strides) + kh;
+                            size_t inX = (ow * strides) + kw;
 
                             if (inY < input_height && inX < input_width) {
-                                int input_idx = ((inY * input_width + inX) * depth + c);
-                                int kernel_idx = (((f * kernel_height + kh) * kernel_width + kw ) * depth + c);
+                                size_t input_idx = ((inY * input_width + inX) * depth + c);
+                                size_t kernel_idx = (((f * kernel_height + kh) * kernel_width + kw ) * depth + c);
 
                                 sum += data[input_idx] * kernels[kernel_idx];
                             }
@@ -160,7 +162,7 @@ Napi::Value Convolve_CPU(const Napi::CallbackInfo& info) {
                     }
                 }
 
-                int outIndex = ((oh * output_width + ow) * num_filters + f);
+                size_t outIndex = ((oh * output_width + ow) * num_filters + f);
 
                 outData[outIndex] = sum + bias;
             }
@@ -284,6 +286,7 @@ Napi::Value ConvolveDelta_CPU(const Napi::CallbackInfo& info) {
     float* out = output.Data();
 
     // ---- Convolution ----
+    #pragma omp for schedule(static)
     for (size_t c_out = 0; c_out < C_k; c_out++) {
         for (size_t h = 0; h < oH; h++) {
             for (size_t w = 0; w < oW; w++) {
