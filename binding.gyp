@@ -19,7 +19,8 @@
         "src/gpuTest.cpp",
         "src/utils.cpp",
         "src/init.cpp",
-        "src/gpu/gpu_context.cpp"
+        "src/gpu/gpu_context.cpp",
+        "src/globals/globals.cpp",
       ],
       "include_dirs": [
         "<!@(node -p \"require('node-addon-api').include\")",

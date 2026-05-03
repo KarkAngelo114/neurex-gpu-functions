@@ -1,8 +1,6 @@
 #include <napi.h>
 #include <vector>
-#include <iostream>
 #include <cmath>
-using namespace std;
 
 Napi::Value ComputeGradientForDenseWeightsWrapper(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();

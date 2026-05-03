@@ -11,6 +11,7 @@ void Poolings(Napi::Env env, Napi::Object exports);
 void detectGPU(Napi::Env env, Napi::Object exports);
 void GpuLifecycleRegister(Napi::Env env, Napi::Object exports);
 void utils(Napi::Env env, Napi::Object exports);
+void _globals(Napi::Env env, Napi::Object exports);
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     ActivationsRegister(env, exports);
@@ -24,6 +25,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     detectGPU(env, exports);
     utils(env, exports);
     GpuLifecycleRegister(env, exports);
+    __globals(env, exports);
     return exports;
 }
 

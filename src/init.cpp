@@ -3,8 +3,10 @@
 #include "gpu/gpu_context.h"
 
 static Napi::Value InitGPU(const Napi::CallbackInfo& info) {
+    std::string kernelPath = info[0].As<Napi::String>().Utf8Value();
     std::string err;
-    bool ok = GpuContext::instance().initialize(err);
+    
+    bool ok = GpuContext::instance().initialize(kernelPath, err);
 
     Napi::Object out = Napi::Object::New(info.Env());
     

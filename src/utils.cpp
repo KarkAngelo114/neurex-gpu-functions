@@ -1,21 +1,21 @@
 #include <napi.h>
 #include <vector>
-using Scalar = std::vector<int>;
+using Array = std::vector<int>;
 
-static Scalar ScalarArray(const Napi::Array& arr) {
-    Scalar scalarArray;
-    scalarArray.reserve(arr.Length());
+static Array Vectorize(const Napi::Array& arr) {
+    Array vectorArray;
+    vectorArray.reserve(arr.Length());
     for (uint32_t i = 0; i < arr.Length(); i++) {
-        scalarArray.push_back(arr.Get(i).As<Napi::Number>().Int32Value());
+        vectorArray.push_back(arr.Get(i).As<Napi::Number>().Int32Value());
     }
-    return scalarArray;
+    return vectorArray;
 }
 
 Napi::Value DilateInputWrapper(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     Napi::Float32Array input_arr = info[0].As<Napi::Float32Array>();
-    Scalar shape = ScalarArray(info[1].As<Napi::Array>());
+    Array shape = Vectorize(info[1].As<Napi::Array>());
     size_t stride = info[2].As<Napi::Number>().Int32Value();
 
     size_t H = shape[0];
@@ -45,44 +45,6 @@ Napi::Value DilateInputWrapper(const Napi::CallbackInfo& info) {
     }
 
     return dilatedOutput;
-}
-
-
-Napi::Value Rotate_kernels(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-
-    Napi::Float32Array kernels_arr = info[0].As<Napi::Float32Array>();
-    size_t F = info[1].As<Napi::Number>().Int32Value();
-    size_t KH = info[2].As<Napi::Number>().Int32Value();
-    size_t KW = info[3].As<Napi::Number>().Int32Value();
-    size_t D = info[4].As<Napi::Number>().Int32Value();
-
-    size_t kernel_length = kernels_arr.ElementLength();
-
-    Napi::Float32Array outputData = Napi::Float32Array::New(env, kernel_length);
-
-    float* kernels = kernels_arr.Data();
-    float* rotated = outputData.Data();
-
-    for (size_t f = 0; f < F; f++) {
-        for (size_t kh = 0; kh < KH; kh++) {
-            for (size_t kw = 0; kw < KW; kw++) {
-                for (size_t d = 0; d < D; d++) {
-                    // Original Index
-                    size_t oldIdx = (f * KH * KW * D) + (kh * KW * D) + (kw * D) + d;
-                    
-                    // Rotated Index (Flip KH and KW)
-                    size_t newKh = KH - 1 - kh;
-                    size_t newKw = KW - 1 - kw;
-                    size_t newIdx = (f * KH * KW * D) + (newKh * KW * D) + (newKw * D) + d;
-                    
-                    rotated[newIdx] = kernels[oldIdx];
-                }
-            }
-        }
-    }
-
-    return outputData;
 }
 
 Napi::Value ApplyPadding(const Napi::CallbackInfo& info) {
@@ -115,7 +77,7 @@ Napi::Value ApplyPadding(const Napi::CallbackInfo& info) {
     }
 
     // Create the vector as you intended (using curly braces for initialization)
-    Scalar newShape = { static_cast<int>(newH), static_cast<int>(newW), static_cast<int>(channels) };
+    Array newShape = { static_cast<int>(newH), static_cast<int>(newW), static_cast<int>(channels) };
 
     Napi::Object data = Napi::Object::New(env);
     data.Set("data", outputData);
@@ -135,6 +97,5 @@ Napi::Value ApplyPadding(const Napi::CallbackInfo& info) {
 
 void utils(Napi::Env env, Napi::Object exports) {
     exports.Set("DilateDelta", Napi::Function::New(env, DilateInputWrapper));
-    exports.Set("RotateKernels", Napi::Function::New(env, Rotate_kernels));
     exports.Set("ApplyPadding", Napi::Function::New(env, ApplyPadding));
 }

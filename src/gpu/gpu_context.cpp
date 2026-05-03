@@ -1,51 +1,52 @@
 // src/gpu/gpu_context.cpp
 #include "gpu_context.h"
 #include <vector>
+#include <fstream>
+#include <sstream>
+#include <filesystem>
+using Array = std::vector<float>;
+using Matrix = std::vector<Array>;
 
-static const char* kKernelSrc = R"CLC(
-__kernel void matmul(
-    __global const float* input,
-    __global const float* weights,
-    __global const float* biases,
-    __global float* output,
-    const int inputSize,
-    const int outputSize)
-{
-    int j = get_global_id(0);
-    if (j >= outputSize) return;
+struct kernelDef {
+    std::string file;
+    std::string funcName;
+};
 
-    float acc = biases[j];
-    for (int i = 0; i < inputSize; ++i) {
-        acc += input[i] * weights[i * outputSize + j];
-    }
-    output[j] = acc;
-}
+// Future self and to others: register kernel source here.
+// {`"kernel file"`,`"<kernel function name>"`}
+static std::vector<kernelDef> kernel_Definitions = {
+    {"matmul.cl", "matmul"},
+    {"delta_matmul.cl", "delta_matmul"},
+    {"convolve.cl", "convolve"},
+    {"delta_convolve.cl", "delta_convolve"},
+    {"scaleGrads.cl", "scaleGrads"}
+};
 
-__kernel void delta_matmul(
-    __global const float* delta,
-    __global const float* weights,
-    __global float* output,
-    const int inputSize,
-    const int outputSize)
-{
-    int i = get_global_id(0);
-    if (i >= inputSize) return;
-
-    float sum = 0.0f;
-    int offset = i * outputSize;
-    for (int j = 0; j < outputSize; ++j) {
-        sum += weights[offset + j] * delta[j];
-    }
-    output[i] = sum;
-}
-)CLC";
 
 GpuContext& GpuContext::instance() {
     static GpuContext g;
     return g;
 }
 
-bool GpuContext::initialize(std::string& errorOut) {
+static std::string pathResolver(const std::string& relative) {
+    return std::filesystem::absolute(relative).string();
+}
+
+
+// load kernel source from file, accepts string file path
+static std::string LoadKernelFile(const std::string& path) {
+    std::ifstream file(path);
+
+    if (!file.is_open()) {
+        throw std::runtime_error("An error occured opening kernel source:"+path);
+    }
+
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    return buffer.str();
+}
+
+bool GpuContext::initialize(const std::string& kernelBasePath, std::string& errorOut) {
     if (has_gpu_) return true; // idempotent
 
     cl_int err;
@@ -71,17 +72,46 @@ bool GpuContext::initialize(std::string& errorOut) {
         device_   = devs[0];
         break;
     }
-    if (!device_) { errorOut = "no GPU device"; return false; }
+    if (!device_) {
+        errorOut = "no GPU device"; 
+        return false; 
+    }
 
     context_ = clCreateContext(nullptr, 1, &device_, nullptr, nullptr, &err);
-    if (err != CL_SUCCESS) { errorOut = "clCreateContext failed"; return false; }
+    if (err != CL_SUCCESS) {
+        errorOut = "clCreateContext failed"; 
+        return false;
+    }
 
     // OpenCL 1.2 path; if you target 2.0+ use clCreateCommandQueueWithProperties.
     queue_ = clCreateCommandQueue(context_, device_, 0, &err);
-    if (err != CL_SUCCESS) { errorOut = "clCreateCommandQueue failed"; shutdown(); return false; }
+    if (err != CL_SUCCESS) { 
+        errorOut = "clCreateCommandQueue failed"; 
+        shutdown(); 
+        return false; 
+    }
 
-    program_ = clCreateProgramWithSource(context_, 1, &kKernelSrc, nullptr, &err);
-    if (err != CL_SUCCESS) { errorOut = "clCreateProgramWithSource failed"; shutdown(); return false; }
+    // load kernel source from kernel registry
+    std::string source;
+
+    try {
+        for (auto& def : kernel_Definitions) {
+            std::filesystem::path fullPath = std::filesystem::path(kernelBasePath) / def.file;
+            source += LoadKernelFile(fullPath.string()) + "\n";
+        }
+    } catch (const std::exception& e) {
+        errorOut = e.what();
+        return false;
+    }
+
+    const char* kernel_source_code = source.c_str();
+
+    program_ = clCreateProgramWithSource(context_, 1, &kernel_source_code, nullptr, &err);
+    if (err != CL_SUCCESS) { 
+        errorOut = "clCreateProgramWithSource failed"; 
+        shutdown(); 
+        return false; 
+    }
 
     err = clBuildProgram(program_, 1, &device_, "-cl-fast-relaxed-math", nullptr, nullptr);
     if (err != CL_SUCCESS) {
@@ -94,10 +124,15 @@ bool GpuContext::initialize(std::string& errorOut) {
         return false;
     }
 
-    for (const char* name : {"matmul", "delta_matmul"}) {
-        cl_kernel k = clCreateKernel(program_, name, &err);
-        if (err != CL_SUCCESS) { errorOut = std::string("clCreateKernel failed: ") + name; shutdown(); return false; }
-        kernels_[name] = k;
+    // for future me and others, register kernel names here after creating an OpenCL C function
+    for (auto& kernel : kernel_Definitions) {
+        cl_kernel k = clCreateKernel(program_, kernel.funcName.c_str(), &err);
+        if (err != CL_SUCCESS || k == nullptr) {
+            errorOut = "clCreateKernel failed: " + kernel.funcName +". ";
+            shutdown();
+            return false;
+        }
+        kernels_[kernel.funcName] = k;
     }
 
     has_gpu_ = true;
@@ -112,6 +147,56 @@ void GpuContext::shutdown() {
     if (context_) { clReleaseContext(context_); context_ = nullptr; }
     device_ = nullptr; platform_ = nullptr;
     has_gpu_ = false;
+}
+
+bool GpuContext::uploadParams(
+    const Matrix& weights,
+    const Matrix& biases,
+    const Matrix& outputs,
+    std::string& errorOut
+) {
+    cl_int err;
+
+    // release old buffers (if re-uploading)
+    for (auto& params : d_weights_) clReleaseMemObject(params);
+    for (auto& params : d_biases_)  clReleaseMemObject(params);
+    for (auto& params : d_outputs_) clReleaseMemObject(params);
+
+    d_weights_.clear();
+    d_biases_.clear();
+    d_outputs_.clear();
+
+    // upload weights
+    for (const auto& w : weights) {
+        cl_mem buf = clCreateBuffer(context_, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * w.size(), (void*)w.data(), &err);
+        if (err != CL_SUCCESS) {
+            errorOut = "upload weights failed";
+            return false;
+        }
+        d_weights_.push_back(buf);
+    }
+
+    // upload biases
+    for (const auto& b : biases) {
+        cl_mem buf = clCreateBuffer(context_, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * b.size(), (void*)b.data(), &err);
+        if (err != CL_SUCCESS) {
+            errorOut = "upload biases failed";
+            return false;
+        }
+        d_biases_.push_back(buf);
+    }
+
+    // allocate outputs (no host copy needed)
+    for (const auto& o : outputs) {
+        cl_mem buf = clCreateBuffer(context_, CL_MEM_READ_WRITE, sizeof(float) * o.size(), nullptr, &err);
+        if (err != CL_SUCCESS) {
+            errorOut = "alloc outputs failed";
+            return false;
+        }
+        d_outputs_.push_back(buf);
+    }
+
+    return true;
 }
 
 cl_kernel GpuContext::kernel(const std::string& name) const {
