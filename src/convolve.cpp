@@ -4,7 +4,7 @@
 #include <algorithm>
 #include "gpu/gpu_context.h"
 #include "globals/globals.h"
-using Array = std::vector<int>;
+using IntArray = std::vector<int>;
 using FloatArray = std::vector<float>;
 
 
@@ -23,7 +23,7 @@ std::vector<float> Rotate_kernels(int F, int KH, int KW, int D, int pointer) {
 
     size_t kernel_length = kernels_arr.size();
 
-    std::vector<float> outputData(kernel_length);
+    FloatArray outputData(kernel_length);
 
     const float* kernels = kernels_arr.data();
     float* rotated = outputData.data();
@@ -174,8 +174,8 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     Napi::Float32Array deltaInput = info[0].As<Napi::Float32Array>();
-    FloatArray padded_shape = Vectorize(info[1].As<Napi::Array>());
-    FloatArray kernel_shape = Vectorize(info[2].As<Napi::Array>());
+    IntArray padded_shape = Vectorize(info[1].As<Napi::Array>());
+    IntArray kernel_shape = Vectorize(info[2].As<Napi::Array>());
     size_t oH = info[3].As<Napi::Number>().Int32Value();
     size_t oW = info[4].As<Napi::Number>().Int32Value();
     int pointer = info[5].As<Napi::Number>().Int32Value();
@@ -257,8 +257,8 @@ Napi::Value ConvolveDelta_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     Napi::Float32Array padded_input_array = info[0].As<Napi::Float32Array>();
-    FloatArray padded_shape = Vectorize(info[1].As<Napi::Array>());
-    FloatArray kernel_shape = Vectorize(info[2].As<Napi::Array>());
+    IntArray padded_shape = Vectorize(info[1].As<Napi::Array>());
+    IntArray kernel_shape = Vectorize(info[2].As<Napi::Array>());
     size_t oH = info[3].As<Napi::Number>().Int32Value();
     size_t oW = info[4].As<Napi::Number>().Int32Value();
     int pointer = info[5].As<Napi::Number>().Int32Value();
