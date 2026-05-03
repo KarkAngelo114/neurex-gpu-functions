@@ -5,6 +5,7 @@
 #include "gpu/gpu_context.h"
 #include "globals/globals.h"
 using Array = std::vector<int>;
+using FloatArray = std::vector<float>;
 
 
 // ======================= UTILS ================================ //
@@ -173,8 +174,8 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     Napi::Float32Array deltaInput = info[0].As<Napi::Float32Array>();
-    Array padded_shape = Vectorize(info[1].As<Napi::Array>());
-    Array kernel_shape = Vectorize(info[2].As<Napi::Array>());
+    FloatArray padded_shape = Vectorize(info[1].As<Napi::Array>());
+    FloatArray kernel_shape = Vectorize(info[2].As<Napi::Array>());
     size_t oH = info[3].As<Napi::Number>().Int32Value();
     size_t oW = info[4].As<Napi::Number>().Int32Value();
     int pointer = info[5].As<Napi::Number>().Int32Value();
@@ -256,8 +257,8 @@ Napi::Value ConvolveDelta_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     Napi::Float32Array padded_input_array = info[0].As<Napi::Float32Array>();
-    Array padded_shape = Vectorize(info[1].As<Napi::Array>());
-    Array kernel_shape = Vectorize(info[2].As<Napi::Array>());
+    FloatArray padded_shape = Vectorize(info[1].As<Napi::Array>());
+    FloatArray kernel_shape = Vectorize(info[2].As<Napi::Array>());
     size_t oH = info[3].As<Napi::Number>().Int32Value();
     size_t oW = info[4].As<Napi::Number>().Int32Value();
     int pointer = info[5].As<Napi::Number>().Int32Value();
