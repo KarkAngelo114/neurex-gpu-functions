@@ -1,5 +1,6 @@
 #include <napi.h>
 #include <cmath>
+#include <limits>
 using namespace std;
 using IntArray = std::vector<int>;
 
@@ -44,7 +45,7 @@ Napi::Value MaxPoolingWrapper(const Napi::CallbackInfo& info) {
     for (size_t d = 0; d < inputD; d++) {
         for (size_t i = 0; i < outputH; i++) {
             for (size_t j = 0;  j < outputW; j++) {
-                float maxVal = -INFINITY;
+                float maxVal = -std::numeric_limits<float>::infinity();
                 int maxIdx = -1;
 
                 size_t startH = i * strides;
@@ -68,7 +69,7 @@ Napi::Value MaxPoolingWrapper(const Napi::CallbackInfo& info) {
                     }
                 }
                 int outIdx = (i * outputW * outputD) + (j * outputD) + d;
-                out[outIdx] = maxVal == -INFINITY ? 0 : maxVal;
+                out[outIdx] = (maxVal == -std::numeric_limits<float>::infinity()) ? 0.0f : maxVal;
                 max[outIdx] = maxIdx;
                 
             }
