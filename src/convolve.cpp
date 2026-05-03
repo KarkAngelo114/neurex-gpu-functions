@@ -10,7 +10,7 @@ using FloatArray = std::vector<float>;
 
 // ======================= UTILS ================================ //
 static Array Vectorize(const Napi::Array& arr) {
-    Array VectorArray;
+    IntArray VectorArray;
     VectorArray.reserve(arr.Length());
     for (uint32_t i = 0; i < arr.Length(); i++) {
         VectorArray.push_back(arr.Get(i).As<Napi::Number>().Int32Value());

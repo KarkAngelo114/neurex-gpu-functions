@@ -1,24 +1,25 @@
 #include <napi.h>
 #include <cmath>
 using namespace std;
-using Scalar = std::vector<int>;
+using IntArray = std::vector<int>;
 
-static Scalar ScalarArray(const Napi::Array& arr) {
-    Scalar scalarArray;
-    scalarArray.reserve(arr.Length());
+
+static IntArray Vectorize(const Napi::Array& arr) {
+    IntArray Vector;
+    Vector.reserve(arr.Length());
     for (uint32_t i = 0; i < arr.Length(); i++) {
-        scalarArray.push_back(arr.Get(i).As<Napi::Number>().Int32Value());
+        Vector.push_back(arr.Get(i).As<Napi::Number>().Int32Value());
     }
-    return scalarArray;
+    return Vector;
 }
 
 Napi::Value MaxPoolingWrapper(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     Napi::Float32Array input_array = info[0].As<Napi::Float32Array>();
-    Scalar pool_size = ScalarArray(info[1].As<Napi::Array>());
-    Scalar inputShape = ScalarArray(info[2].As<Napi::Array>());
-    Scalar outputShape = ScalarArray(info[3].As<Napi::Array>());
+    IntArray pool_size = Vectorize(info[1].As<Napi::Array>());
+    IntArray inputShape = Vectorize(info[2].As<Napi::Array>());
+    IntArray outputShape = Vectorize(info[3].As<Napi::Array>());
     size_t strides = info[4].As<Napi::Number>().Int32Value();
     
     size_t poolH = pool_size[0];
