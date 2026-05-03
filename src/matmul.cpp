@@ -1,5 +1,6 @@
 // src/matmul.cpp
 #include <napi.h>
+#include <omp.h>
 #include <CL/cl.h>
 #include "gpu/gpu_context.h"
 #include "globals/globals.h"
@@ -52,7 +53,7 @@ static Napi::Value MatMul_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
     int inputSize  = info[1].As<Napi::Number>().Int32Value();
-    int outputSize = info[2].As<Napi::Number>().Int32Value();
+    size_t outputSize = info[2].As<Napi::Number>().Int32Value();
     int pointer = info[3].As<Napi::Number>().Int32Value();
 
     // get weights and biases from the global store
@@ -68,9 +69,10 @@ static Napi::Value MatMul_CPU(const Napi::CallbackInfo& info) {
 
     std::copy(b, b + outputSize, x);
 
+    #pragma omp for schedule(static)
     for (int i = 0; i < inputSize; i++) {
         float v = in[i];
-        int offset = i * outputSize;
+        size_t offset = i * outputSize;
         for (int j = 0; j < outputSize; j++) {
             x[j] += v * w[offset + j];
         }
@@ -118,7 +120,7 @@ static Napi::Value DeltaMatMul_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array delta = info[0].As<Napi::Float32Array>();
     int inputSize  = info[1].As<Napi::Number>().Int32Value();
-    int outputSize = info[2].As<Napi::Number>().Int32Value();
+    size_t outputSize = info[2].As<Napi::Number>().Int32Value();
     int pointer = info[3].As<Napi::Number>().Int32Value();
 
     const Array& weights = getGlobalWeights(pointer);
@@ -127,10 +129,11 @@ static Napi::Value DeltaMatMul_CPU(const Napi::CallbackInfo& info) {
     const float* w = weights.data();
     float* o = output.Data();
 
+    #pragma omp for schedule(static)
     for (int i = 0; i < inputSize; i++) {
         float sum = 0.0f;
-        int offset = i * outputSize;
-        for (int j = 0; j < outputSize; j++) {
+        size_t offset = i * outputSize;
+        for (size_t j = 0; j < outputSize; j++) {
             sum += w[offset + j] * d[j];
         }
         o[i] = sum;

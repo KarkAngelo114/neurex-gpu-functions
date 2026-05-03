@@ -1,4 +1,5 @@
 #include <napi.h>
+#include <omp.h>
 #include <vector>
 using Array = std::vector<int>;
 
@@ -20,7 +21,7 @@ Napi::Value DilateInputWrapper(const Napi::CallbackInfo& info) {
 
     size_t H = shape[0];
     size_t W = shape[1];
-    size_t C = shape[2];
+    int C = shape[2];
 
     size_t dilatedH = H * stride + (H - 1) * (stride - 1);
     size_t dilatedW = W * stride + (W - 1) * (stride - 1);
@@ -32,7 +33,8 @@ Napi::Value DilateInputWrapper(const Napi::CallbackInfo& info) {
     float* input = input_arr.Data();
     float* dilated = dilatedOutput.Data();
 
-    for (size_t c = 0; c < C; c++) {
+    #pragma omp for schedule(static)
+    for (int c = 0; c < C; c++) {
         for (size_t h = 0; h < H; h++) {
             for (size_t w = 0; w < W; w++) {
                 size_t srcIdx = (h * W + w) * C + c;
@@ -51,7 +53,7 @@ Napi::Value ApplyPadding(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     Napi::Float32Array input_arr = info[0].As<Napi::Float32Array>();
-    size_t inputH = info[1].As<Napi::Number>().Int32Value();
+    int inputH = info[1].As<Napi::Number>().Int32Value();
     size_t inputW = info[2].As<Napi::Number>().Int32Value();
     size_t channels = info[3].As<Napi::Number>().Int32Value();
     size_t padTop = info[4].As<Napi::Number>().Int32Value();
@@ -66,7 +68,8 @@ Napi::Value ApplyPadding(const Napi::CallbackInfo& info) {
     float* input = input_arr.Data();
     float* output = outputData.Data();
 
-    for (size_t i = 0; i < inputH; i++) {
+    #pragma omp for schedule(static)
+    for (int i = 0; i < inputH; i++) {
         for (size_t j = 0; j < inputW; j++) {
             for (size_t c = 0; c < channels; c++) {
                 size_t oldIdx = (i * inputW + j) * channels + c;

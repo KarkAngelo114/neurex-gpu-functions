@@ -1,8 +1,7 @@
 #include <napi.h>
-#include <iostream>
+#include <omp.h>
 #include <vector>
 #include <cmath>
-using namespace std;
 
 
 Napi::Value SGD_wrapper(const Napi::CallbackInfo& info) {
@@ -13,9 +12,10 @@ Napi::Value SGD_wrapper(const Napi::CallbackInfo& info) {
 
     float* p = params.Data();
     float* g = grads.Data();
-    size_t element_length = params.ElementLength();
+    int element_length = params.ElementLength();
 
-    for (size_t i = 0; i < element_length; i++) {
+    #pragma omp for schedule(static)
+    for (int i = 0; i < element_length; i++) {
         p[i] -= lr * g[i];
     }
 
@@ -40,9 +40,10 @@ Napi::Value Adam_wrapper(const Napi::CallbackInfo& info) {
     float* g = grads.Data();
     float* sm = stateM.Data();
     float* sv = stateV.Data();
-    size_t params_len = params.ElementLength();
+    int params_len = params.ElementLength();
 
-    for (size_t i = 0; i < params_len; i++) {
+    #pragma omp for schedule(static)
+    for (int i = 0; i < params_len; i++) {
         float grad = g[i];
 
         sm[i] = beta1 * sm[i] + (1 - beta1) * grad;

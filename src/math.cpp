@@ -1,7 +1,6 @@
 #include <napi.h>
+#include <omp.h>
 #include <vector>
-#include <iostream>
-using namespace std;
 
 Napi::Value element_wise_mul_wrapper(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
@@ -15,7 +14,8 @@ Napi::Value element_wise_mul_wrapper(const Napi::CallbackInfo& info) {
     float* a2 = arr2.Data();
     float* o = output.Data();
 
-    for (size_t i = 0; i < arr_length; i++) {
+    #pragma omp for schedule(static)
+    for (int i = 0; i < arr_length; i++) {
         o[i] = a1[i] * a2[i];
     }
 

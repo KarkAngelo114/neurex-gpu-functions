@@ -1,4 +1,5 @@
 #include <napi.h>
+#include <omp.h>
 #include "globals/globals.h"
 #include "gpu/gpu_context.h"
 
@@ -45,7 +46,8 @@ Napi::Value ScaleGrads_CPU(const Napi::CallbackInfo& info) {
     float* data = grads.Data();
     size_t length = grads.ElementLength();
 
-    for (size_t i = 0; i < length; i++) {
+    #pragma omp for schedule(static)
+    for (int i = 0; i < length; i++) {
         data[i] /= batchSize;
     }
 

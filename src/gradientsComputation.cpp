@@ -1,4 +1,5 @@
 #include <napi.h>
+#include <omp.h>
 #include <vector>
 #include <cmath>
 
@@ -14,7 +15,8 @@ Napi::Value ComputeGradientForDenseWeightsWrapper(const Napi::CallbackInfo& info
     float* d = deltas.Data();
     float* wg = weightGrads.Data();
 
-    for (size_t i = 0; i < inputSize; i++) {
+    #pragma omp for schedule(static)
+    for (int i = 0; i < inputSize; i++) {
         float inputVal = a[i];
         int offset = i * outputSize;
         for (size_t j = 0; j < outputSize; j++) {
@@ -33,7 +35,8 @@ Napi::Value computeBiasGradsForConnected_LayerWrapper(const Napi::CallbackInfo& 
     float* d = deltas.Data();
     size_t length = biasgrads.ElementLength();
 
-    for (size_t i = 0; i < length; i++) {
+    #pragma omp for schedule(static)
+    for (int i = 0; i < length; i++) {
         bg[i] += d[i];
     }
 
@@ -61,7 +64,8 @@ Napi::Value computeKernelGradients(const Napi::CallbackInfo& info) {
     int padH = Kh / 2;
     int padW = Kw / 2;
 
-    for (size_t f = 0; f < Cout; f++) {
+    #pragma omp for schedule(static)
+    for (int f = 0; f < Cout; f++) {
         for (size_t kh = 0; kh < Kh; kh++) {
             for (size_t kw = 0; kw < Kw; kw++) {
                 for (size_t c = 0; c < Cin; c++) {
@@ -73,15 +77,15 @@ Napi::Value computeKernelGradients(const Napi::CallbackInfo& info) {
 
                             if (inH >= 0 && inH < inputH && inW >= 0 && inW < inputW) {
 
-                                int inputIndex = (inH * inputW + inW) * Cin + c;
+                                size_t inputIndex = (inH * inputW + inW) * Cin + c;
 
-                                int deltaIndex = (h * W + w) * Cout + f;
+                                size_t deltaIndex = (h * W + w) * Cout + f;
 
                                 sum += input_data[inputIndex] * d[deltaIndex];
                             }
                         }
                     }
-                    int gradIndex = ((f * Kh + kh) * Kw + kw) * Cin + c;
+                    size_t gradIndex = ((f * Kh + kh) * Kw + kw) * Cin + c;
 
                     wg[gradIndex] += sum;
                 }
@@ -95,19 +99,20 @@ Napi::Value computeBiasGradsForConvWrapper(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array biasGrads = info[0].As<Napi::Float32Array>();
     Napi::Float32Array deltas = info[1].As<Napi::Float32Array>();
-    int outH = info[2].As<Napi::Number>().Int32Value();
-    int outW = info[3].As<Napi::Number>().Int32Value();
+    size_t outH = info[2].As<Napi::Number>().Int32Value();
+    size_t outW = info[3].As<Napi::Number>().Int32Value();
     int numFilters = info[4].As<Napi::Number>().Int32Value();
 
     float* bg = biasGrads.Data();
     float* d = deltas.Data();
 
-    for (size_t f = 0; f < numFilters; f++) {
+    #pragma omp for schedule(static)
+    for (int f = 0; f < numFilters; f++) {
         float sum = 0.0f;
 
         for (size_t h = 0; h < outH; h++) {
             for (size_t w = 0; w < outW; w++) {
-                int idx = (h * outW + w) * numFilters + f;
+                size_t idx = (h * outW + w) * numFilters + f;
                 sum += d[idx];
             }
         }

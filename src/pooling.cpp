@@ -1,7 +1,7 @@
 #include <napi.h>
+#include <omp.h>
 #include <cmath>
 #include <limits>
-using namespace std;
 using IntArray = std::vector<int>;
 
 
@@ -28,7 +28,7 @@ Napi::Value MaxPoolingWrapper(const Napi::CallbackInfo& info) {
 
     size_t inputH = inputShape[0];
     size_t inputW = inputShape[1];
-    size_t inputD = inputShape[2];
+    int inputD = inputShape[2];
 
     size_t outputH = outputShape[0];
     size_t outputW = outputShape[1];
@@ -42,7 +42,8 @@ Napi::Value MaxPoolingWrapper(const Napi::CallbackInfo& info) {
     float* max = maxArray.Data();
     float* out = output.Data();
 
-    for (size_t d = 0; d < inputD; d++) {
+    #pragma omp for schedule(static)
+    for (int d = 0; d < inputD; d++) {
         for (size_t i = 0; i < outputH; i++) {
             for (size_t j = 0;  j < outputW; j++) {
                 float maxVal = -std::numeric_limits<float>::infinity();
