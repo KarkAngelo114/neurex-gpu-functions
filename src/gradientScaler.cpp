@@ -63,5 +63,5 @@ Napi::Value ScaleGradientsWrapper(const Napi::CallbackInfo& info) {
 
 
 void ScaleGradients(const Napi::Env env, const Napi::Object exports) {
-   exports.Set("scaleGrad", Napi::Function::New(env, ScaleGradsWrapper));
+   exports.Set("scaleGrad", Napi::Function::New(env, ScaleGradientsWrapper));
 }
