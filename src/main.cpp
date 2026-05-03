@@ -25,7 +25,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     detectGPU(env, exports);
     utils(env, exports);
     GpuLifecycleRegister(env, exports);
-    __globals(env, exports);
+    _globals(env, exports);
     return exports;
 }
 
