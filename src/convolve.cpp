@@ -71,18 +71,22 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     cl_int err;
 
     auto& gpu = GpuContext::instance();
+    cl_command_queue queue = gpu.queue();
+
     cl_mem inputTensor = clCreateBuffer(gpu.context(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * input_height * input_width * depth, input.Data(), &err);
+
     if (err != CL_SUCCESS) {
-        Napi::TypeError::New(env, "Failed to create input buffer for Convolution").ThrowAsJavaScriptException();
+        Napi::TypeError::New(env, "Failed to create input buffer").ThrowAsJavaScriptException();
         return env.Null();
     }
-    cl_command_queue queue = gpu.queue();
+
     cl_mem weights = gpu.weight(pointer);
     cl_mem biases = gpu.bias(pointer);
     cl_mem output_tensor = gpu.output(outputPointer);
 
     cl_kernel kernel = gpu.kernel("convolve");
 
+    // Set args
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputTensor);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &weights);
     clSetKernelArg(kernel, 2, sizeof(cl_mem), &biases);
@@ -97,19 +101,30 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     clSetKernelArg(kernel, 11, sizeof(int), &input_height);
     clSetKernelArg(kernel, 12, sizeof(int), &input_width);
 
-    size_t global = output_height * output_width * num_filters;
-    clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &global, nullptr, 0, nullptr, nullptr);
+    size_t global[3] = {
+        (size_t)output_width,
+        (size_t)output_height,
+        (size_t)num_filters
+    };
+
+    err = clEnqueueNDRangeKernel(queue,kernel,3,nullptr,global,nullptr,0,nullptr,nullptr);
+
+    if (err != CL_SUCCESS) {
+        Napi::TypeError::New(env, "Kernel launch failed").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    clFinish(queue); // ensure completion
 
     int expected_size = output_height * output_width * num_filters;
     Napi::Float32Array output = Napi::Float32Array::New(env, expected_size);
 
-    clEnqueueReadBuffer(queue, output_tensor, CL_TRUE, 0, sizeof(float) * expected_size, output.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer( queue, output_tensor,CL_TRUE, 0, sizeof(float) * expected_size, output.Data(), 0, nullptr, nullptr);
 
     clReleaseMemObject(inputTensor);
 
     return output;
 }
-
 
 Napi::Value Convolve_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
@@ -240,9 +255,14 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     clSetKernelArg(kernel, 9, sizeof(int),    &ioH);
     clSetKernelArg(kernel, 10, sizeof(int),   &ioW);
 
-    // One work-item per output element
-    size_t global = outputSize;
-    clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &global, nullptr, 0, nullptr, nullptr);
+
+    // size_t global[3] = outputSize;
+    size_t global[3] = {
+        (size_t)oH,
+        (size_t)oW,
+        (size_t)C_k
+    };
+    clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, &global, nullptr, 0, nullptr, nullptr);
 
     // Read result back to host
     Napi::Float32Array output = Napi::Float32Array::New(env, outputSize);
