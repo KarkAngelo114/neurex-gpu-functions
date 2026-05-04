@@ -29,7 +29,7 @@ Napi::Value ComputeGradientForDenseWeightsWrapper(const Napi::CallbackInfo& info
 Napi::Value computeBiasGradsForConnected_LayerWrapper(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array biasgrads = info[0].As<Napi::Float32Array>();
-    Napi::Float32Array deltas = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array deltas = info[1].As<Napi::Float32Array>();
 
     float* bg = biasgrads.Data();
     float* d = deltas.Data();
