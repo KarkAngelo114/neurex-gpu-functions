@@ -23,8 +23,8 @@ Napi::Value DilateInputWrapper(const Napi::CallbackInfo& info) {
     size_t W = shape[1];
     int C = shape[2];
 
-    size_t dilatedH = H * stride + (H - 1) * (stride - 1);
-    size_t dilatedW = W * stride + (W - 1) * (stride - 1);
+    size_t dilatedH = (H - 1) * stride + 1;
+    size_t dilatedW = (W - 1) * stride + 1;
     
     int dilatedSize = dilatedH * dilatedW * C;
 

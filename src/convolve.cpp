@@ -102,8 +102,8 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     clSetKernelArg(kernel, 12, sizeof(int), &input_width);
 
     size_t global[3] = {
-        (size_t)output_width,
         (size_t)output_height,
+        (size_t)output_width,
         (size_t)num_filters
     };
 

@@ -13,8 +13,8 @@ __kernel void convolve(
     const int input_height,
     const int input_width
 ) {
-    int ow = get_global_id(0);
-    int oh = get_global_id(1);
+    int oh = get_global_id(0);
+    int ow = get_global_id(1);
     int f  = get_global_id(2);
 
     if (ow >= output_width || oh >= output_height || f >= num_filters)
