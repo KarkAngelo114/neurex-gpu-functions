@@ -87,9 +87,6 @@ Napi::Value replaceWeights(const Napi::CallbackInfo& info) {
     auto weight = info[0].As<Napi::Float32Array>();
     int index = info[1].As<Napi::Number>().Int32Value();
 
-    // LOG THE FIRST WEIGHT TO CONSOLE
-    printf("Syncing Layer %d: First Weight = %f\n", index, weight.Data()[0]);
-
     global_Weights[index].assign(weight.Data(), weight.Data() + weight.ElementLength());
 
     return env.Undefined();
