@@ -38,6 +38,7 @@ Napi::Value ScaleGrads_GPU(const Napi::CallbackInfo& info) {
     
     return scaledGrads; // 6. Return the correct object
 }
+
 Napi::Value ScaleGrads_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array grads = info[0].As<Napi::Float32Array>();
@@ -46,8 +47,7 @@ Napi::Value ScaleGrads_CPU(const Napi::CallbackInfo& info) {
     float* data = grads.Data();
     size_t length = grads.ElementLength();
 
-    #pragma omp for schedule(static)
-    for (int i = 0; i < length; i++) {
+    for (size_t i = 0; i < length; i++) {
         data[i] /= batchSize;
     }
 

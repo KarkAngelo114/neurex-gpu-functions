@@ -15,8 +15,7 @@ Napi::Value ComputeGradientForDenseWeightsWrapper(const Napi::CallbackInfo& info
     float* d = deltas.Data();
     float* wg = weightGrads.Data();
 
-    #pragma omp for schedule(static)
-    for (int i = 0; i < inputSize; i++) {
+    for (size_t i = 0; i < inputSize; i++) {
         float inputVal = a[i];
         int offset = i * outputSize;
         for (size_t j = 0; j < outputSize; j++) {
@@ -35,8 +34,8 @@ Napi::Value computeBiasGradsForConnected_LayerWrapper(const Napi::CallbackInfo& 
     float* d = deltas.Data();
     size_t length = biasgrads.ElementLength();
 
-    #pragma omp for schedule(static)
-    for (int i = 0; i < length; i++) {
+    
+    for (size_t i = 0; i < length; i++) {
         bg[i] += d[i];
     }
 
@@ -64,8 +63,7 @@ Napi::Value computeKernelGradients(const Napi::CallbackInfo& info) {
     int padH = Kh / 2;
     int padW = Kw / 2;
 
-    #pragma omp for schedule(static)
-    for (int f = 0; f < Cout; f++) {
+    for (size_t f = 0; f < Cout; f++) {
         for (size_t kh = 0; kh < Kh; kh++) {
             for (size_t kw = 0; kw < Kw; kw++) {
                 for (size_t c = 0; c < Cin; c++) {
@@ -106,8 +104,7 @@ Napi::Value computeBiasGradsForConvWrapper(const Napi::CallbackInfo& info) {
     float* bg = biasGrads.Data();
     float* d = deltas.Data();
 
-    #pragma omp for schedule(static)
-    for (int f = 0; f < numFilters; f++) {
+    for (size_t f = 0; f < numFilters; f++) {
         float sum = 0.0f;
 
         for (size_t h = 0; h < outH; h++) {

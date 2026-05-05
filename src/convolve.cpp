@@ -152,8 +152,7 @@ Napi::Value Convolve_CPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array output = Napi::Float32Array::New(env, output_height * output_width * num_filters);
     float* outData = output.Data();
 
-    #pragma omp for schedule(static)
-    for (int f = 0; f < num_filters; f++) {
+    for (size_t f = 0; f < num_filters; f++) {
         float bias = biases[f];
 
         for (size_t oh = 0; oh < output_height; oh++) {
@@ -306,8 +305,7 @@ Napi::Value ConvolveDelta_CPU(const Napi::CallbackInfo& info) {
     float* out = output.Data();
 
     // ---- Convolution ----
-    #pragma omp for schedule(static)
-    for (int c_out = 0; c_out < C_k; c_out++) {
+    for (size_t c_out = 0; c_out < C_k; c_out++) {
         for (size_t h = 0; h < oH; h++) {
             for (size_t w = 0; w < oW; w++) {
                 float sum = 0.0f;

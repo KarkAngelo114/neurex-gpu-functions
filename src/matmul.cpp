@@ -52,7 +52,7 @@ static Napi::Value MatMul_GPU(const Napi::CallbackInfo& info) {
 static Napi::Value MatMul_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
-    int inputSize  = info[1].As<Napi::Number>().Int32Value();
+    size_t inputSize  = info[1].As<Napi::Number>().Int32Value();
     size_t outputSize = info[2].As<Napi::Number>().Int32Value();
     int pointer = info[3].As<Napi::Number>().Int32Value();
 
@@ -69,8 +69,8 @@ static Napi::Value MatMul_CPU(const Napi::CallbackInfo& info) {
 
     std::copy(b, b + outputSize, x);
 
-    #pragma omp for schedule(static)
-    for (int i = 0; i < inputSize; i++) {
+    
+    for (size_t i = 0; i < inputSize; i++) {
         float v = in[i];
         size_t offset = i * outputSize;
         for (int j = 0; j < outputSize; j++) {
@@ -119,7 +119,7 @@ static Napi::Value DeltaMatMul_GPU(const Napi::CallbackInfo& info) {
 static Napi::Value DeltaMatMul_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array delta = info[0].As<Napi::Float32Array>();
-    int inputSize  = info[1].As<Napi::Number>().Int32Value();
+    size_t inputSize  = info[1].As<Napi::Number>().Int32Value();
     size_t outputSize = info[2].As<Napi::Number>().Int32Value();
     int pointer = info[3].As<Napi::Number>().Int32Value();
 
@@ -129,8 +129,7 @@ static Napi::Value DeltaMatMul_CPU(const Napi::CallbackInfo& info) {
     const float* w = weights.data();
     float* o = output.Data();
 
-    #pragma omp for schedule(static)
-    for (int i = 0; i < inputSize; i++) {
+    for (size_t i = 0; i < inputSize; i++) {
         float sum = 0.0f;
         size_t offset = i * outputSize;
         for (size_t j = 0; j < outputSize; j++) {
