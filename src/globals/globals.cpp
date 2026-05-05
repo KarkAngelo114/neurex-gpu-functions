@@ -30,8 +30,6 @@ bool get_Global_Boolean_On_GPU() {
 }
 
 
-
-
 Napi::Value setGlobalParams(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
@@ -84,7 +82,29 @@ Napi::Value setOnGPU_Boolean_State(const Napi::CallbackInfo& info) {
     return env.Undefined();
 }
 
+Napi::Value replaceWeights(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    auto weight = info[0].As<Napi::Float32Array>();
+    int index = info[1].As<Napi::Number>().Int32Value();
+
+    global_Weights[index].assign(weight.Data(), weight.Data() + weight.ElementLength());
+
+    return env.Undefined();
+}
+
+Napi::Value replaceBiases(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    auto biases = info[0].As<Napi::Float32Array>();
+    int index = info[1].As<Napi::Number>().Int32Value();
+
+    global_biases[index].assign(biases.Data(), biases.Data() + biases.ElementLength());
+
+    return env.Undefined();
+}
+
 void _globals(Napi::Env env, Napi::Object exports) {
     exports.Set("setGlobalParams", Napi::Function::New(env, setGlobalParams));
     exports.Set("setOnGPU", Napi::Function::New(env, setOnGPU_Boolean_State));
+    exports.Set("replaceWeight", Napi::Function::New(env, replaceWeights));
+    exports.Set("replaceBiases", Napi::Function::New(env, replaceBiases));
 }
