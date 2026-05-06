@@ -40,7 +40,7 @@ Napi::Value DilateInputWrapper(const Napi::CallbackInfo& info) {
                 size_t dilatedHIdx = h * stride;
                 size_t dilatedWIdx = w * stride;
                 size_t dstIdx = (dilatedHIdx * dilatedW + dilatedWIdx) * C + c;
-                dilated[dstIdx] = input[srcIdx] || 0;
+                dilated[dstIdx] = (input[srcIdx] != 0.0f) ? input[srcIdx] : 0.0f;
             }
         }
     }
