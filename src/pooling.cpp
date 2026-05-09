@@ -61,7 +61,13 @@ Napi::Value MaxPooling_GPU(const Napi::CallbackInfo& info) {
     }
 
     // OUTPUT BUFFER
-    cl_mem outputTensor = gpu.output(outputTensorTemplatePointer);
+    cl_mem outputTensor = clCreateBuffer(
+        gpu.context(),
+        CL_MEM_WRITE_ONLY,
+        sizeof(float) * outputSize,
+        nullptr,
+        &err
+    );
 
     // MAX INDEX BUFFER
     cl_mem maxIndexTensor = clCreateBuffer(
@@ -71,6 +77,11 @@ Napi::Value MaxPooling_GPU(const Napi::CallbackInfo& info) {
         nullptr,
         &err
     );
+
+    if (err != CL_SUCCESS) {
+        Napi::TypeError::New(env, "Failed to create output buffer").ThrowAsJavaScriptException();
+        return env.Null();
+    }
 
     // SET KERNEL ARGS (FIXED POINTER USAGE)
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputTensor);
@@ -107,6 +118,7 @@ Napi::Value MaxPooling_GPU(const Napi::CallbackInfo& info) {
 
     // CLEANUP
     clReleaseMemObject(inputTensor);
+    clReleaseMemObject(outputTensor);
     clReleaseMemObject(maxIndexTensor);
 
     // BUILD JS OUTPUT
@@ -124,7 +136,6 @@ Napi::Value MaxPooling_GPU(const Napi::CallbackInfo& info) {
 
     return objectOutput;
 }
-
 Napi::Value MaxPooling_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
