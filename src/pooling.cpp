@@ -96,6 +96,7 @@ Napi::Value MaxPooling_GPU(const Napi::CallbackInfo& info) {
     clSetKernelArg(kernel, 8, sizeof(int), &outputH);
     clSetKernelArg(kernel, 9, sizeof(int), &outputW);
     clSetKernelArg(kernel, 10, sizeof(int), &outputD);
+    clSetKernelArg(kernel, 11, sizeof(int), &strides);
 
     size_t globalSize[3] = {
         (size_t)outputH,
