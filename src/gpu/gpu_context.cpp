@@ -20,7 +20,12 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"convolve.cl", "convolve"},
     {"delta_convolve.cl", "delta_convolve"},
     {"scaleGrads.cl", "scaleGrads"},
-    {"maxpool.cl","maxpool"}
+    {"maxpool.cl","maxpool"},
+    {"element_wise_mul.cl", "element_wise_mul"},
+    {"computeBiasGradsForConnected_Layer.cl", "computeBiasGradsForConnected_Layer"},
+    {"computeWeightGradsForConnected_Layer.cl", "computeWeightGradsForConnected_Layer"},
+    {"computeKernelGradients.cl", "computeKernelGradients"},
+    {"computeBiasGradsForConv.cl", "computeBiasGradsForConv"}
 };
 
 

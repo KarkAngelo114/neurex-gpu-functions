@@ -1,5 +1,6 @@
 #include <napi.h>
 #include <omp.h>
+#include <CL/cl.h>
 #include "globals/globals.h"
 #include "gpu/gpu_context.h"
 
