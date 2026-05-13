@@ -26,12 +26,12 @@ Napi::Value element_wise_mul_GPU(const CallbackInfo& info) {
     clSetKernelArg(kernel, 2, sizeof(cl_mem), &output_arr);
     clSetKernelArg(kernel, 3, sizeof(int), &arr_length);
 
-    size_t globalSize = arr_length;
+    size_t globalSize = (size_t)arr_length;
     clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
 
     // read result
-    Napi::Float32Array output = Napi::Float32Array::New(env, outputSize);
-    clEnqueueReadBuffer(queue, ouptut_arr, CL_TRUE, 0, sizeof(float) * arr_length, output.Data(), 0, nullptr, nullptr);
+    Napi::Float32Array output = Napi::Float32Array::New(env, arr_length);
+    clEnqueueReadBuffer(queue, output_arr, CL_TRUE, 0, sizeof(float) * arr_length, output.Data(), 0, nullptr, nullptr);
 
     clFinish(queue);
     clReleaseMemObject(input_arr1);
