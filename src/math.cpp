@@ -5,7 +5,7 @@
 #include <omp.h>
 #include <vector>
 
-Napi::Value element_wise_mul_GPU(const CallbackInfo& info) {
+Napi::Value element_wise_mul_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
