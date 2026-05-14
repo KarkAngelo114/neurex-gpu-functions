@@ -4,6 +4,7 @@
 #include <fstream>
 #include <sstream>
 #include <filesystem>
+#include <unordered_set>
 using FloatArray = std::vector<float>;
 using Matrix = std::vector<FloatArray>;
 
@@ -108,7 +109,11 @@ bool GpuContext::initialize(const std::string& kernelBasePath, std::string& erro
     std::string source;
 
     try {
+        // AFTER — track which files have already been loaded
+        std::unordered_set<std::string> loadedFiles;
         for (auto& def : kernel_Definitions) {
+            if (loadedFiles.count(def.file)) continue;
+            loadedFiles.insert(def.file);
             std::filesystem::path fullPath = std::filesystem::path(kernelBasePath) / def.file;
             source += LoadKernelFile(fullPath.string()) + "\n";
         }
