@@ -1,4 +1,5 @@
 #include <napi.h>
+#include <CL/cl.h>
 #include <omp.h>
 #include <cmath>
 #include <limits>
@@ -47,13 +48,7 @@ Napi::Value MaxPooling_GPU(const Napi::CallbackInfo& info) {
     size_t outputSize = outputH * outputW * outputD;
 
     // INPUT BUFFER
-    cl_mem inputTensor = clCreateBuffer(
-        gpu.context(),
-        CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-        sizeof(float) * inputSize,
-        input_array.Data(),
-        &err
-    );
+    cl_mem inputTensor = clCreateBuffer(gpu.context(),CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputSize, input_array.Data(),&err);
 
     if (err != CL_SUCCESS) {
         Napi::TypeError::New(env, "Failed to create input buffer").ThrowAsJavaScriptException();
@@ -61,22 +56,10 @@ Napi::Value MaxPooling_GPU(const Napi::CallbackInfo& info) {
     }
 
     // OUTPUT BUFFER
-    cl_mem outputTensor = clCreateBuffer(
-        gpu.context(),
-        CL_MEM_WRITE_ONLY,
-        sizeof(float) * outputSize,
-        nullptr,
-        &err
-    );
+    cl_mem outputTensor = clCreateBuffer(gpu.context(), CL_MEM_WRITE_ONLY, sizeof(float) * outputSize, nullptr, &err);
 
     // MAX INDEX BUFFER
-    cl_mem maxIndexTensor = clCreateBuffer(
-        gpu.context(),
-        CL_MEM_WRITE_ONLY,
-        sizeof(int) * outputSize,
-        nullptr,
-        &err
-    );
+    cl_mem maxIndexTensor = clCreateBuffer(gpu.context(), CL_MEM_WRITE_ONLY, sizeof(int) * outputSize, nullptr, &err);
 
     if (err != CL_SUCCESS) {
         Napi::TypeError::New(env, "Failed to create output buffer").ThrowAsJavaScriptException();
@@ -111,11 +94,9 @@ Napi::Value MaxPooling_GPU(const Napi::CallbackInfo& info) {
     std::vector<float> output(outputSize);
     std::vector<int> maxIdx(outputSize);
 
-    clEnqueueReadBuffer(queue, outputTensor, CL_TRUE, 0,
-        sizeof(float) * outputSize, output.data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, outputTensor, CL_TRUE, 0, sizeof(float) * outputSize, output.data(), 0, nullptr, nullptr);
 
-    clEnqueueReadBuffer(queue, maxIndexTensor, CL_TRUE, 0,
-        sizeof(int) * outputSize, maxIdx.data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, maxIndexTensor, CL_TRUE, 0, sizeof(int) * outputSize, maxIdx.data(), 0, nullptr, nullptr);
 
     // CLEANUP
     clReleaseMemObject(inputTensor);

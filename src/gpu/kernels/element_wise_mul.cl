@@ -4,7 +4,7 @@ __kernel void element_wise_mul(
     __global float* output,
     const int size
 ) {
-    int i = get_global_size(0);
+    int i = get_global_id(0);
 
     if (i >= size) return;
 

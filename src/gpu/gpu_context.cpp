@@ -25,7 +25,14 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"computeBiasGradsForConnected_Layer.cl", "computeBiasGradsForConnected_Layer"},
     {"computeWeightGradsForConnected_Layer.cl", "computeWeightGradsForConnected_Layer"},
     {"computeKernelGradients.cl", "computeKernelGradients"},
-    {"computeBiasGradsForConv.cl", "computeBiasGradsForConv"}
+    {"computeBiasGradsForConv.cl", "computeBiasGradsForConv"},
+    {"activations.cl", "sigmoid"},
+    {"activations.cl", "relu"},
+    {"activations.cl", "Tanh"},
+    {"activations.cl", "softmax"},
+    {"activations.cl", "drelu"},
+    {"activations.cl", "dsigmoid"},
+    {"activations.cl", "dtanh"},
 };
 
 
