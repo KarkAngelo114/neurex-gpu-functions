@@ -1,29 +1,57 @@
 #include <napi.h>
+#include "gpu/gpu_context.h"
+#include "globals/globals.h"
 #include <omp.h>
 #include <vector>
 #include <cmath>
 
-
-Napi::Value SGD_wrapper(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
+Napi::Value SGD_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array params = info[0].As<Napi::Float32Array>();
     Napi::Float32Array grads = info[1].As<Napi::Float32Array>();
     float lr = info[2].As<Napi::Number>().FloatValue();
+    int param_length = params.ElementLength();
+
+    auto& gpu = GpuContext::instance();
+    cl_command_queue queue = gpu.queue();
+    cl_context context = gpu.context();
+    cl_kernel kernel = gpu.kernel("sgd");
+
+    cl_mem parameters = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* param_length, params.Data(), nullptr);
+    cl_mem gradients = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* param_length, grads.Data(), nullptr);
+
+    clSetKernelArg(kernel, 0, sizeof(cl_mem), &parameters);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), &gradients);
+    clSetKernelArg(kernel, 2, sizeof(float), &lr);
+    clSetKernelArg(kernel, 3, sizeof(int), &param_length);
+
+    size_t globalSize = (size_t)param_length;
+    clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
+
+    clEnqueueReadBuffer(queue, parameters, CL_TRUE, 0, sizeof(float)* param_length, params.Data(), 0, nullptr, nullptr );
+    clFinish(queue);
+    clReleaseMemObject(parameters);
+    clReleaseMemObject(gradients);
+
+    return params;
+}
+
+Napi::Value SGD_CPU(const Napi::CallbackInfo& info) {
+    Napi::Float32Array params = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array grads = info[1].As<Napi::Float32Array>();
+    float lr = info[2].As<Napi::Number>().FloatValue();
+    size_t element_length = params.ElementLength();
 
     float* p = params.Data();
     float* g = grads.Data();
-    size_t element_length = params.ElementLength();
 
     for (size_t i = 0; i < element_length; i++) {
         p[i] -= lr * g[i];
     }
 
     return params;
-
-    
 }
 
-Napi::Value Adam_wrapper(const Napi::CallbackInfo& info) {
+Napi::Value Adam_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array params = info[0].As<Napi::Float32Array>();
     Napi::Float32Array grads = info[1].As<Napi::Float32Array>();
@@ -34,12 +62,68 @@ Napi::Value Adam_wrapper(const Napi::CallbackInfo& info) {
     float beta1 = info[6].As<Napi::Number>().FloatValue();
     float beta2 = info[7].As<Napi::Number>().FloatValue();
     float epsilon = info[8].As<Napi::Number>().FloatValue();
+    int params_len = params.ElementLength();
+
+    auto& gpu = GpuContext::instance();
+    cl_command_queue queue = gpu.queue();
+    cl_context context = gpu.context();
+    cl_kernel kernel = gpu.kernel("adam");
+
+    cl_mem parameters = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* params_len, params.Data(), nullptr);
+    cl_mem gradients = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* params_len, grads.Data(), nullptr);
+    cl_mem M = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* params_len, stateM.Data(), nullptr);
+    cl_mem V = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* params_len, stateV.Data(), nullptr);
+
+    clSetKernelArg(kernel, 0, sizeof(cl_mem), &parameters);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), &gradients);
+    clSetKernelArg(kernel, 2, sizeof(cl_mem), &M);
+    clSetKernelArg(kernel, 3, sizeof(cl_mem), &V);
+    clSetKernelArg(kernel, 4, sizeof(int), &stateT);
+    clSetKernelArg(kernel, 5, sizeof(float), &learning_rate);
+    clSetKernelArg(kernel, 6, sizeof(float), &beta1);
+    clSetKernelArg(kernel, 7, sizeof(float), &beta2);
+    clSetKernelArg(kernel, 8, sizeof(float), &epsilon);
+    clSetKernelArg(kernel, 9, sizeof(float), &params_len);
+
+    size_t globalSize = (size_t)params_len;
+    clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
+    
+    // reads the paramters, M, and V buffers
+    clEnqueueReadBuffer(queue, parameters, CL_TRUE, 0, sizeof(float)* params_len, params.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, M, CL_TRUE, 0, sizeof(float)* params_len, stateM.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, V, CL_TRUE, 0, sizeof(float)* params_len, stateV.Data(), 0, nullptr, nullptr);
+
+    clFinish(queue);
+    clReleaseMemObject(parameters);
+    clReleaseMemObject(gradients);
+    clReleaseMemObject(M);
+    clReleaseMemObject(V);
+
+    Napi::Object output = Napi::Object::New(env);
+    output.Set("params", params);
+    output.Set("m", stateM);
+    output.Set("v", stateV);
+
+    return output;
+}
+
+Napi::Value Adam_CPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    Napi::Float32Array params = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array grads = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array stateM = info[2].As<Napi::Float32Array>();
+    Napi::Float32Array stateV = info[3].As<Napi::Float32Array>();
+    int stateT = info[4].As<Napi::Number>().Int32Value();
+    float learning_rate = info[5].As<Napi::Number>().FloatValue();
+    float beta1 = info[6].As<Napi::Number>().FloatValue();
+    float beta2 = info[7].As<Napi::Number>().FloatValue();
+    float epsilon = info[8].As<Napi::Number>().FloatValue();
+    size_t params_len = params.ElementLength();
 
     float* p = params.Data();
     float* g = grads.Data();
     float* sm = stateM.Data();
     float* sv = stateV.Data();
-    size_t params_len = params.ElementLength();
 
     for (size_t i = 0; i < params_len; i++) {
         float grad = g[i];
@@ -59,6 +143,23 @@ Napi::Value Adam_wrapper(const Napi::CallbackInfo& info) {
     output.Set("v", stateV);
 
     return output;
+}
+
+Napi::Value SGD_wrapper(const Napi::CallbackInfo& info) {
+    if (get_Global_Boolean_On_GPU()) {
+        return SGD_GPU(info);
+    }
+
+    return SGD_CPU(info);
+}
+
+
+Napi::Value Adam_wrapper(const Napi::CallbackInfo& info) {
+    if (get_Global_Boolean_On_GPU()) {
+        return Adam_GPU(info);
+    }
+
+    return Adam_CPU(info);
 }
 
 // ======== exports ======== //
