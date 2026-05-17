@@ -22,7 +22,6 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"delta_convolve.cl", "delta_convolve"},
     {"scaleGrads.cl", "scaleGrads"},
     {"maxpool.cl","maxpool"},
-    {"element_wise_mul.cl", "element_wise_mul"},
     {"computeBiasGradsForConnected_Layer.cl", "computeBiasGradsForConnected_Layer"},
     {"computeWeightGradsForConnected_Layer.cl", "computeWeightGradsForConnected_Layer"},
     {"computeKernelGradients.cl", "computeKernelGradients"},
@@ -35,7 +34,13 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"activations.cl", "dsigmoid"},
     {"activations.cl", "dtanh"},
     {"optimizers.cl", "sgd"},
-    {"optimizers.cl", "adam"}
+    {"optimizers.cl", "adam"},
+    {"math.cl", "element_wise_mul"},
+    {"math.cl", "element_wise_sub"},
+    {"math.cl", "scale_diff"},
+    {"utils.cl", "apply_padding"},
+    {"utils.cl", "dilate"},
+    {"maxpool.cl","maxpooldelta"}
 };
 
 

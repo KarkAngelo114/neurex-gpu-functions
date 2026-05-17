@@ -118,6 +118,7 @@ Napi::Value MaxPooling_GPU(const Napi::CallbackInfo& info) {
 
     return objectOutput;
 }
+
 Napi::Value MaxPooling_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
@@ -188,8 +189,72 @@ Napi::Value MaxPooling_CPU(const Napi::CallbackInfo& info) {
     return objectOutput;
 }
 
-Napi::Value MaxPoolingWrapper(const Napi::CallbackInfo& info) {
+Napi::Value MaxPoolDelta_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
+
+    Napi::Float32Array input_arr = info[0].As<Napi::Float32Array>();
+    Napi::Int32Array indicesArray = info[1].As<Napi::Int32Array>();
+    int H = info[2].As<Napi::Number>().Int32Value();
+    int W = info[3].As<Napi::Number>().Int32Value();
+    int D = info[4].As<Napi::Number>().Int32Value();
+    int size = H * W * D;
+
+    Napi::Float32Array output = Napi::Float32Array::New(env, size);
+
+    auto& gpu = GpuContext::instance();
+    cl_command_queue queue = gpu.queue();
+    cl_context context = gpu.context();
+    cl_kernel kernel = gpu.kernel("maxpooldelta");
+
+    cl_mem inputData = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* input_arr.ElementLength(), input_arr.Data(), nullptr);
+    cl_mem indices = clCreateBuffer(context, CL_MEM_READ_ONLY| CL_MEM_COPY_HOST_PTR, sizeof(int)* indicesArray.ElementLength(), indicesArray.Data(), nullptr);
+    cl_mem outputTensor = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* size, output.Data(), nullptr);
+
+    clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputData);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), &indices);
+    clSetKernelArg(kernel, 2, sizeof(cl_mem), &outputTensor);
+    clSetKernelArg(kernel, 3, sizeof(int), &size);
+
+    size_t globalSize = input_arr.ElementLength();
+    clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
+    
+    // READ BACK RESULTS
+    clEnqueueReadBuffer(queue, outputTensor, CL_TRUE, 0, sizeof(float) * size, output.Data(), 0, nullptr, nullptr);
+    clFinish(queue);
+
+    // CLEANUP
+    clReleaseMemObject(inputData);
+    clReleaseMemObject(indices);
+    clReleaseMemObject(outputTensor);
+
+    return output;
+}
+
+Napi::Value MaxPoolDelta_CPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    Napi::Float32Array input_arr = info[0].As<Napi::Float32Array>();
+    Napi::Int32Array indicesArray = info[1].As<Napi::Int32Array>();
+    int H = info[2].As<Napi::Number>().Int32Value();
+    int W = info[3].As<Napi::Number>().Int32Value();
+    int D = info[4].As<Napi::Number>().Int32Value();
+    int size = H * W * D;
+
+    Napi::Float32Array output = Napi::Float32Array::New(env, size);
+
+    float* inputData = input_arr.Data();
+    float* indices = indicesArray.Data();
+    float* o = output.Data();
+
+    for (size_t i = 0; i < input_arr.ElementLength(); i++) {
+        int idx = indices[i];
+        o[idx] = inputData[i];
+    }
+
+    return output;
+}
+
+Napi::Value MaxPoolingWrapper(const Napi::CallbackInfo& info) {
 
     if (get_Global_Boolean_On_GPU()) {
         return MaxPooling_GPU(info);
@@ -198,7 +263,16 @@ Napi::Value MaxPoolingWrapper(const Napi::CallbackInfo& info) {
     return MaxPooling_CPU(info);
 }
 
+Napi::Value MaxPoolDelta_Wrapper(const Napi::CallbackInfo& info) {
+    if (get_Global_Boolean_On_GPU()) {
+        return MaxPoolDelta_GPU(info);
+    }
+
+    return MaxPoolDelta_CPU(info);
+}
+
 
 void Poolings(Napi::Env env, Napi::Object exports) {
     exports.Set("MaxPooling", Napi::Function::New(env, MaxPoolingWrapper));
+    exports.Set("MaxPoolDelta");
 }
