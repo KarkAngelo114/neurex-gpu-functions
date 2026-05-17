@@ -38,8 +38,8 @@ Napi::Value DilateInput_GPU(const Napi::CallbackInfo& info) {
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("dilate");
 
-    cl_mem inputTensor = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof()* input_arr.ElementLength(), input_arr.Data(), nullptr);
-    cl_mem outputTensor = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof()* dilatedSize, dilatedOutput.Data(), nullptr);
+    cl_mem inputTensor = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* input_arr.ElementLength(), input_arr.Data(), nullptr);
+    cl_mem outputTensor = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* dilatedSize, dilatedOutput.Data(), nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputTensor);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &outputTensor);
