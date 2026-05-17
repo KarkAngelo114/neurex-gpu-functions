@@ -118,7 +118,7 @@ Napi::Value ApplyPadding_GPU(const Napi::CallbackInfo& info) {
     int newW = inputW + padLeft + padRight;
     size_t inputSize = inputH * inputW * channels;
     size_t outputSize = newH * newW * channels;
-    Napi::Float32Array output = Napi::FLoat32Array::New(env, outputSize);
+    Napi::Float32Array output = Napi::Float32Array::New(env, outputSize);
 
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
