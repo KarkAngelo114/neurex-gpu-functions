@@ -157,7 +157,7 @@ Napi::Value scaleDiff_CPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
     Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>();
     Napi::Float32Array arr3 = info[3].As<Napi::Float32Array>();
-    size_t arr_length = arr.ElementLength();
+    size_t arr_length = arr1.ElementLength();
     Napi::Float32Array output = Napi::Float32Array::New(env, arr_length);
 
     float* a1 = arr1.Data();
