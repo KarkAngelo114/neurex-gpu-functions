@@ -243,7 +243,7 @@ Napi::Value MaxPoolDelta_CPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array output = Napi::Float32Array::New(env, size);
 
     float* inputData = input_arr.Data();
-    float* indices = indicesArray.Data();
+    int* indices = indicesArray.Data();
     float* o = output.Data();
 
     for (size_t i = 0; i < input_arr.ElementLength(); i++) {
@@ -274,5 +274,5 @@ Napi::Value MaxPoolDelta_Wrapper(const Napi::CallbackInfo& info) {
 
 void Poolings(Napi::Env env, Napi::Object exports) {
     exports.Set("MaxPooling", Napi::Function::New(env, MaxPoolingWrapper));
-    exports.Set("MaxPoolDelta");
+    exports.Set("MaxPoolDelta", Napi::Function::New(env, MaxPoolDelta_Wrapper));
 }
