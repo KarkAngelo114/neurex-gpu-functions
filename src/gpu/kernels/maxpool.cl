@@ -60,7 +60,5 @@ __kernel void maxpooldelta(
     if (i >= size) return;
 
     int idx = indices[i];
-    if (idx >= 0) {
-        outputTensor[idx] = delta[i];
-    }
+    if (idx >= 0) outputTensor[idx] += delta[i];
 }

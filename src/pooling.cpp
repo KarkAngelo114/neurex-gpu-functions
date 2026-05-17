@@ -248,7 +248,7 @@ Napi::Value MaxPoolDelta_CPU(const Napi::CallbackInfo& info) {
 
     for (size_t i = 0; i < input_arr.ElementLength(); i++) {
         int idx = indices[i];
-        if (idx >= 0) o[idx] = inputData[i];
+        if (idx >= 0) o[idx] += inputData[i];
     }
 
     return output;
