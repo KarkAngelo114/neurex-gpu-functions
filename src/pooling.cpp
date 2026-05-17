@@ -105,12 +105,10 @@ Napi::Value MaxPooling_GPU(const Napi::CallbackInfo& info) {
 
     // BUILD JS OUTPUT
     Napi::Float32Array outArray = Napi::Float32Array::New(env, outputSize);
-    Napi::Float32Array maxArray = Napi::Float32Array::New(env, outputSize);
+    Napi::Int32Array maxArray = Napi::Int32Array::New(env, outputSize);
 
     memcpy(outArray.Data(), output.data(), sizeof(float) * outputSize);
-    for (size_t i = 0; i < outputSize; i++) {
-        maxArray[i] = (float)maxIdx[i];
-    }
+    memcpy(maxArray.Data(), maxIdx.data(), sizeof(int) * outputSize);
 
     Napi::Object objectOutput = Napi::Object::New(env);
     objectOutput.Set("output", outArray);
@@ -142,10 +140,10 @@ Napi::Value MaxPooling_CPU(const Napi::CallbackInfo& info) {
 
     // prepare output
     Napi::Float32Array output = Napi::Float32Array::New(env, outputH * outputW * outputD);
-    Napi::Float32Array maxArray = Napi::Float32Array::New(env, outputH * outputW * outputD);
+    Napi::Int32Array maxArray = Napi::Int32Array::New(env, outputH * outputW * outputD);
 
     float* arr = input_array.Data();
-    float* max = maxArray.Data();
+    int* max = maxArray.Data();
     float* out = output.Data();
 
     for (size_t d = 0; d < inputD; d++) {
