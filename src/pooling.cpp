@@ -213,7 +213,7 @@ Napi::Value MaxPoolDelta_GPU(const Napi::CallbackInfo& info) {
     clSetKernelArg(kernel, 2, sizeof(cl_mem), &outputTensor);
     clSetKernelArg(kernel, 3, sizeof(int), &size);
 
-    size_t globalSize = input_arr.ElementLength();
+    size_t globalSize = indicesArray.ElementLength();
     clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
     
     // READ BACK RESULTS
@@ -244,9 +244,9 @@ Napi::Value MaxPoolDelta_CPU(const Napi::CallbackInfo& info) {
     int* indices = indicesArray.Data();
     float* o = output.Data();
 
-    for (size_t i = 0; i < input_arr.ElementLength(); i++) {
+    for (size_t i = 0; i < indicesArray.ElementLength(); i++) {
         int idx = indices[i];
-        if (idx >= 0) o[idx] += inputData[i];
+        o[idx] += inputData[i]; 
     }
 
     return output;
