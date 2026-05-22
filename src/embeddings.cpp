@@ -79,7 +79,9 @@ Napi::Value GetEmbeddings_CPU(const Napi::CallbackInfo& info) {
     }
 
     // Convert output to Napi::Float32Array and return
-    Napi::Float32Array result = Napi::Float32Array::New(env, output.data(), output.size());
+    Napi::Float32Array result = Napi::Float32Array::New(env, output.size());
+
+    std::copy(output.begin(), output.end(), result.Data());
     return result;
 }
 
