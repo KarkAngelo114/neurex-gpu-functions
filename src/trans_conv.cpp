@@ -14,37 +14,6 @@ static IntArray Vectorize(const Napi::Array& arr) {
     return VectorArray;
 }
 
-static FloatArray Rotate_kernels(int F, int KH, int KW, int D, int pointer) {
-    const auto& kernels_arr = getGlobalWeights(pointer);
-
-    size_t kernel_length = kernels_arr.size();
-
-    FloatArray outputData(kernel_length);
-
-    const float* kernels = kernels_arr.data();
-    float* rotated = outputData.data();
-
-    for (size_t f = 0; f < F; f++) {
-        for (size_t kh = 0; kh < KH; kh++) {
-            for (size_t kw = 0; kw < KW; kw++) {
-                for (size_t d = 0; d < D; d++) {
-                    // Original Index
-                    size_t oldIdx = (f * KH * KW * D) + (kh * KW * D) + (kw * D) + d;
-                    
-                    // Rotated Index (Flip KH and KW)
-                    size_t newKh = KH - 1 - kh;
-                    size_t newKw = KW - 1 - kw;
-                    size_t newIdx = (f * KH * KW * D) + (newKh * KW * D) + (newKw * D) + d;
-                    
-                    rotated[newIdx] = kernels[oldIdx];
-                }
-            }
-        }
-    }
-
-    return outputData;
-}
-
 Napi::Value TransConv_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array input_array = info[0].As<Napi::Float32Array>();
@@ -59,7 +28,6 @@ Napi::Value TransConv_GPU(const Napi::CallbackInfo& info) {
     int inputW = info[9].As<Napi::Number>().Int32Value();
     int pointer = info[10].As<Napi::Number>().Int32Value();
     int output_template_pointer = info[11].As<Napi::Number>().Int32Value();
-    FloatArray kernel_array = Rotate_kernels(num_filters, kernel_height, kernel_width, depth, pointer);
     int totalSize = outputH * outputW * num_filters;
     Napi::Float32Array output = Napi::Float32Array::New(env, totalSize);
 
@@ -70,7 +38,7 @@ Napi::Value TransConv_GPU(const Napi::CallbackInfo& info) {
     
 
     cl_mem input = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* input_array.ElementLength(), input_array.Data(), nullptr);
-    cl_mem weights = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* kernel_array.size(), kernel_array.data(), nullptr);
+    cl_mem weights = gpu.weight(pointer);
     cl_mem biases =  gpu.bias(pointer);
     cl_mem output_tensor = gpu.output(output_template_pointer);
 
@@ -94,9 +62,7 @@ Napi::Value TransConv_GPU(const Napi::CallbackInfo& info) {
     };
     clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, globalSize, nullptr, 0, nullptr, nullptr);
     clEnqueueReadBuffer(queue, output_tensor, CL_TRUE, 0, sizeof(float)* totalSize, output.Data(), 0, nullptr, nullptr);
-    clFinish(queue);
     clReleaseMemObject(input);
-    clReleaseMemObject(weights);
 
     return output;
 }
@@ -117,8 +83,8 @@ Napi::Value TransConv_CPU(const Napi::CallbackInfo& info) {
     int pointer = info[10].As<Napi::Number>().Int32Value();
     int output_template_pointer = info[11].As<Napi::Number>().Int32Value();
 
-    // get the kernels from the global store and rotate
-    FloatArray rotatedKernels = Rotate_kernels(num_filters, kernel_height, kernel_width, depth, pointer);
+    // get the kernels from the global store
+    FloatArray kernels = getGlobalWeights(pointer);
 
     // get biases from the global store
     FloatArray biases_array = getGlobalBiases(pointer);
@@ -134,7 +100,7 @@ Napi::Value TransConv_CPU(const Napi::CallbackInfo& info) {
     );
 
     float* input = input_array.Data();
-    float* kernel = rotatedKernels.data();
+    float* kernel = kernels.data();
     float* biases = biases_array.data();
     float* outputData = output.Data();
 
@@ -194,8 +160,6 @@ Napi::Value TransConvDelta_GPU(const Napi::CallbackInfo& info) {
     int KH = kernels_shape[1];
     int KW = kernels_shape[2];
     int C_k = kernels_shape[3];
-    
-    FloatArray kernels = Rotate_kernels(F, KH, KW, C_k, pointer);
     Napi::Float32Array output = Napi::Float32Array::New(env, oH * oW * C_k);
 
     auto& gpu = GpuContext::instance();
@@ -204,7 +168,7 @@ Napi::Value TransConvDelta_GPU(const Napi::CallbackInfo& info) {
     cl_kernel kernel = gpu.kernel("TransConvDelta");
 
     cl_mem delta = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* input_array.ElementLength(), input_array.Data(), nullptr);
-    cl_mem weights = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* kernels.size(), kernels.data(), nullptr);
+    cl_mem weights = gpu.weight(pointer);
     cl_mem output_tensor = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * output.ElementLength(), nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &delta);
@@ -227,10 +191,7 @@ Napi::Value TransConvDelta_GPU(const Napi::CallbackInfo& info) {
     };
     clEnqueueNDRangeKernel(queue, kernel, 3, 0, globalSize, nullptr, 0, nullptr, nullptr);
     clEnqueueReadBuffer(queue, output_tensor, CL_TRUE, 0, sizeof(float)* output.ElementLength(), output.Data(), 0, nullptr, nullptr);
-
-    clFinish(queue);
     clReleaseMemObject(delta);
-    clReleaseMemObject(weights);
     clReleaseMemObject(output_tensor);
 
     return output;
@@ -255,7 +216,7 @@ Napi::Value TransConvDelta_CPU(const Napi::CallbackInfo& info) {
     int KW = kernels_shape[2];
     int C_k = kernels_shape[3];
     
-    FloatArray kernels = Rotate_kernels(F, KH, KW, C_k, pointer);
+    FloatArray kernels = getGlobalWeights(pointer);
     Napi::Float32Array output_tensor = Napi::Float32Array::New(env, oH * oW * C_k);
 
     float* input = input_array.Data();
