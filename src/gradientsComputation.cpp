@@ -289,6 +289,69 @@ Napi::Value computeBiasGradsForConv_CPU(const Napi::CallbackInfo& info) {
     return biasGrads;
 }
 
+Napi::Value ComputeTransKernelGrads_GPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+
+}
+
+Napi::Value ComputeTransKernelGrads_CPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    Napi::Float32Array dilatedInput_arr = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array delta_arr = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array weightGrads_array = info[2].As<Napi::Float32Array>();
+    int dilatedH = info[3].As<Napi::Number>().Int32Value();
+    int dilatedW = info[4].As<Napi::Number>().Int32Value(); 
+    int inputDepth = info[5].As<Napi::Number>().Int32Value(); 
+    int OutputHeight = info[6].As<Napi::Number>().Int32Value(); 
+    int OutputWidth = info[7].As<Napi::Number>().Int32Value();
+    int OutputDepth = info[8].As<Napi::Number>().Int32Value(); 
+    int filters = info[9].As<Napi::Number>().Int32Value(); 
+    int kernelHeight = info[10].As<Napi::Number>().Int32Value(); 
+    int kernelWidth = info[11].As<Napi::Number>().Int32Value();
+    int padH = kernelHeight / 2;
+    int padW = kernelWidth / 2;
+
+
+    float* dilatedInput = dilatedInput_arr.Data();
+    float* delta = delta_arr.Data();
+    float* weightGrads = weightGrads_array.Data();
+
+    for (int f = 0; f < filters; f++) {
+        for (int kh = 0; kh < kernelHeight; kh++) {
+            for (int kw = 0; kw < kernelWidth; kw++) {
+                for (int c = 0; c < inputDepth; c++) {
+                    
+                    float sum = 0.0f;
+
+                    for (int h = 0; h < OutputHeight; h++) {
+                        for (int w = 0; w < OutputWidth; w++) {
+
+                            int inH = h + kh - padH;
+                            int inW = w + kw - padW;
+
+                            if (inH >= 0 && inH < dilatedH && inW >= 0 && inW < dilatedW) {
+                                int inputIndex = (inH * dilatedW + inW) * inputDepth + c;
+                                int deltaIndex = (h * OutputWidth + w) * OutputDepth + f;
+
+                                sum += dilatedInput[inputIndex] * delta[deltaIndex];
+                            }
+                        }
+                    }
+
+                    int gradIndex = ((f * kernelHeight + kh) * kernelWidth + kw) * inputDepth + c;
+                    weightGrads[gradIndex] += sum;
+                }
+            }
+        }
+    }
+
+
+    return weightGrads;
+
+}
+
 Napi::Value computeBiasGradsForConnected_LayerWrapper(const Napi::CallbackInfo& info) {
     if (get_Global_Boolean_On_GPU()) {
         return computeBiasGradsForConnected_Layer_GPU(info);
@@ -320,6 +383,12 @@ Napi::Value computeBiasGradsForConvWrapper(const Napi::CallbackInfo& info) {
     return computeBiasGradsForConv_CPU(info);
 }
 
+Napi::Value computeTransKernelGradients_wrapper(const Napi::CallbackInfo& info) {
+    if (get_Global_Boolean_On_GPU()) {
+        return ComputeTransKernelGrads_GPU(info);
+    }
+    return ComputeTransKernelGrads_GPU(info);
+}
 
 /* ================ module exports ===================*/
 void GradientCalculationRegister(Napi::Env env, Napi::Object exports) {
@@ -327,4 +396,5 @@ void GradientCalculationRegister(Napi::Env env, Napi::Object exports) {
     exports.Set("computeKernelGradients", Napi::Function::New(env, computeKernelGradientsWrapper));
     exports.Set("computeBiasGradsForConnected_Layer", Napi::Function::New(env, computeBiasGradsForConnected_LayerWrapper));
     exports.Set("computeBiasGradsForConv", Napi::Function::New(env, computeBiasGradsForConvWrapper));
+    exports.Set("computeTransKernelGradients", Napi::Function::New(env, computeTransKernelGradients_wrapper));
 }

@@ -13,6 +13,7 @@ void GpuLifecycleRegister(Napi::Env env, Napi::Object exports);
 void utils(Napi::Env env, Napi::Object exports);
 void _globals(Napi::Env env, Napi::Object exports);
 void Embeddings(Napi::Env env, Napi::Object exports);
+void TransConvFunc(Napi::Env env, Napi::Object exports);
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     ActivationsRegister(env, exports);
@@ -28,6 +29,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     GpuLifecycleRegister(env, exports);
     _globals(env, exports);
     Embeddings(env, exports);
+    TransConvFunc(env, exports);
     return exports;
 }
 

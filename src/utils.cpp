@@ -63,7 +63,13 @@ Napi::Value DilateInput_GPU(const Napi::CallbackInfo& info) {
     clReleaseMemObject(inputTensor);
     clReleaseMemObject(outputTensor);
 
-    return dilatedOutput;
+    Napi::Object output = Napi::Object::New(env);
+
+    output.Set("data", dilatedOutput);
+    output.Set("dilatedHeight", dilatedH);
+    output.Set("dilatedWidth", dilatedW);
+
+    return output;
 }
 
 Napi::Value DilateInput_CPU(const Napi::CallbackInfo& info) {
@@ -99,7 +105,13 @@ Napi::Value DilateInput_CPU(const Napi::CallbackInfo& info) {
         }
     }
 
-    return dilatedOutput;
+    Napi::Object output = Napi::Object::New(env);
+
+    output.Set("data", dilatedOutput);
+    output.Set("dilatedHeight", dilatedH);
+    output.Set("dilatedWidth", dilatedW);
+
+    return output;
 }
 
 Napi::Value ApplyPadding_GPU(const Napi::CallbackInfo& info) {
@@ -242,6 +254,6 @@ Napi::Value DilateInputWrapper(const Napi::CallbackInfo& info) {
 }
 
 void utils(Napi::Env env, Napi::Object exports) {
-    exports.Set("DilateDelta", Napi::Function::New(env, DilateInputWrapper));
+    exports.Set("DilateInput", Napi::Function::New(env, DilateInputWrapper));
     exports.Set("ApplyPadding", Napi::Function::New(env, ApplyPadding_Wrapper));
 }

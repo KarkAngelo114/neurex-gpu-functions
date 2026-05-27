@@ -20,7 +20,7 @@ static IntArray Vectorize(const Napi::Array& arr) {
     return VectorArray;
 }
 
-std::vector<float> Rotate_kernels(int F, int KH, int KW, int D, int pointer) {
+static FloatArray Rotate_kernels(int F, int KH, int KW, int D, int pointer) {
     const auto& kernels_arr = getGlobalWeights(pointer);
 
     size_t kernel_length = kernels_arr.size();
