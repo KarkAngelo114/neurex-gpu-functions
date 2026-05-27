@@ -160,7 +160,7 @@ Napi::Value TransConvDelta_CPU(const Napi::CallbackInfo& info) {
                 float sum = 0.0f;
                 for (int kh = 0; kh < KH; kh++) {
                     for (int kw = 0; kw < KW; kw++) {
-                        for (let f = 0; f < F; f++) {
+                        for (int f = 0; f < F; f++) {
                             int ph = h + kh, pw = w + kw;
                             if (ph < Hp && pw < Wp) { 
                                 int padIdx = (ph * Wp + pw) * C_in + f;
