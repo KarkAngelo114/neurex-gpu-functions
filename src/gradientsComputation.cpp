@@ -348,7 +348,7 @@ Napi::Value ComputeTransKernelGrads_CPU(const Napi::CallbackInfo& info) {
     }
 
 
-    return weightGrads;
+    return weightGrads_array;
 
 }
 
