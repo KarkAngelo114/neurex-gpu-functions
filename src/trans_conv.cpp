@@ -188,7 +188,7 @@ Napi::Value TransConvDelta_GPU(const Napi::CallbackInfo& info) {
     
     int Hp = shape[0];
     int Wp = shape[1];
-    int C_in = shape[3];
+    int C_in = shape[2];
 
     int F = kernels_shape[0];
     int KH = kernels_shape[1];
@@ -248,7 +248,7 @@ Napi::Value TransConvDelta_CPU(const Napi::CallbackInfo& info) {
     
     int Hp = shape[0];
     int Wp = shape[1];
-    int C_in = shape[3];
+    int C_in = shape[2];
 
     int F = kernels_shape[0];
     int KH = kernels_shape[1];
