@@ -48,7 +48,7 @@ static FloatArray Rotate_kernels(int F, int KH, int KW, int D, int pointer) {
 Napi::Value TransConv_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array input_array = info[0].As<Napi::Float32Array>();
-    int strides = info[1].As<Napi::Number>().Int32Value()
+    int strides = info[1].As<Napi::Number>().Int32Value();
     int outputH = info[2].As<Napi::Number>().Int32Value();
     int outputW = info[3].As<Napi::Number>().Int32Value();
     int num_filters = info[4].As<Napi::Number>().Int32Value();
