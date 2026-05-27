@@ -156,7 +156,7 @@ Napi::Value TransConvDelta_CPU(const Napi::CallbackInfo& info) {
 
     for (int c_out = 0; c_out < C_k; c_out++) {
         for (int h = 0; h < oH; h++) {
-            for (let w = 0; w < oW; w++) {
+            for (int w = 0; w < oW; w++) {
                 float sum = 0.0f;
                 for (int kh = 0; kh < KH; kh++) {
                     for (int kw = 0; kw < KW; kw++) {
