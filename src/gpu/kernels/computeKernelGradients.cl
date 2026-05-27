@@ -43,3 +43,49 @@ __kernel void computeKernelGradients(
     size_t gradIndex = ((f * Kh + kh) * Kw + kw) * Cin + c;
     wg[gradIndex] += sum;
 }
+
+__kernel void TransKernelAcc(
+    __global const float* dilatedInput,
+    __global const float* delta,
+    __global float* weightGrads,
+    const int dilatedH,
+    const int dilatedW,
+    const int inputDepth,
+    const int OutputHeight,
+    const int OutputWidth,
+    const int OutputDepth,
+    const int kernelHeight,
+    const int kernelWidth,
+    const int padH,
+    const int padW
+) {
+
+    int f  = get_global_id(0);
+    int kh = get_global_id(1);
+    int kw = get_global_id(2);
+    int c  = get_global_id(3);
+
+    float sum = 0.0f;
+
+    for (int h = 0; h < OutputHeight; h++) {
+        for (int w = 0; w < OutputWidth; w++) {
+
+            int inH = h + kh - padH;
+            int inW = w + kw - padW;
+
+            if (inH >= 0 && inH < dilatedH &&
+                inW >= 0 && inW < dilatedW) {
+
+                int inputIndex = (inH * dilatedW + inW) * inputDepth + c;
+
+                int deltaIndex = (h * OutputWidth + w) * OutputDepth + f;
+
+                sum += dilatedInput[inputIndex] * delta[deltaIndex];
+            }
+        }
+    }
+
+    int gradIndex = ((f * kernelHeight + kh) * kernelWidth + kw) * inputDepth + c;
+
+    weightGrads[gradIndex] += sum;
+}

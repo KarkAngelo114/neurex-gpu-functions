@@ -42,7 +42,10 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"utils.cl", "dilate"},
     {"maxpool.cl","maxpooldelta"},
     {"embedding.cl", "getEmbeddings"},
-    {"embedding.cl", "returnEmbeddings"}
+    {"embedding.cl", "returnEmbeddings"},
+    {"transConv.cl", "TransConv"},
+    {"transConv.cl","TransConvDelta"},
+    {"computeKernelGradients.cl","TransKernelAcc"}
 };
 
 
