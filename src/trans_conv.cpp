@@ -194,7 +194,7 @@ Napi::Value TransConvDeltaWrapper(const Napi::CallbackInfo& info) {
     return TransConvDelta_CPU(info);
 }
 
-void TransConvFunc(const napi::Env env, const Napi::Object exports) {
+void TransConvFunc(const Napi::Env env, const Napi::Object exports) {
     exports.Set("TransConv", Napi::Function::New(env, TransConvWrapper));
     exports.Set("TransConvolveDelta", Napi::Function::New(env, TransConvDeltaWrapper));
 }
