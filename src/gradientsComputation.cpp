@@ -446,7 +446,7 @@ Napi::Value computeTransKernelGradients_wrapper(const Napi::CallbackInfo& info) 
     if (get_Global_Boolean_On_GPU()) {
         return ComputeTransKernelGrads_GPU(info);
     }
-    return ComputeTransKernelGrads_GPU(info);
+    return ComputeTransKernelGrads_CPU(info);
 }
 
 /* ================ module exports ===================*/
