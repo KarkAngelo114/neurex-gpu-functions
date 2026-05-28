@@ -3,6 +3,7 @@ __kernel void TransConv(
     __global const float* kernels,
     __global const float* biases,
     __global float* output_tensor,
+    const int strides,
     const int outputH,
     const int outputW,
     const int filters,
@@ -25,8 +26,8 @@ __kernel void TransConv(
         for (int kx = 0; kx < kw; kx++) {
             for (int c = 0; c < depth; c++) {
 
-                int inY = oH + ky;
-                int inX = oW + kx;
+                int inY = oH * strides + ky;
+                int inX = oW * strides + kx;
 
                 if (inY < inputH && inX < inputW) {
 

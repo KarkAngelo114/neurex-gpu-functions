@@ -124,19 +124,23 @@ Napi::Value computeKernelGradients_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
     Napi::Float32Array delta = info[1].As<Napi::Float32Array>();
     Napi::Float32Array weightGrads = info[2].As<Napi::Float32Array>();
-    int inputH = info[3].As<Napi::Number>().Int32Value(); 
-    int inputW = info[4].As<Napi::Number>().Int32Value(); 
-    int Cin = info[5].As<Napi::Number>().Int32Value(); 
-    int H = info[6].As<Napi::Number>().Int32Value(); 
-    int W = info[7].As<Napi::Number>().Int32Value(); 
-    int Cout = info[8].As<Napi::Number>().Int32Value(); 
-    int Kh = info[9].As<Napi::Number>().Int32Value(); 
+
+    int inputH = info[3].As<Napi::Number>().Int32Value();
+    int inputW = info[4].As<Napi::Number>().Int32Value();
+    int Cin = info[5].As<Napi::Number>().Int32Value();
+
+    int H = info[6].As<Napi::Number>().Int32Value();
+    int W = info[7].As<Napi::Number>().Int32Value();
+    int Cout = info[8].As<Napi::Number>().Int32Value();
+
+    int Kh = info[9].As<Napi::Number>().Int32Value();
     int Kw = info[10].As<Napi::Number>().Int32Value();
 
     int padH = Kh / 2;
     int padW = Kw / 2;
 
     auto& gpu = GpuContext::instance();
+
     cl_context context = gpu.context();
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("computeKernelGradients");
@@ -148,28 +152,30 @@ Napi::Value computeKernelGradients_GPU(const Napi::CallbackInfo& info) {
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &activations);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &delta_input);
     clSetKernelArg(kernel, 2, sizeof(cl_mem), &gradsArr);
+
     clSetKernelArg(kernel, 3, sizeof(int), &inputH);
     clSetKernelArg(kernel, 4, sizeof(int), &inputW);
     clSetKernelArg(kernel, 5, sizeof(int), &Cin);
+
     clSetKernelArg(kernel, 6, sizeof(int), &H);
     clSetKernelArg(kernel, 7, sizeof(int), &W);
     clSetKernelArg(kernel, 8, sizeof(int), &Cout);
+
     clSetKernelArg(kernel, 9, sizeof(int), &Kh);
     clSetKernelArg(kernel, 10, sizeof(int), &Kw);
+
     clSetKernelArg(kernel, 11, sizeof(int), &padH);
     clSetKernelArg(kernel, 12, sizeof(int), &padW);
 
-    size_t globalSize[4] = {
+    size_t globalSize[3] = {
         (size_t)Cout,
         (size_t)Kh,
-        (size_t)Kw,
-        (size_t)Cin
+        (size_t)(Kw * Cin)
     };
 
-    clEnqueueNDRangeKernel(queue, kernel, 4, nullptr, globalSize, nullptr, 0, nullptr, nullptr);
-
-    clEnqueueReadBuffer(queue, gradsArr, CL_TRUE, 0, sizeof(float) * weightGrads.ElementLength(), weightGrads.Data(), 0, nullptr, nullptr);
-
+    clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, globalSize, nullptr, 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, gradsArr, CL_TRUE,0, sizeof(float) * weightGrads.ElementLength(), weightGrads.Data(), 0, nullptr,nullptr);
+ 
     clReleaseMemObject(activations);
     clReleaseMemObject(delta_input);
     clReleaseMemObject(gradsArr);
@@ -292,9 +298,11 @@ Napi::Value computeBiasGradsForConv_CPU(const Napi::CallbackInfo& info) {
 Napi::Value ComputeTransKernelGrads_GPU(const Napi::CallbackInfo& info) {
 
     Napi::Env env = info.Env();
+
     Napi::Float32Array dilatedInput_arr = info[0].As<Napi::Float32Array>();
     Napi::Float32Array delta_arr = info[1].As<Napi::Float32Array>();
     Napi::Float32Array weightGrads_array = info[2].As<Napi::Float32Array>();
+
     int dilatedH = info[3].As<Napi::Number>().Int32Value();
     int dilatedW = info[4].As<Napi::Number>().Int32Value();
     int inputDepth = info[5].As<Napi::Number>().Int32Value();
@@ -319,8 +327,10 @@ Napi::Value ComputeTransKernelGrads_GPU(const Napi::CallbackInfo& info) {
     cl_int err;
 
     cl_mem input = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * dilatedInput_arr.ElementLength(), dilatedInput_arr.Data(), &err);
-    cl_mem delta = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * delta_arr.ElementLength(),delta_arr.Data(), &err);
-    cl_mem grads = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * weightGrads_array.ElementLength(), weightGrads_array.Data(), &err);
+
+    cl_mem delta = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * delta_arr.ElementLength(), delta_arr.Data(),&err);
+
+    cl_mem grads = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * weightGrads_array.ElementLength(), weightGrads_array.Data(),&err);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &input);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &delta);
@@ -336,15 +346,14 @@ Napi::Value ComputeTransKernelGrads_GPU(const Napi::CallbackInfo& info) {
     clSetKernelArg(kernel, 11, sizeof(int), &padH);
     clSetKernelArg(kernel, 12, sizeof(int), &padW);
 
-    size_t globalSize[4] = {
+    size_t globalSize[3] = {
         (size_t)filters,
-        (size_t)kernelHeight,
-        (size_t)kernelWidth,
+        (size_t)(kernelHeight * kernelWidth),
         (size_t)inputDepth
     };
 
-    err = clEnqueueNDRangeKernel(queue, kernel, 4, nullptr, globalSize, nullptr, 0, nullptr, nullptr);
-    clFinish(queue);
+    err = clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, globalSize, nullptr, 0, nullptr, nullptr);
+
     clEnqueueReadBuffer(queue, grads, CL_TRUE, 0, sizeof(float) * weightGrads_array.ElementLength(), weightGrads_array.Data(), 0, nullptr, nullptr);
 
     clReleaseMemObject(input);
