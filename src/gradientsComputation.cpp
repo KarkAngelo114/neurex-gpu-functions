@@ -341,7 +341,7 @@ Napi::Value ComputeTransKernelGrads_CPU(const Napi::CallbackInfo& info) {
                         }
                     }
 
-                    const gradIndex = ((f * kernelHeight + kh) * kernelWidth + kw) * inputDepth + c;
+                    int gradIndex = ((f * kernelHeight + kh) * kernelWidth + kw) * inputDepth + c;
                     weightGrads[gradIndex] += sum;
                 }
             }
