@@ -85,8 +85,8 @@ Napi::Value TransConv_CPU(const Napi::CallbackInfo& info) {
                             int inX = x * strides + kx;
 
                             if (inY < inputH && inX < inputW) {
-                                const inputIndex = ((inY * inputW + inX) * depth + c);
-                                const kernelIndex = (((f * kernel_height + ky) * kernel_width + kx) * depth + c);
+                                int inputIndex = ((inY * inputW + inX) * depth + c);
+                                int kernelIndex = (((f * kernel_height + ky) * kernel_width + kx) * depth + c);
                                 sum += input[inputIndex] * kernel[kernelIndex];
                             }
                         }
