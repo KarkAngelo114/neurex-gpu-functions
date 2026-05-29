@@ -295,96 +295,29 @@ Napi::Value computeBiasGradsForConv_CPU(const Napi::CallbackInfo& info) {
     return biasGrads;
 }
 
-Napi::Value ComputeTransKernelGrads_GPU(const Napi::CallbackInfo& info) {
-
-    Napi::Env env = info.Env();
-
-    Napi::Float32Array dilatedInput_arr = info[0].As<Napi::Float32Array>();
-    Napi::Float32Array delta_arr = info[1].As<Napi::Float32Array>();
-    Napi::Float32Array weightGrads_array = info[2].As<Napi::Float32Array>();
-
-    int dilatedH = info[3].As<Napi::Number>().Int32Value();
-    int dilatedW = info[4].As<Napi::Number>().Int32Value();
-    int inputDepth = info[5].As<Napi::Number>().Int32Value();
-
-    int OutputHeight = info[6].As<Napi::Number>().Int32Value();
-    int OutputWidth = info[7].As<Napi::Number>().Int32Value();
-    int OutputDepth = info[8].As<Napi::Number>().Int32Value();
-
-    int filters = info[9].As<Napi::Number>().Int32Value();
-    int kernelHeight = info[10].As<Napi::Number>().Int32Value();
-    int kernelWidth = info[11].As<Napi::Number>().Int32Value();
-
-    int padH = kernelHeight / 2;
-    int padW = kernelWidth / 2;
-
-    auto& gpu = GpuContext::instance();
-
-    cl_context context = gpu.context();
-    cl_command_queue queue = gpu.queue();
-    cl_kernel kernel = gpu.kernel("TransKernelAcc");
-
-    cl_int err;
-
-    cl_mem input = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * dilatedInput_arr.ElementLength(), dilatedInput_arr.Data(), &err);
-
-    cl_mem delta = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * delta_arr.ElementLength(), delta_arr.Data(),&err);
-
-    cl_mem grads = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * weightGrads_array.ElementLength(), weightGrads_array.Data(),&err);
-
-    clSetKernelArg(kernel, 0, sizeof(cl_mem), &input);
-    clSetKernelArg(kernel, 1, sizeof(cl_mem), &delta);
-    clSetKernelArg(kernel, 2, sizeof(cl_mem), &grads);
-    clSetKernelArg(kernel, 3, sizeof(int), &dilatedH);
-    clSetKernelArg(kernel, 4, sizeof(int), &dilatedW);
-    clSetKernelArg(kernel, 5, sizeof(int), &inputDepth);
-    clSetKernelArg(kernel, 6, sizeof(int), &OutputHeight);
-    clSetKernelArg(kernel, 7, sizeof(int), &OutputWidth);
-    clSetKernelArg(kernel, 8, sizeof(int), &OutputDepth);
-    clSetKernelArg(kernel, 9, sizeof(int), &kernelHeight);
-    clSetKernelArg(kernel, 10, sizeof(int), &kernelWidth);
-    clSetKernelArg(kernel, 11, sizeof(int), &padH);
-    clSetKernelArg(kernel, 12, sizeof(int), &padW);
-
-    size_t globalSize[3] = {
-        (size_t)filters,
-        (size_t)(kernelHeight * kernelWidth),
-        (size_t)inputDepth
-    };
-
-    err = clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, globalSize, nullptr, 0, nullptr, nullptr);
-
-    clEnqueueReadBuffer(queue, grads, CL_TRUE, 0, sizeof(float) * weightGrads_array.ElementLength(), weightGrads_array.Data(), 0, nullptr, nullptr);
-
-    clReleaseMemObject(input);
-    clReleaseMemObject(delta);
-    clReleaseMemObject(grads);
-
-    return weightGrads_array;
-}
 
 Napi::Value ComputeTransKernelGrads_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
-    Napi::Float32Array dilatedInput_arr = info[0].As<Napi::Float32Array>();
-    Napi::Float32Array delta_arr = info[1].As<Napi::Float32Array>();
-    Napi::Float32Array weightGrads_array = info[2].As<Napi::Float32Array>();
+    Napi::Float32Array activated_output_tensor = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array delta_tensor = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array grads = info[2].As<Napi::Float32Array>();
     int dilatedH = info[3].As<Napi::Number>().Int32Value();
-    int dilatedW = info[4].As<Napi::Number>().Int32Value(); 
-    int inputDepth = info[5].As<Napi::Number>().Int32Value(); 
-    int OutputHeight = info[6].As<Napi::Number>().Int32Value(); 
+    int dilatedW = info[4].As<Napi::Number>().Int32Value();
+    int inputDepth = info[5].As<Napi::Number>().Int32Value();
+    int OutputHeight = info[6].As<Napi::Number>().Int32Value();
     int OutputWidth = info[7].As<Napi::Number>().Int32Value();
-    int OutputDepth = info[8].As<Napi::Number>().Int32Value(); 
-    int filters = info[9].As<Napi::Number>().Int32Value(); 
-    int kernelHeight = info[10].As<Napi::Number>().Int32Value(); 
+    int OutputDepth = info[8].As<Napi::Number>().Int32Value();
+    int filters = info[9].As<Napi::Number>().Int32Value();
+    int kernelHeight = info[10].As<Napi::Number>().Int32Value();
     int kernelWidth = info[11].As<Napi::Number>().Int32Value();
     int padH = kernelHeight / 2;
     int padW = kernelWidth / 2;
 
 
-    float* dilatedInput = dilatedInput_arr.Data();
-    float* delta = delta_arr.Data();
-    float* weightGrads = weightGrads_array.Data();
+    float* dilatedInput = activated_output_tensor.Data();
+    float* delta = delta_tensor.Data();
+    float* weightGrads = grads.Data();
 
     for (int f = 0; f < filters; f++) {
         for (int kh = 0; kh < kernelHeight; kh++) {
@@ -408,16 +341,13 @@ Napi::Value ComputeTransKernelGrads_CPU(const Napi::CallbackInfo& info) {
                         }
                     }
 
-                    int gradIndex = ((f * kernelHeight + kh) * kernelWidth + kw) * inputDepth + c;
+                    const gradIndex = ((f * kernelHeight + kh) * kernelWidth + kw) * inputDepth + c;
                     weightGrads[gradIndex] += sum;
                 }
             }
         }
     }
-
-
-    return weightGrads_array;
-
+    return grads;
 }
 
 Napi::Value computeBiasGradsForConnected_LayerWrapper(const Napi::CallbackInfo& info) {
@@ -452,9 +382,6 @@ Napi::Value computeBiasGradsForConvWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value computeTransKernelGradients_wrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return ComputeTransKernelGrads_GPU(info);
-    }
     return ComputeTransKernelGrads_CPU(info);
 }
 
