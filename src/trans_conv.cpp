@@ -81,8 +81,8 @@ Napi::Value TransConv_CPU(const Napi::CallbackInfo& info) {
                 for (int ky = 0; ky < kernel_height; ky++) {
                     for (int kx = 0; kx < kernel_width; kx++) {
                         for (int c = 0; c < depth; c++) {
-                            int inY = y * strides + ky;
-                            int inX = x * strides + kx;
+                            int inY = y + ky;
+                            int inX = x + kx;
 
                             if (inY < inputH && inX < inputW) {
                                 int inputIndex = ((inY * inputW + inX) * depth + c);
