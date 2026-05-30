@@ -99,11 +99,11 @@ Napi::Value TransConv_CPU(const Napi::CallbackInfo& info) {
         }
     }
 
-    Napi::Float32Array output = Napi::Float32Array::New(env, outputSize);
+    Napi::Float32Array output_res = Napi::Float32Array::New(env, outputSize);
 
-    std::copy(output_tensor.data(), output_tensor.data() + outputSize, output.Data());
+    std::copy(output_tensor.data(), output_tensor.data() + outputSize, output_res.Data());
 
-    return output;
+    return output_res;
     
 }
 
