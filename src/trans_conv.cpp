@@ -63,7 +63,7 @@ Napi::Value TransConv_CPU(const Napi::CallbackInfo& info) {
     int output_template_pointer = info[11].As<Napi::Number>().Int32Value();
     
     int outputSize = outputH * outputW * num_filters;
-    FloatArray output_tensor = getGlobalOutputTensors(pointer);
+    FloatArray output_tensor = getGlobalOutputTensors(output_template_pointer);
     FloatArray kernel_array = getGlobalWeights(pointer);
     FloatArray biases_array = getGlobalBiases(pointer);
 
