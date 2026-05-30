@@ -63,7 +63,7 @@ Napi::Value TransConv_CPU(const Napi::CallbackInfo& info) {
     
     int outputSize = outputH * outputW * num_filters;
     Napi::Float32Array output_tensor = Napi::Float32Array::New(env, outputSize);
-    FloatArray kernel_array = Rotate_kernels(num_filters, kernel_height, kernel_width, depth, pointer);
+    FloatArray kernel_array = getGlobalWeights(pointer);
     FloatArray biases_array = getGlobalBiases(pointer);
 
     float* input = input_tensor.Data();
@@ -120,7 +120,7 @@ Napi::Value TransConvDelta_CPU(const Napi::CallbackInfo& info) {
     int KW = kernelShape[2];
     int C_k = kernelShape[3];
 
-    FloatArray kernels_array = getGlobalWeights(pointer);
+    FloatArray kernels_array = Rotate_kernels(F, KH, KW, C_k, pointer):
     int outputSize = oH * oW * C_k;
     Napi::Float32Array output_tensor = Napi::Float32Array::New(env, outputSize);
 
