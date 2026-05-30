@@ -2,6 +2,7 @@
 #include "gpu/gpu_context.h"
 #include "globals/globals.h"
 #include <vector>
+#include <algorithm>
 using IntArray = std::vector<int>;
 using FloatArray = std::vector<float>;
 
@@ -62,14 +63,14 @@ Napi::Value TransConv_CPU(const Napi::CallbackInfo& info) {
     int output_template_pointer = info[11].As<Napi::Number>().Int32Value();
     
     int outputSize = outputH * outputW * num_filters;
-    Napi::Float32Array output_tensor = Napi::Float32Array::New(env, outputSize);
+    FloatArray output_tensor = getGlobalOutputTensors(pointer);
     FloatArray kernel_array = getGlobalWeights(pointer);
     FloatArray biases_array = getGlobalBiases(pointer);
 
     float* input = input_tensor.Data();
     float* kernel = kernel_array.data();
     float* biases = biases_array.data();
-    float* output = output_tensor.Data();
+    float* output = output_tensor.data();
 
     for (int f = 0; f < num_filters; f++) {
         float bias = biases[f];
@@ -98,7 +99,11 @@ Napi::Value TransConv_CPU(const Napi::CallbackInfo& info) {
         }
     }
 
-    return output_tensor;
+    Napi::Float32Array output = Napi::Float32Array::New(env, outputSize);
+
+    std::copy(output_tensor.data(), output_tensor.data() + outputSize, output.Data());
+
+    return output;
     
 }
 
