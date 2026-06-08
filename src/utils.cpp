@@ -100,7 +100,7 @@ Napi::Value DilateInput_CPU(const Napi::CallbackInfo& info) {
                 size_t dilatedHIdx = h * stride;
                 size_t dilatedWIdx = w * stride;
                 size_t dstIdx = (dilatedHIdx * dilatedW + dilatedWIdx) * C + c;
-                dilated[dstIdx] = (input[srcIdx] != 0.0f) ? input[srcIdx] : 0.0f;
+                dilated[dstIdx] = input[srcIdx];
             }
         }
     }
