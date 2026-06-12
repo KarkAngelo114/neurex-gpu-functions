@@ -196,6 +196,7 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     size_t oH = info[3].As<Napi::Number>().Int32Value();
     size_t oW = info[4].As<Napi::Number>().Int32Value();
     int pointer = info[5].As<Napi::Number>().Int32Value();
+    int stride = info[6].As<Napi::Number>().Int32Value();
 
     size_t Hp  = padded_shape[0];
     size_t Wp  = padded_shape[1];
@@ -254,6 +255,7 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     clSetKernelArg(kernel, 8, sizeof(int),    &iC_k);
     clSetKernelArg(kernel, 9, sizeof(int),    &ioH);
     clSetKernelArg(kernel, 10, sizeof(int),   &ioW);
+    clSetKernelArg(kernel, 11, sizeof(int), &stride);
 
 
     // size_t global[3] = outputSize;
@@ -284,6 +286,7 @@ Napi::Value ConvolveDelta_CPU(const Napi::CallbackInfo& info) {
     size_t oH = info[3].As<Napi::Number>().Int32Value();
     size_t oW = info[4].As<Napi::Number>().Int32Value();
     int pointer = info[5].As<Napi::Number>().Int32Value();
+    int stride = info[6].As<Napi::Number>().Int32Value();
 
     size_t Hp = padded_shape[0];
     size_t Wp = padded_shape[1];
@@ -313,8 +316,8 @@ Napi::Value ConvolveDelta_CPU(const Napi::CallbackInfo& info) {
                 for (size_t kh = 0; kh < KH; kh++) {
                     for (size_t kw = 0; kw < KW; kw++) {
                         for (size_t f = 0; f < F; f++) {
-                            size_t ph = h + kh;
-                            size_t pw = w + kw;
+                            size_t ph = h * stride + kh;
+                            size_t pw = w * stride + kw;
                             size_t inputIdx  = (ph * Wp + pw) * C_in + f;
                             size_t kernelIdx = ((f * KH + kh) * KW + kw) * C_k + c_out;
                             sum += padded[inputIdx] * rotatedKernels[kernelIdx];
