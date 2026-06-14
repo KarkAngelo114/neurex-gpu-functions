@@ -130,6 +130,11 @@ jobs:
           New-Item -ItemType Directory -Force -Path deps/opencl/CL | Out-Null
           Copy-Item "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows/include/CL/*" deps/opencl/CL/ -Recurse -Force
 
+      # ADD THIS STEP HERE
+      - name: Install MSVC Build Tools
+        if: matrix.os == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Setup Node.js
         if: matrix.os != 'ubuntu-latest'
         uses: actions/setup-node@v4
