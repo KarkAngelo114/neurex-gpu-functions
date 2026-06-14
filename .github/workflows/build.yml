@@ -122,6 +122,10 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: brew install libomp
 
+      - name: Initialize MSVC build tools (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Install OpenCL (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
@@ -129,10 +133,6 @@ jobs:
           vcpkg install opencl:x64-windows
           New-Item -ItemType Directory -Force -Path deps/opencl/CL | Out-Null
           Copy-Item "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows/include/CL/*" deps/opencl/CL/ -Recurse -Force
-
-      - name: Initialize MSVC build tools (Windows)
-        if: matrix.os == 'windows-latest'
-        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Setup Node.js
         if: matrix.os != 'ubuntu-latest'
@@ -163,4 +163,3 @@ jobs:
         with:
           name: prebuilds-${{ matrix.os }}-${{ matrix.arch }}
           path: prebuilds/
-
