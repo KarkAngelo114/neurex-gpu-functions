@@ -104,7 +104,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive       # only matters if you vendor Eigen as a submodule
+          submodules: recursive
 
       - name: Install Linux build tools (container)
         if: matrix.os == 'ubuntu-latest'
@@ -130,8 +130,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path deps/opencl/CL | Out-Null
           Copy-Item "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows/include/CL/*" deps/opencl/CL/ -Recurse -Force
 
-      # ADD THIS STEP HERE
-      - name: Install MSVC Build Tools
+      - name: Initialize MSVC build tools (Windows)
         if: matrix.os == 'windows-latest'
         uses: ilammy/msvc-dev-cmd@v1
 
@@ -164,3 +163,4 @@ jobs:
         with:
           name: prebuilds-${{ matrix.os }}-${{ matrix.arch }}
           path: prebuilds/
+
