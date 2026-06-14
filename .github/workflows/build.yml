@@ -157,6 +157,8 @@ jobs:
 
       - name: Build prebuilt binaries
         run: npx prebuildify --napi --strip --arch=${{ matrix.arch }}
+        env:
+          msvs_version: 2022
 
       - name: Upload prebuilds artifact
         uses: actions/upload-artifact@v4
