@@ -135,6 +135,7 @@ Napi::Value computeKernelGradients_GPU(const Napi::CallbackInfo& info) {
 
     int Kh = info[9].As<Napi::Number>().Int32Value();
     int Kw = info[10].As<Napi::Number>().Int32Value();
+    int stride = info[11].As<Napi::Number>().Int32Value();
 
     int padH = Kh / 2;
     int padW = Kw / 2;
@@ -166,6 +167,7 @@ Napi::Value computeKernelGradients_GPU(const Napi::CallbackInfo& info) {
 
     clSetKernelArg(kernel, 11, sizeof(int), &padH);
     clSetKernelArg(kernel, 12, sizeof(int), &padW);
+    clSetKernelArg(kernel, 13, sizeof(int), &stride);
 
     size_t globalSize[3] = {
         (size_t)Cout,
@@ -196,6 +198,7 @@ Napi::Value computeKernelGradients_CPU(const Napi::CallbackInfo& info) {
     int Cout = info[8].As<Napi::Number>().Int32Value(); 
     int Kh = info[9].As<Napi::Number>().Int32Value(); 
     int Kw = info[10].As<Napi::Number>().Int32Value();
+    int stride = info[11].As<Napi::Number>().Int32Value();
 
     float* input_data = input.Data();
     float* d = delta.Data();
@@ -211,8 +214,8 @@ Napi::Value computeKernelGradients_CPU(const Napi::CallbackInfo& info) {
                     float sum = 0.0f;
                     for (size_t h = 0; h < H; h++) {
                         for (size_t w = 0; w < W; w++) {
-                            int inH = h + kh - padH;
-                            int inW = w + kw - padW;
+                            int inH = (h * stride) + kh - padH;
+                            int inW = (w * stride) + kw - padW;
 
                             if (inH >= 0 && inH < inputH && inW >= 0 && inW < inputW) {
 

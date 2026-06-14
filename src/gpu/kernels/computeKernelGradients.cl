@@ -11,7 +11,8 @@ __kernel void computeKernelGradients(
     const int Kh,
     const int Kw,
     const int padH,
-    const int padW
+    const int padW,
+    const int stride
 ) {
 
     int f  = get_global_id(0);
@@ -30,8 +31,8 @@ __kernel void computeKernelGradients(
     for (int h = 0; h < H; h++) {
         for (int w = 0; w < W; w++) {
 
-            int inH = h + kh - padH;
-            int inW = w + kw - padW;
+            int inH = (h * stride) + kh - padH;
+            int inW = (w * stride) + kw - padW;
 
             if (inH >= 0 && inH < inputH && inW >= 0 && inW < inputW) {
 
