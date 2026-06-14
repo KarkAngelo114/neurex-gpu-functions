@@ -96,7 +96,7 @@ jobs:
         include:
           - { os: ubuntu-latest,  arch: x64 }
           - { os: macos-latest,   arch: arm64 }
-          - { os: windows-latest, arch: x64 }
+          - { os: windows-2022, arch: x64 }
 
     container: ${{ matrix.os == 'ubuntu-latest' && 'node:20-bullseye' || null }}
 
@@ -104,7 +104,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: recursive       # only matters if you vendor Eigen as a submodule
 
       - name: Install Linux build tools (container)
         if: matrix.os == 'ubuntu-latest'
@@ -121,10 +121,6 @@ jobs:
       - name: Install libomp (macOS)
         if: matrix.os == 'macos-latest'
         run: brew install libomp
-
-      - name: Initialize MSVC build tools (Windows)
-        if: matrix.os == 'windows-latest'
-        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install OpenCL (Windows)
         if: matrix.os == 'windows-latest'
@@ -151,10 +147,6 @@ jobs:
             mv eigen-3.4.0 deps/eigen
             rm eigen.tgz
           fi
-
-      - name: Configure npm msvs_version
-        if: matrix.os == 'windows-latest'
-        run: npm config set msvs_version 2022
 
       - name: Install dependencies
         run: npm ci
