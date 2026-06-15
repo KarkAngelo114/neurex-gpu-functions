@@ -43,6 +43,10 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"maxpool.cl","maxpooldelta"},
     {"embedding.cl", "getEmbeddings"},
     {"embedding.cl", "returnEmbeddings"},
+    {"loss.cl", "mse"},
+    {"loss.cl", "mae"},
+    {"loss.cl", "cce"},
+    {"loss.cl", "bce"},
 };
 
 
