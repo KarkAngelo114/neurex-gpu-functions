@@ -218,7 +218,7 @@ Napi::Value computeKernelGradients_CPU(const Napi::CallbackInfo& info) {
     int Kw = kernelSize[1];
 
     int padH = Kh / 2;
-    int padW = kw / 2;
+    int padW = Kw / 2;
 
     float* input = inputTensor.Data();
     float* delta = deltaTensor.Data();
