@@ -174,7 +174,7 @@ Napi::Value Convolve_CPU(const Napi::CallbackInfo& info) {
                     if (inY >= inputH) continue;
 
                     for (int kx = 0; kx < kernelW; kx++) {
-                        const inX = baseX + kx;
+                        int inX = baseX + kx;
                         if (inX >= inputW) continue;
 
                         int inputBase = (inY * inputW + inX) * depth;
@@ -328,7 +328,7 @@ Napi::Value ConvolveDelta_CPU(const Napi::CallbackInfo& info) {
             for (int w = 0; w < oW; w++) {
                 float sum = 0.0f;
                 for (int kh = 0; kh < KH; kh++) {
-                    for (let kw = 0; kw < KW; kw++) {
+                    for (int kw = 0; kw < KW; kw++) {
                         int ph = h * stride + kh;
                         int pw = w * stride + kw;
                         int baseIdx = (ph * Wp + pw) * C_in;
