@@ -158,11 +158,11 @@ Napi::Value Convolve_CPU(const Napi::CallbackInfo& info) {
     float* biases = biasesArray.data();
 
     for (int y = 0; y < outputH; y++) {
-        const baseY = y * strides;
+        int baseY = y * strides;
 
         for (int x = 0; x < outputW; x++) {
-            const baseX = x * strides;
-            const outBase = (y * outputW + x) * numFilters;
+            int baseX = x * strides;
+            int outBase = (y * outputW + x) * numFilters;
 
             for (int f = 0; f < numFilters; f++) {
                 float sum = biases[f];
