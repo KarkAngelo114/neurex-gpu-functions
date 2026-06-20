@@ -231,7 +231,7 @@ Napi::Value computeKernelGradients_CPU(const Napi::CallbackInfo& info) {
 
                 int c = 0;
                 for (; c <= Cin - 4; c += 4) {
-                    int sum0 = 0, sum1 = 0, sum2 = 0, sum3 = 0;
+                    float sum0 = 0.0f, sum1 = 0.0f, sum2 = 0.0f, sum3 = 0.0f;
 
                     for (int h = 0; h < H; h++) {
                         for (int w = 0; w < W; w++) {
@@ -241,7 +241,7 @@ Napi::Value computeKernelGradients_CPU(const Napi::CallbackInfo& info) {
                             if (inH >= 0 && inH < inputH && inW >= 0 && inW < inputW) {
                                 int baseInputIndex = (inH * inputW + inW) * Cin;
                                 int deltaIndex = (h * W + w) * Cout + f;
-                                int deltaVal = delta[deltaIndex];
+                                float deltaVal = delta[deltaIndex];
 
                                 sum0 += input[baseInputIndex + c] * deltaVal;
                                 sum1 += input[baseInputIndex + c + 1] * deltaVal;
@@ -259,7 +259,7 @@ Napi::Value computeKernelGradients_CPU(const Napi::CallbackInfo& info) {
 
                 // Process remaining channels
                 for (; c < Cin; c++) {
-                    int sum = 0;
+                    float sum = 0.0f;
 
                     for (int h = 0; h < H; h++) {
                         for (int w = 0; w < W; w++) {
