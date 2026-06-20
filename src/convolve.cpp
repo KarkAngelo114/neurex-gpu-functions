@@ -130,61 +130,74 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
 Napi::Value Convolve_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
-    Napi::Float32Array input = info[0].As<Napi::Float32Array>();
-    size_t strides = info[1].As<Napi::Number>().Int32Value();
-    size_t output_height = info[2].As<Napi::Number>().Int32Value();
-    size_t output_width = info[3].As<Napi::Number>().Int32Value();
-    size_t num_filters = info[4].As<Napi::Number>().Int32Value();
-    size_t kernel_height = info[5].As<Napi::Number>().Int32Value();
-    size_t kernel_width = info[6].As<Napi::Number>().Int32Value();
-    size_t depth = info[7].As<Napi::Number>().Int32Value();
-    size_t input_height = info[8].As<Napi::Number>().Int32Value();
-    size_t input_width = info[9].As<Napi::Number>().Int32Value();
-    size_t pointer = info[10].As<Napi::Number>().Int32Value();
-    size_t outputPointer = info[11].As<Napi::Number>().Int32Value();
+    Napi::Float32Array inputTensor = info[0].As<Napi::Float32Array>();
+    int strides = info[1].As<Napi::Number>().Int32Value();
+    IntArray outputShape = Vectorize(info[2].As<Napi::Array>());
+    IntArray kernelShape = Vectorize(info[3].As<Napi::Array>());
+    IntArray inputShape = Vectorize(info[4].As<Napi::Array>());
+    int pointer = info[5].As<Napi::Number>().Int32Value();
 
-    const auto& kernels_array = getGlobalWeights(pointer);
-    const auto& biases_array = getGlobalBiases(pointer);
+    int numFilters = kernelShape[0];
+    int kernelH = kernelShape[1];
+    int kernelW = kernelShape[2];
+    int depth = kernelShape[3];
 
-    float* data = input.Data();
-    const float* kernels = kernels_array.data();
-    const float* biases = biases_array.data();
+    int inputH = inputShape[0];
+    int inputW = inputShape[1];
+    int outputH = outputShape[0];
+    int outputW = outputShape[1];
+    int outputSize = outputH * outputW * numFilters;
+    int kernelSize = kernelH * kernelW * depth;
+    Napi::Float32Array outputTensor = Napi::Float32Array::New(env, outputSize);
+    FloatArray weightsArray = getGlobalWeights(pointer);
+    FloatArray biasesArray = getGlobalBiases(pointer);
 
-    Napi::Float32Array output = Napi::Float32Array::New(env, output_height * output_width * num_filters);
-    float* outData = output.Data();
+    float* input = inputTensor.Data();
+    float* output = outputTensor.Data();
+    float* weights = weightsArray.data();
+    float* biases = biasesArray.data();
 
-    for (size_t f = 0; f < num_filters; f++) {
-        float bias = biases[f];
+    for (int y = 0; y < outputH; y++) {
+        const baseY = y * strides;
 
-        for (size_t oh = 0; oh < output_height; oh++) {
-            for (size_t ow = 0; ow < output_width; ow++) {
-                float sum = 0.0f;
+        for (int x = 0; x < outputW; x++) {
+            const baseX = x * strides;
+            const outBase = (y * outputW + x) * numFilters;
 
-                for (size_t kh = 0; kh < kernel_height; kh++) {
-                    for (size_t kw = 0; kw < kernel_width; kw++) {
-                        for (size_t c = 0; c < depth; c++) {
+            for (int f = 0; f < numFilters; f++) {
+                float sum = biases[f];
+                int filterOffset = f * kernelSize;
 
-                            size_t inY = (oh * strides) + kh;
-                            size_t inX = (ow * strides) + kw;
+                for (int ky = 0; ky < kernelH; ky++) {
+                    int inY = baseY + ky;
 
-                            if (inY < input_height && inX < input_width) {
-                                size_t input_idx = ((inY * input_width + inX) * depth + c);
-                                size_t kernel_idx = (((f * kernel_height + kh) * kernel_width + kw ) * depth + c);
+                    if (inY >= inputH) continue;
 
-                                sum += data[input_idx] * kernels[kernel_idx];
-                            }
+                    for (int kx = 0; kx < kernelW; kx++) {
+                        const inX = baseX + kx;
+                        if (inX >= inputW) continue;
+
+                        int inputBase = (inY * inputW + inX) * depth;
+                        int kernelBase = filterOffset + (ky * kernelW + kx) * depth;
+                        int c = 0;
+
+                        for (; c <= depth - 4; c += 4) {
+                            sum += input[inputBase + c] * weights[kernelBase + c];
+                            sum += input[inputBase + c + 1] * weights[kernelBase + c + 1];
+                            sum += input[inputBase + c + 2] * weights[kernelBase + c + 2];
+                            sum += input[inputBase + c + 3] * weights[kernelBase + c + 3];
+                        }
+
+                        for (; c < depth; c++) {
+                            sum += input[inputBase + c] * weights[kernelBase + c];
                         }
                     }
                 }
-
-                size_t outIndex = ((oh * output_width + ow) * num_filters + f);
-
-                outData[outIndex] = sum + bias;
+                output[outBase + f] = sum;
             }
         }
     }
-
-    return output;
+    return outputTensor;
 }
 
 Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
@@ -279,57 +292,68 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
 
 Napi::Value ConvolveDelta_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
+    Napi::Float32Array inputTensor = info[0].As<Napi::Float32Array>();
+    IntArray deltaShape = Vectorize(info[1].As<Napi::Array>());
+    IntArray kernelShape = Vectorize(info[2].As<Napi::Array>());
+    IntArray outputShape = Vectorize(info[3].As<Napi::Array>());
+    int pointer = info[4].As<Napi::Number>().Int32Value();
+    int stride = info[5].As<Napi::Number>().Int32Value();
 
-    Napi::Float32Array padded_input_array = info[0].As<Napi::Float32Array>();
-    IntArray padded_shape = Vectorize(info[1].As<Napi::Array>());
-    IntArray kernel_shape = Vectorize(info[2].As<Napi::Array>());
-    size_t oH = info[3].As<Napi::Number>().Int32Value();
-    size_t oW = info[4].As<Napi::Number>().Int32Value();
-    int pointer = info[5].As<Napi::Number>().Int32Value();
-    int stride = info[6].As<Napi::Number>().Int32Value();
+    int Hp = deltaShape[0];
+    int Wp = deltaShape[1];
+    int C_in = deltaShape[2];
 
-    size_t Hp = padded_shape[0];
-    size_t Wp = padded_shape[1];
-    size_t C_in = padded_shape[2];
+    int F = kernelShape[0];
+    int KH = kernelShape[1];
+    int KW = kernelShape[2];
+    int C_k = kernelShape[3];
 
-    size_t F = kernel_shape[0];
-    size_t KH = kernel_shape[1];
-    size_t KW = kernel_shape[2];
-    size_t C_k = kernel_shape[3];
+    int oH = outputShape[0];
+    int oW = outputShape[1];
 
-    // rotate kernels
-    auto rotated_kernels_array = Rotate_kernels(F, KH, KW, C_k, pointer);
+    FloatArray kernels = Rotate_kernels(F, KH, KW, C_k, pointer);
 
-    // Raw pointers (faster access)
-    float* padded = padded_input_array.Data();
-    float* rotatedKernels = rotated_kernels_array.data();
+    int H = Hp - KH + 1;
+    int W = Wp - KW + 1;
+    
+    int outputSize = oH * oW * C_k;
+    Napi::Float32Array outputTensor = Napi::Float32Array::New(env, outputSize);
 
-    // Create output array
-    Napi::Float32Array output = Napi::Float32Array::New(env, oH * oW * C_k);
-    float* out = output.Data();
+    float* input = inputTensor.Data();
+    float* rotated_kernel = kernels.data();
+    float* output = outputTensor.Data();
 
-    // ---- Convolution ----
-    for (size_t c_out = 0; c_out < C_k; c_out++) {
-        for (size_t h = 0; h < oH; h++) {
-            for (size_t w = 0; w < oW; w++) {
+    for (int c_out = 0; c_out < C_k; c_out++) {
+        for (int h = 0; h < oH; h++) {
+            for (int w = 0; w < oW; w++) {
                 float sum = 0.0f;
-                for (size_t kh = 0; kh < KH; kh++) {
-                    for (size_t kw = 0; kw < KW; kw++) {
-                        for (size_t f = 0; f < F; f++) {
-                            size_t ph = h * stride + kh;
-                            size_t pw = w * stride + kw;
-                            size_t inputIdx  = (ph * Wp + pw) * C_in + f;
-                            size_t kernelIdx = ((f * KH + kh) * KW + kw) * C_k + c_out;
-                            sum += padded[inputIdx] * rotatedKernels[kernelIdx];
+                for (int kh = 0; kh < KH; kh++) {
+                    for (let kw = 0; kw < KW; kw++) {
+                        int ph = h * stride + kh;
+                        int pw = w * stride + kw;
+                        int baseIdx = (ph * Wp + pw) * C_in;
+                        int kernelBase = ((kh * KW + kw) * F) * C_k + c_out;
+
+                        int f = 0;
+                        for (; f <= F - 4; f += 4) {
+                            sum += input[baseIdx + f] * rotated_kernel[f * C_k + kernelBase];
+                            sum += input[baseIdx + f + 1] * rotated_kernel[(f + 1) * C_k + kernelBase];
+                            sum += input[baseIdx + f + 2] * rotated_kernel[(f + 2) * C_k + kernelBase];
+                            sum += input[baseIdx + f + 3] * rotated_kernel[(f + 3) * C_k + kernelBase];
+                        }
+
+                        for (; f < F; f++) {
+                            int padIdx = baseIdx + f;
+                            int kernelIdx = ((f * KH + kh) * KW + kw) * C_k + c_out;
+                            sum += input[padIdx] * rotated_kernel[kernelIdx];
                         }
                     }
                 }
-                out[(h * oW + w) * C_k + c_out] = sum;
+                output[(h * oW + w) * C_k + c_out] = sum;
             }
         }
     }
-    
-    return output;
+    return outputTensor;
 }
 
 /* ==================== Wrappers ======================== */

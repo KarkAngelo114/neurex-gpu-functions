@@ -5,6 +5,18 @@
 #include <omp.h>
 #include <vector>
 #include <cmath>
+using IntArray = std::vector<int>;
+using FloatArray = std::vector<float>;
+
+static IntArray Vectorize(const Napi::Array& arr) {
+    IntArray VectorArray;
+    VectorArray.reserve(arr.Length());
+    for (uint32_t i = 0; i < arr.Length(); i++) {
+        VectorArray.push_back(arr.Get(i).As<Napi::Number>().Int32Value());
+    }
+    return VectorArray;
+}
+
 
 Napi::Value ComputeGradientForDenseWeights_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
@@ -186,55 +198,89 @@ Napi::Value computeKernelGradients_GPU(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value computeKernelGradients_CPU(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-    Napi::Float32Array input = info[0].As<Napi::Float32Array>();
-    Napi::Float32Array delta = info[1].As<Napi::Float32Array>();
-    Napi::Float32Array weightGrads = info[2].As<Napi::Float32Array>();
-    int inputH = info[3].As<Napi::Number>().Int32Value(); 
-    int inputW = info[4].As<Napi::Number>().Int32Value(); 
-    int Cin = info[5].As<Napi::Number>().Int32Value(); 
-    int H = info[6].As<Napi::Number>().Int32Value(); 
-    int W = info[7].As<Napi::Number>().Int32Value(); 
-    int Cout = info[8].As<Napi::Number>().Int32Value(); 
-    int Kh = info[9].As<Napi::Number>().Int32Value(); 
-    int Kw = info[10].As<Napi::Number>().Int32Value();
-    int stride = info[11].As<Napi::Number>().Int32Value();
+    Napi::Float32Array inputTensor = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array deltaTensor = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array weightGradsTensor = info[2].As<Napi::Float32Array>();
+    IntArray inputShape = Vectorize(info[3].As<Napi::Array>());
+    IntArray outputShape = Vectorize(info[4].As<Napi::Array>());
+    IntArray kernelSize = Vectorize(info[5].As<Napi::Array>());
+    int stride = info[6].As<Napi::Number>().Int32Value();
 
-    float* input_data = input.Data();
-    float* d = delta.Data();
-    float* wg = weightGrads.Data();
+    int inputH = inputShape[0];
+    int inputW = inputShape[1];
+    int Cin = inputShape[2];
+
+    int H = outputShape[0];
+    int W = outputShape[1];
+    int Cout = outputShape[2];
+    
+    int Kh = kernelSize[0];
+    int Kw = kernelSize[1];
 
     int padH = Kh / 2;
-    int padW = Kw / 2;
+    int padW = kw / 2;
 
-    for (size_t f = 0; f < Cout; f++) {
-        for (size_t kh = 0; kh < Kh; kh++) {
-            for (size_t kw = 0; kw < Kw; kw++) {
-                for (size_t c = 0; c < Cin; c++) {
-                    float sum = 0.0f;
-                    for (size_t h = 0; h < H; h++) {
-                        for (size_t w = 0; w < W; w++) {
+    float* input = inputTensor.Data();
+    float* delta = deltaTensor.Data();
+    float* weightGrads = weightGradsTensor.Data();
+
+    for (int f = 0; f < Cout; f++) {
+        for (int kh = 0; kh < Kh; kh++) {
+            for (int kw = 0; kw < Kw; kw++) {
+                int kernelRowOffset = (f * Kh + kh) * Kw + kw;
+
+                int c = 0;
+                for (; c <= Cin - 4; c += 4) {
+                    int sum0 = 0, sum1 = 0, sum2 = 0, sum3 = 0;
+
+                    for (int h = 0; h < H; h++) {
+                        for (int w = 0; w < W; w++) {
                             int inH = (h * stride) + kh - padH;
                             int inW = (w * stride) + kw - padW;
 
                             if (inH >= 0 && inH < inputH && inW >= 0 && inW < inputW) {
+                                int baseInputIndex = (inH * inputW + inW) * Cin;
+                                int deltaIndex = (h * W + w) * Cout + f;
+                                int deltaVal = delta[deltaIndex];
 
-                                size_t inputIndex = (inH * inputW + inW) * Cin + c;
-
-                                size_t deltaIndex = (h * W + w) * Cout + f;
-
-                                sum += input_data[inputIndex] * d[deltaIndex];
+                                sum0 += input[baseInputIndex + c] * deltaVal;
+                                sum1 += input[baseInputIndex + c + 1] * deltaVal;
+                                sum2 += input[baseInputIndex + c + 2] * deltaVal;
+                                sum3 += input[baseInputIndex + c + 3] * deltaVal;
                             }
                         }
                     }
-                    size_t gradIndex = ((f * Kh + kh) * Kw + kw) * Cin + c;
 
-                    wg[gradIndex] += sum;
+                    weightGrads[kernelRowOffset * Cin + c] += sum0;
+                    weightGrads[kernelRowOffset * Cin + c + 1] += sum1;
+                    weightGrads[kernelRowOffset * Cin + c + 2] += sum2;
+                    weightGrads[kernelRowOffset * Cin + c + 3] += sum3;
+                }
+
+                // Process remaining channels
+                for (; c < Cin; c++) {
+                    int sum = 0;
+
+                    for (int h = 0; h < H; h++) {
+                        for (int w = 0; w < W; w++) {
+                            int inH = (h * stride) + kh - padH;
+                            int inW = (w * stride) + kw - padW;
+
+                            if (inH >= 0 && inH < inputH && inW >= 0 && inW < inputW) {
+                                int inputIndex = (inH * inputW + inW) * Cin + c;
+                                int deltaIndex = (h * W + w) * Cout + f;
+                                sum += input[inputIndex] * delta[deltaIndex];
+                            }
+                        }
+                    }
+
+                    int gradIndex = kernelRowOffset * Cin + c;
+                    weightGrads[gradIndex] += sum;
                 }
             }
         }
     }
-    return weightGrads;
+    return weightGradsTensor;
 }
 
 Napi::Value computeBiasGradsForConv_GPU(const Napi::CallbackInfo& info) {
