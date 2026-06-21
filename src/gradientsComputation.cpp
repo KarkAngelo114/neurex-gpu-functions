@@ -131,23 +131,24 @@ Napi::Value computeBiasGradsForConnected_Layer_CPU(const Napi::CallbackInfo& inf
 }
 
 Napi::Value computeKernelGradients_GPU(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
+    Napi::Float32Array inputTensor = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array deltaTensor = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array weightGradsTensor = info[2].As<Napi::Float32Array>();
+    IntArray inputShape = Vectorize(info[3].As<Napi::Array>());
+    IntArray outputShape = Vectorize(info[4].As<Napi::Array>());
+    IntArray kernelSize = Vectorize(info[5].As<Napi::Array>());
+    int stride = info[6].As<Napi::Number>().Int32Value();
 
-    Napi::Float32Array input = info[0].As<Napi::Float32Array>();
-    Napi::Float32Array delta = info[1].As<Napi::Float32Array>();
-    Napi::Float32Array weightGrads = info[2].As<Napi::Float32Array>();
+    int inputH = inputShape[0];
+    int inputW = inputShape[1];
+    int Cin = inputShape[2];
 
-    int inputH = info[3].As<Napi::Number>().Int32Value();
-    int inputW = info[4].As<Napi::Number>().Int32Value();
-    int Cin = info[5].As<Napi::Number>().Int32Value();
-
-    int H = info[6].As<Napi::Number>().Int32Value();
-    int W = info[7].As<Napi::Number>().Int32Value();
-    int Cout = info[8].As<Napi::Number>().Int32Value();
-
-    int Kh = info[9].As<Napi::Number>().Int32Value();
-    int Kw = info[10].As<Napi::Number>().Int32Value();
-    int stride = info[11].As<Napi::Number>().Int32Value();
+    int H = outputShape[0];
+    int W = outputShape[1];
+    int Cout = outputShape[2];
+    
+    int Kh = kernelSize[0];
+    int Kw = kernelSize[1];
 
     int padH = Kh / 2;
     int padW = Kw / 2;
@@ -158,9 +159,9 @@ Napi::Value computeKernelGradients_GPU(const Napi::CallbackInfo& info) {
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("computeKernelGradients");
 
-    cl_mem activations = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * input.ElementLength(), input.Data(), nullptr);
-    cl_mem delta_input = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * delta.ElementLength(), delta.Data(), nullptr);
-    cl_mem gradsArr = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * weightGrads.ElementLength(), weightGrads.Data(), nullptr);
+    cl_mem activations = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputTensor.ElementLength(), inputTensor.Data(), nullptr);
+    cl_mem delta_input = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * deltaTensor.ElementLength(), deltaTensor.Data(), nullptr);
+    cl_mem gradsArr = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * weightGradsTensor.ElementLength(), weightGradsTensor.Data(), nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &activations);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &delta_input);
@@ -181,20 +182,23 @@ Napi::Value computeKernelGradients_GPU(const Napi::CallbackInfo& info) {
     clSetKernelArg(kernel, 12, sizeof(int), &padW);
     clSetKernelArg(kernel, 13, sizeof(int), &stride);
 
+    // Calculate number of channel blocks (4 channels per block)
+    int channelBlocks = (Cin + 3) / 4;
+
     size_t globalSize[3] = {
         (size_t)Cout,
         (size_t)Kh,
-        (size_t)(Kw * Cin)
+        (size_t)(Kw * channelBlocks)
     };
 
     clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, globalSize, nullptr, 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, gradsArr, CL_TRUE,0, sizeof(float) * weightGrads.ElementLength(), weightGrads.Data(), 0, nullptr,nullptr);
+    clEnqueueReadBuffer(queue, gradsArr, CL_TRUE, 0, sizeof(float) * weightGradsTensor.ElementLength(), weightGradsTensor.Data(), 0, nullptr, nullptr);
  
     clReleaseMemObject(activations);
     clReleaseMemObject(delta_input);
     clReleaseMemObject(gradsArr);
 
-    return weightGrads;
+    return weightGradsTensor;
 }
 
 Napi::Value computeKernelGradients_CPU(const Napi::CallbackInfo& info) {

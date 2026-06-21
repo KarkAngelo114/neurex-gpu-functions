@@ -58,28 +58,28 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
 
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
     int strides = info[1].As<Napi::Number>().Int32Value();
-    int output_height = info[2].As<Napi::Number>().Int32Value();
-    int output_width = info[3].As<Napi::Number>().Int32Value();
-    int num_filters = info[4].As<Napi::Number>().Int32Value();
-    int kernel_height = info[5].As<Napi::Number>().Int32Value();
-    int kernel_width = info[6].As<Napi::Number>().Int32Value();
-    int depth = info[7].As<Napi::Number>().Int32Value();
-    int input_height = info[8].As<Napi::Number>().Int32Value();
-    int input_width = info[9].As<Napi::Number>().Int32Value();
-    int pointer = info[10].As<Napi::Number>().Int32Value();
-    int outputPointer = info[11].As<Napi::Number>().Int32Value();
+    IntArray outputShape = Vectorize(info[2].As<Napi::Array>());
+    IntArray kernelShape = Vectorize(info[3].As<Napi::Array>());
+    IntArray inputShape = Vectorize(info[4].As<Napi::Array>());
+    int pointer = info[5].As<Napi::Number>().Int32Value();
+    int outputPointer = info[6].As<Napi::Number>().Int32Value();
 
-    cl_int err;
+    int numFilters = kernelShape[0];
+    int kernelH = kernelShape[1];
+    int kernelW = kernelShape[2];
+    int depth = kernelShape[3];
+
+    int inputH = inputShape[0];
+    int inputW = inputShape[1];
+    int outputH = outputShape[0];
+    int outputW = outputShape[1];
+    int outputSize = outputH * outputW * numFilters;
+    int kernelSize = kernelH * kernelW * depth;
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
 
-    cl_mem inputTensor = clCreateBuffer(gpu.context(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * input_height * input_width * depth, input.Data(), &err);
-
-    if (err != CL_SUCCESS) {
-        Napi::TypeError::New(env, "Failed to create input buffer").ThrowAsJavaScriptException();
-        return env.Null();
-    }
+    cl_mem inputTensor = clCreateBuffer(gpu.context(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputH * inputW * depth, input.Data(), nullptr);
 
     cl_mem weights = gpu.weight(pointer);
     cl_mem biases = gpu.bias(pointer);
@@ -93,34 +93,26 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     clSetKernelArg(kernel, 2, sizeof(cl_mem), &biases);
     clSetKernelArg(kernel, 3, sizeof(cl_mem), &output_tensor);
     clSetKernelArg(kernel, 4, sizeof(int), &strides);
-    clSetKernelArg(kernel, 5, sizeof(int), &output_height);
-    clSetKernelArg(kernel, 6, sizeof(int), &output_width);
-    clSetKernelArg(kernel, 7, sizeof(int), &num_filters);
-    clSetKernelArg(kernel, 8, sizeof(int), &kernel_height);
-    clSetKernelArg(kernel, 9, sizeof(int), &kernel_width);
+    clSetKernelArg(kernel, 5, sizeof(int), &outputH);
+    clSetKernelArg(kernel, 6, sizeof(int), &outputW);
+    clSetKernelArg(kernel, 7, sizeof(int), &numFilters);
+    clSetKernelArg(kernel, 8, sizeof(int), &kernelH);
+    clSetKernelArg(kernel, 9, sizeof(int), &kernelW);
     clSetKernelArg(kernel, 10, sizeof(int), &depth);
-    clSetKernelArg(kernel, 11, sizeof(int), &input_height);
-    clSetKernelArg(kernel, 12, sizeof(int), &input_width);
+    clSetKernelArg(kernel, 11, sizeof(int), &inputH);
+    clSetKernelArg(kernel, 12, sizeof(int), &inputW);
 
     size_t global[3] = {
-        (size_t)output_height,
-        (size_t)output_width,
-        (size_t)num_filters
+        (size_t)outputH,
+        (size_t)outputW,
+        (size_t)numFilters
     };
 
-    err = clEnqueueNDRangeKernel(queue,kernel,3,nullptr,global,nullptr,0,nullptr,nullptr);
+    clEnqueueNDRangeKernel(queue,kernel,3,nullptr,global,nullptr,0,nullptr,nullptr);
 
-    if (err != CL_SUCCESS) {
-        Napi::TypeError::New(env, "Kernel launch failed").ThrowAsJavaScriptException();
-        return env.Null();
-    }
+    Napi::Float32Array output = Napi::Float32Array::New(env, outputSize);
 
-    clFinish(queue); // ensure completion
-
-    int expected_size = output_height * output_width * num_filters;
-    Napi::Float32Array output = Napi::Float32Array::New(env, expected_size);
-
-    clEnqueueReadBuffer( queue, output_tensor,CL_TRUE, 0, sizeof(float) * expected_size, output.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer( queue, output_tensor, CL_TRUE, 0, sizeof(float) * outputSize, output.Data(), 0, nullptr, nullptr);
 
     clReleaseMemObject(inputTensor);
 
@@ -202,76 +194,52 @@ Napi::Value Convolve_CPU(const Napi::CallbackInfo& info) {
 
 Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
+    Napi::Float32Array inputTensor = info[0].As<Napi::Float32Array>();
+    IntArray deltaShape = Vectorize(info[1].As<Napi::Array>());
+    IntArray kernelShape = Vectorize(info[2].As<Napi::Array>());
+    IntArray outputShape = Vectorize(info[3].As<Napi::Array>());
+    int pointer = info[4].As<Napi::Number>().Int32Value();
+    int stride = info[5].As<Napi::Number>().Int32Value();
 
-    Napi::Float32Array deltaInput = info[0].As<Napi::Float32Array>();
-    IntArray padded_shape = Vectorize(info[1].As<Napi::Array>());
-    IntArray kernel_shape = Vectorize(info[2].As<Napi::Array>());
-    size_t oH = info[3].As<Napi::Number>().Int32Value();
-    size_t oW = info[4].As<Napi::Number>().Int32Value();
-    int pointer = info[5].As<Napi::Number>().Int32Value();
-    int stride = info[6].As<Napi::Number>().Int32Value();
+    int Hp = deltaShape[0];
+    int Wp = deltaShape[1];
+    int C_in = deltaShape[2];
 
-    size_t Hp  = padded_shape[0];
-    size_t Wp  = padded_shape[1];
-    size_t C_in = padded_shape[2];
+    int F = kernelShape[0];
+    int KH = kernelShape[1];
+    int KW = kernelShape[2];
+    int C_k = kernelShape[3];
 
-    size_t F   = kernel_shape[0];
-    size_t KH  = kernel_shape[1];
-    size_t KW  = kernel_shape[2];
-    size_t C_k = kernel_shape[3];
+    int oH = outputShape[0];
+    int oW = outputShape[1];
 
+    FloatArray kernels = Rotate_kernels(F, KH, KW, C_k, pointer);
+
+    int outputSize = oH * oW * C_k;
+    
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
-
-    cl_int err;
-
-    // Upload the padded delta input to the GPU
-    cl_mem delta = clCreateBuffer(gpu.context(),CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * Hp * Wp * C_in, deltaInput.Data(), &err);
-    if (err != CL_SUCCESS) {
-        Napi::TypeError::New(env, "Failed to create delta buffer").ThrowAsJavaScriptException();
-        return env.Null();
-    }
-
-    // Allocate output buffer: shape [oH, oW, C_k]
-    size_t outputSize = oH * oW * C_k;
-    cl_mem outputBuf = clCreateBuffer(gpu.context(),CL_MEM_WRITE_ONLY,sizeof(float) * outputSize,nullptr,&err);
-    if (err != CL_SUCCESS) {
-        clReleaseMemObject(delta);
-        Napi::TypeError::New(env, "Failed to create output buffer").ThrowAsJavaScriptException();
-        return env.Null();
-    }
-
-    // Rotate kernels and upload to GPU
-    auto kernel_array = Rotate_kernels(F, KH, KW, C_k, pointer);
-    cl_mem weights = clCreateBuffer(gpu.context(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * F * KH * KW * C_k, kernel_array.data(), &err);
-
+    cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("delta_convolve");
 
-    // Cast size_t dims to int for the kernel (OpenCL int args)
-    int iWp   = (int)Wp;
-    int iC_in = (int)C_in;
-    int iF    = (int)F;
-    int iKH   = (int)KH;
-    int iKW   = (int)KW;
-    int iC_k  = (int)C_k;
-    int ioH   = (int)oH;
-    int ioW   = (int)oW;
+    cl_int err = CL_SUCCESS;
+    cl_mem delta = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * Hp * Wp * C_in, inputTensor.Data(), &err);
+    cl_mem weights = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * F * KH * KW * C_k, kernels.data(), &err);
+    cl_mem outputBuf = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * outputSize, nullptr, &err);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &delta);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &weights);
     clSetKernelArg(kernel, 2, sizeof(cl_mem), &outputBuf);
-    clSetKernelArg(kernel, 3, sizeof(int),    &iWp);
-    clSetKernelArg(kernel, 4, sizeof(int),    &iC_in);
-    clSetKernelArg(kernel, 5, sizeof(int),    &iF);
-    clSetKernelArg(kernel, 6, sizeof(int),    &iKH);
-    clSetKernelArg(kernel, 7, sizeof(int),    &iKW);
-    clSetKernelArg(kernel, 8, sizeof(int),    &iC_k);
-    clSetKernelArg(kernel, 9, sizeof(int),    &ioH);
-    clSetKernelArg(kernel, 10, sizeof(int),   &ioW);
+    clSetKernelArg(kernel, 3, sizeof(int), &Wp);
+    clSetKernelArg(kernel, 4, sizeof(int), &C_in);
+    clSetKernelArg(kernel, 5, sizeof(int), &F);
+    clSetKernelArg(kernel, 6, sizeof(int), &KH);
+    clSetKernelArg(kernel, 7, sizeof(int), &KW);
+    clSetKernelArg(kernel, 8, sizeof(int), &C_k);
+    clSetKernelArg(kernel, 9, sizeof(int), &oH);
+    clSetKernelArg(kernel, 10, sizeof(int), &oW);
     clSetKernelArg(kernel, 11, sizeof(int), &stride);
 
-
-    // size_t global[3] = outputSize;
     size_t global[3] = {
         (size_t)oH,
         (size_t)oW,

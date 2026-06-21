@@ -55,17 +55,17 @@ static Napi::Value MatMul_CPU(const Napi::CallbackInfo& info) {
     size_t inputSize  = info[1].As<Napi::Number>().Int32Value();
     size_t outputSize = info[2].As<Napi::Number>().Int32Value();
     int pointer = info[3].As<Napi::Number>().Int32Value();
+    int outPtr = info[4].As<Napi::Number>().Int32Value();
 
     // get weights and biases from the global store
     const Array& weights = getGlobalWeights(pointer);
     const Array& biases  = getGlobalBiases(pointer);
+    Array& output_tensor = const_cast<Array&>(getGlobalOutputTensors(outPtr));
 
     float* in        = input.Data();
     const float* w   = weights.data();
     const float* b   = biases.data();
-
-    Napi::Float32Array output = Napi::Float32Array::New(env, outputSize);
-    float* x = output.Data();
+    float* x = output_tensor.data();
 
     std::copy(b, b + outputSize, x);
 
@@ -77,7 +77,11 @@ static Napi::Value MatMul_CPU(const Napi::CallbackInfo& info) {
             x[j] += v * w[offset + j];
         }
     }
-    return output;
+    
+    // Convert to Napi::Float32Array for return
+    Napi::Float32Array result = Napi::Float32Array::New(env, outputSize);
+    std::copy(x, x + outputSize, result.Data());
+    return result;
 }
 
 // ============== DeltaMatMul ==============
