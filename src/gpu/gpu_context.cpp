@@ -180,42 +180,15 @@ void GpuContext::shutdown() {
     has_gpu_ = false;
 }
 
-bool GpuContext::uploadParams(
-    const Matrix& weights,
-    const Matrix& biases,
-    const Matrix& outputs,
-    std::string& errorOut
-) {
+/**
+ * upload output template tensors
+ */
+bool GpuContext::uploadOutputTemplates(const Matrix& outputs, std::string& errorOut) {
     cl_int err;
 
-    // release old buffers (if re-uploading)
-    for (auto& params : d_weights_) clReleaseMemObject(params);
-    for (auto& params : d_biases_)  clReleaseMemObject(params);
     for (auto& params : d_outputs_) clReleaseMemObject(params);
 
-    d_weights_.clear();
-    d_biases_.clear();
     d_outputs_.clear();
-
-    // upload weights
-    for (const auto& w : weights) {
-        cl_mem buf = clCreateBuffer(context_, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * w.size(), (void*)w.data(), &err);
-        if (err != CL_SUCCESS) {
-            errorOut = "upload weights failed";
-            return false;
-        }
-        d_weights_.push_back(buf);
-    }
-
-    // upload biases
-    for (const auto& b : biases) {
-        cl_mem buf = clCreateBuffer(context_, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * b.size(), (void*)b.data(), &err);
-        if (err != CL_SUCCESS) {
-            errorOut = "upload biases failed";
-            return false;
-        }
-        d_biases_.push_back(buf);
-    }
 
     // allocate outputs (no host copy needed)
     for (const auto& o : outputs) {
