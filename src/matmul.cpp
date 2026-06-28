@@ -17,17 +17,15 @@ static Napi::Value MatMul_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
     int inputSize = info[1].As<Napi::Number>().Int32Value();
     int outputSize = info[2].As<Napi::Number>().Int32Value();
-    Napi::Float32Array weights = info[3].As<Napi::Float32Array>();
-    Napi::Float32Array biases = info[4].As<Napi::Float32Array>();
-    int outPtr = info[5].As<Napi::Number>().Int32Value();
+    int pointer = info[3].As<Napi::Number>().Int32Value();
+    int outPtr = info[4].As<Napi::Number>().Int32Value();
 
     auto& gpu = GpuContext::instance();
 
-    
-    cl_command_queue queue = gpu.queue();
     cl_mem dIn  = clCreateBuffer(gpu.context(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputSize, input.Data(), nullptr);
-    cl_mem dW   = clCreateBuffer(gpu.context(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * weights.ElementLength(), weights.Data(), nullptr);
-    cl_mem dB   = clCreateBuffer(gpu.context(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * biases.ElementLength(), biases.Data(), nullptr);
+    cl_command_queue queue = gpu.queue();
+    cl_mem dW   = gpu.weight(pointer);
+    cl_mem dB   = gpu.bias(pointer);
     cl_mem dOut = gpu.output(outPtr);
 
     cl_kernel k = gpu.kernel("matmul");
@@ -56,15 +54,17 @@ static Napi::Value MatMul_CPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
     size_t inputSize  = info[1].As<Napi::Number>().Int32Value();
     size_t outputSize = info[2].As<Napi::Number>().Int32Value();
-    Napi::Float32Array weights = info[3].As<Napi::Float32Array>();
-    Napi::Float32Array biases = info[4].As<Napi::Float32Array>();
-    int outPtr = info[5].As<Napi::Number>().Int32Value();
+    int pointer = info[3].As<Napi::Number>().Int32Value();
+    int outPtr = info[4].As<Napi::Number>().Int32Value();
 
+    // get weights and biases from the global store
+    const Array& weights = getGlobalWeights(pointer);
+    const Array& biases  = getGlobalBiases(pointer);
     Array& output_tensor = const_cast<Array&>(getGlobalOutputTensors(outPtr));
 
     float* in        = input.Data();
-    const float* w   = weights.Data();
-    const float* b   = biases.Data();
+    const float* w   = weights.data();
+    const float* b   = biases.data();
     float* x = output_tensor.data();
 
     std::copy(b, b + outputSize, x);
@@ -91,7 +91,7 @@ static Napi::Value DeltaMatMul_GPU(const Napi::CallbackInfo& info) {
     auto delta   = info[0].As<Napi::Float32Array>();
     int inputSize  = info[1].As<Napi::Number>().Int32Value();
     int outputSize = info[2].As<Napi::Number>().Int32Value();
-    Napi::Float32Array weightsArray = info[3].As<Napi::Float32Array>();
+    int pointer = info[3].As<Napi::Number>().Int32Value();
 
     auto& gpu = GpuContext::instance();
     cl_context ctx = gpu.context();
@@ -101,7 +101,7 @@ static Napi::Value DeltaMatMul_GPU(const Napi::CallbackInfo& info) {
     cl_int err;
     cl_mem dDelta = clCreateBuffer(ctx, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)*outputSize, delta.Data(), &err);
     cl_mem dOut = clCreateBuffer(ctx, CL_MEM_WRITE_ONLY, sizeof(float)*inputSize, nullptr, &err);
-    cl_mem dW = clCreateBuffer(ctx, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * weightsArray.ElementLength(), weightsArray.Data(), nullptr);
+    cl_mem dW = gpu.weight(pointer);
 
     clSetKernelArg(k, 0, sizeof(cl_mem), &dDelta);
     clSetKernelArg(k, 1, sizeof(cl_mem), &dW);
@@ -125,11 +125,12 @@ static Napi::Value DeltaMatMul_CPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array delta = info[0].As<Napi::Float32Array>();
     size_t inputSize  = info[1].As<Napi::Number>().Int32Value();
     size_t outputSize = info[2].As<Napi::Number>().Int32Value();
-    Napi::Float32Array weights = info[3].As<Napi::Float32Array>();
-    Napi::Float32Array output = Napi::Float32Array::New(env, inputSize);
+    int pointer = info[3].As<Napi::Number>().Int32Value();
 
+    const Array& weights = getGlobalWeights(pointer);
+    Napi::Float32Array output = Napi::Float32Array::New(env, inputSize);
     float* d = delta.Data();
-    const float* w = weights.Data();
+    const float* w = weights.data();
     float* o = output.Data();
 
     for (size_t i = 0; i < inputSize; i++) {

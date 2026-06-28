@@ -20,18 +20,20 @@ static IntArray Vectorize(const Napi::Array& arr) {
     return VectorArray;
 }
 
-static Napi::Float32Array Rotate_kernels(Napi::Env env, int F, int KH, int KW, int D, const Napi::Float32Array& kernels) {
-    size_t kernel_length = kernels.ElementLength();
+static FloatArray Rotate_kernels(int F, int KH, int KW, int D, int pointer) {
+    const auto& kernels_arr = getGlobalWeights(pointer);
 
-    Napi::Float32Array output = Napi::Float32Array::New(env, kernel_length);
+    size_t kernel_length = kernels_arr.size();
 
-    const float* src = kernels.Data();
-    float* dst = output.Data();
+    FloatArray outputData(kernel_length);
 
-    for (size_t f = 0; f < (size_t)F; f++) {
-        for (size_t kh = 0; kh < (size_t)KH; kh++) {
-            for (size_t kw = 0; kw < (size_t)KW; kw++) {
-                for (size_t d = 0; d < (size_t)D; d++) {
+    const float* kernels = kernels_arr.data();
+    float* rotated = outputData.data();
+
+    for (size_t f = 0; f < F; f++) {
+        for (size_t kh = 0; kh < KH; kh++) {
+            for (size_t kw = 0; kw < KW; kw++) {
+                for (size_t d = 0; d < D; d++) {
                     // Original Index
                     size_t oldIdx = (f * KH * KW * D) + (kh * KW * D) + (kw * D) + d;
                     
@@ -40,13 +42,13 @@ static Napi::Float32Array Rotate_kernels(Napi::Env env, int F, int KH, int KW, i
                     size_t newKw = KW - 1 - kw;
                     size_t newIdx = (f * KH * KW * D) + (newKh * KW * D) + (newKw * D) + d;
                     
-                    dst[newIdx] = src[oldIdx];
+                    rotated[newIdx] = kernels[oldIdx];
                 }
             }
         }
     }
 
-    return output;
+    return outputData;
 }
 
 
@@ -59,9 +61,8 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     IntArray outputShape = Vectorize(info[2].As<Napi::Array>());
     IntArray kernelShape = Vectorize(info[3].As<Napi::Array>());
     IntArray inputShape = Vectorize(info[4].As<Napi::Array>());
-    Napi::Float32Array weightsArray = info[5].As<Napi::Float32Array>();
-    Napi::Float32Array biasesArray = info[6].As<Napi::Float32Array>();
-    int outputPointer = info[7].As<Napi::Number>().Int32Value();
+    int pointer = info[5].As<Napi::Number>().Int32Value();
+    int outputPointer = info[6].As<Napi::Number>().Int32Value();
 
     int numFilters = kernelShape[0];
     int kernelH = kernelShape[1];
@@ -79,8 +80,9 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     cl_command_queue queue = gpu.queue();
 
     cl_mem inputTensor = clCreateBuffer(gpu.context(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputH * inputW * depth, input.Data(), nullptr);
-    cl_mem weights = clCreateBuffer(gpu.context(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * weightsArray.ElementLength(), weightsArray.Data(), nullptr);
-    cl_mem biases = clCreateBuffer(gpu.context(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * biasesArray.ElementLength(), biasesArray.Data(), nullptr);
+
+    cl_mem weights = gpu.weight(pointer);
+    cl_mem biases = gpu.bias(pointer);
     cl_mem output_tensor = gpu.output(outputPointer);
 
     cl_kernel kernel = gpu.kernel("convolve");
@@ -125,9 +127,7 @@ Napi::Value Convolve_CPU(const Napi::CallbackInfo& info) {
     IntArray outputShape = Vectorize(info[2].As<Napi::Array>());
     IntArray kernelShape = Vectorize(info[3].As<Napi::Array>());
     IntArray inputShape = Vectorize(info[4].As<Napi::Array>());
-    Napi::Float32Array weightsArray = info[5].As<Napi::Float32Array>();
-    Napi::Float32Array biasesArray = info[6].As<Napi::Float32Array>();
-
+    int pointer = info[5].As<Napi::Number>().Int32Value();
 
     int numFilters = kernelShape[0];
     int kernelH = kernelShape[1];
@@ -141,11 +141,13 @@ Napi::Value Convolve_CPU(const Napi::CallbackInfo& info) {
     int outputSize = outputH * outputW * numFilters;
     int kernelSize = kernelH * kernelW * depth;
     Napi::Float32Array outputTensor = Napi::Float32Array::New(env, outputSize);
+    FloatArray weightsArray = getGlobalWeights(pointer);
+    FloatArray biasesArray = getGlobalBiases(pointer);
 
     float* input = inputTensor.Data();
     float* output = outputTensor.Data();
-    float* weights = weightsArray.Data();
-    float* biases = biasesArray.Data();
+    float* weights = weightsArray.data();
+    float* biases = biasesArray.data();
 
     for (int y = 0; y < outputH; y++) {
         int baseY = y * strides;
@@ -196,7 +198,7 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     IntArray deltaShape = Vectorize(info[1].As<Napi::Array>());
     IntArray kernelShape = Vectorize(info[2].As<Napi::Array>());
     IntArray outputShape = Vectorize(info[3].As<Napi::Array>());
-    Napi::Float32Array kernelsArray = info[4].As<Napi::Float32Array>();
+    int pointer = info[4].As<Napi::Number>().Int32Value();
     int stride = info[5].As<Napi::Number>().Int32Value();
 
     int Hp = deltaShape[0];
@@ -211,7 +213,7 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     int oH = outputShape[0];
     int oW = outputShape[1];
 
-    Napi::Float32Array kernels = Rotate_kernels(env, F, KH, KW, C_k, kernelsArray);
+    FloatArray kernels = Rotate_kernels(F, KH, KW, C_k, pointer);
 
     int outputSize = oH * oW * C_k;
     
@@ -222,7 +224,7 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
 
     cl_int err = CL_SUCCESS;
     cl_mem delta = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * Hp * Wp * C_in, inputTensor.Data(), &err);
-    cl_mem weights = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * kernels.ElementLength(), kernels.Data(), &err);
+    cl_mem weights = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * F * KH * KW * C_k, kernels.data(), &err);
     cl_mem outputBuf = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * outputSize, nullptr, &err);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &delta);
@@ -262,7 +264,7 @@ Napi::Value ConvolveDelta_CPU(const Napi::CallbackInfo& info) {
     IntArray deltaShape = Vectorize(info[1].As<Napi::Array>());
     IntArray kernelShape = Vectorize(info[2].As<Napi::Array>());
     IntArray outputShape = Vectorize(info[3].As<Napi::Array>());
-    Napi::Float32Array kernelArray = info[4].As<Napi::Float32Array>();
+    int pointer = info[4].As<Napi::Number>().Int32Value();
     int stride = info[5].As<Napi::Number>().Int32Value();
 
     int Hp = deltaShape[0];
@@ -277,16 +279,16 @@ Napi::Value ConvolveDelta_CPU(const Napi::CallbackInfo& info) {
     int oH = outputShape[0];
     int oW = outputShape[1];
 
-    Napi::Float32Array kernels = Rotate_kernels(env, F, KH, KW, C_k, kernelArray);
+    FloatArray kernels = Rotate_kernels(F, KH, KW, C_k, pointer);
 
-    // int H = Hp - KH + 1;
-    // int W = Wp - KW + 1;
+    int H = Hp - KH + 1;
+    int W = Wp - KW + 1;
     
     int outputSize = oH * oW * C_k;
     Napi::Float32Array outputTensor = Napi::Float32Array::New(env, outputSize);
 
     float* input = inputTensor.Data();
-    float* rotated_kernel = kernels.Data();
+    float* rotated_kernel = kernels.data();
     float* output = outputTensor.Data();
 
     for (int c_out = 0; c_out < C_k; c_out++) {
