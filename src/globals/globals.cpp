@@ -21,7 +21,7 @@ bool get_Global_Boolean_On_GPU() {
 Napi::Value setOutputTemplateTensors(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
-    Napi::Array outputTensors = info[2].As<Napi::Array>();
+    Napi::Array outputTensors = info[1].As<Napi::Array>();
     uint32_t globalOutputTensorSize = outputTensors.Length();
     global_output_Tensor.resize(globalOutputTensorSize);
 
