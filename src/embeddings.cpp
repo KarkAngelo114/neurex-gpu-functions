@@ -29,7 +29,7 @@ Napi::Value GetEmbeddings_GPU(const Napi::CallbackInfo& info) {
     cl_kernel kernel = gpu.kernel("getEmbeddings");
 
     cl_mem tokenBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(int) * sequence_length, tokenArray.data(), nullptr);
-    cl_mem lookup = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* prams.ElementLength(), params.Data(), nullptr);
+    cl_mem lookup = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* params.ElementLength(), params.Data(), nullptr);
     cl_mem output = gpu.output(outputTemplateTensorPointer); // pre-allocated 1D CL buffer. Can do CL_MEM_READ_WRITE already
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &tokenBuffer);
