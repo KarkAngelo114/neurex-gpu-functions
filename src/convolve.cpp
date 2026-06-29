@@ -113,7 +113,7 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     clEnqueueReadBuffer( queue, output_tensor, CL_TRUE, 0, sizeof(float) * outputSize, output.Data(), 0, nullptr, nullptr);
 
     clReleaseMemObject(inputTensor);
-    clReleaseMemObject(weights):
+    clReleaseMemObject(weights);
     clReleaseMemObject(biases);
 
     return output;
