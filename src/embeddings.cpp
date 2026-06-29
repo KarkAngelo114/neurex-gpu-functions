@@ -18,7 +18,7 @@ Napi::Value GetEmbeddings_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     IntArray tokenArray = Vectorize(info[0].As<Napi::Array>());
     int embeddingDim = info[1].As<Napi::Number>().Int32Value();
-    int pointer = info[2].As<Napi::Number>().Int32Value();
+    Napi::Float32Array params = info[2].As<Napi::Float32Array>();
     int outputTemplateTensorPointer = info[3].As<Napi::Number>().Int32Value();
     int sequence_length = tokenArray.size();
     int totalSize = sequence_length * embeddingDim; // token array length * embeddingDim = output size
@@ -29,7 +29,7 @@ Napi::Value GetEmbeddings_GPU(const Napi::CallbackInfo& info) {
     cl_kernel kernel = gpu.kernel("getEmbeddings");
 
     cl_mem tokenBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(int) * sequence_length, tokenArray.data(), nullptr);
-    cl_mem lookup = gpu.weight(pointer); // pre-allocated CL 1D buffer of weights or flattened lookup table
+    cl_mem lookup = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* params.ElementLength(), params.Data(), nullptr);
     cl_mem output = gpu.output(outputTemplateTensorPointer); // pre-allocated 1D CL buffer. Can do CL_MEM_READ_WRITE already
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &tokenBuffer);
@@ -59,12 +59,12 @@ Napi::Value GetEmbeddings_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     IntArray tokenArray = Vectorize(info[0].As<Napi::Array>());
     int embeddingDim = info[1].As<Napi::Number>().Int32Value();
-    int pointer = info[2].As<Napi::Number>().Int32Value();
+    Napi::Float32Array params = info[2].As<Napi::Float32Array>();
     int outputTemplateTensorPointer = info[3].As<Napi::Number>().Int32Value();
 
-    // Get the lookup table (embedding weights) and output tensor from globals
-    const FloatArray& lookup = getGlobalWeights(pointer);
     FloatArray& output = const_cast<FloatArray&>(getGlobalOutputTensors(outputTemplateTensorPointer));
+
+    float* lookup = params.Data();
 
     // Iterate through each token in the sequence
     int sequenceLength = tokenArray.size();
