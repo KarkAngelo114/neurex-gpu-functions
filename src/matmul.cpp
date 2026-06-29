@@ -17,14 +17,20 @@ static Napi::Value MatMul_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
     int inputSize = info[1].As<Napi::Number>().Int32Value();
     int outputSize = info[2].As<Napi::Number>().Int32Value();
-    int pointer = info[3].As<Napi::Number>().Int32Value();
     Napi::Float32Array weights = info[3].As<Napi::Float32Array>();
     Napi::Float32Array biases = info[4].As<Napi::Float32Array>();
     int outPtr = info[5].As<Napi::Number>().Int32Value();
 
-    auto& gpu = GpuContext::instance();
+    if (!info[0].IsTypedArray() || !info[3].IsTypedArray() || !info[4].IsTypedArray()) {
+        Napi::TypeError::New(env, "MatMul_GPU Expected TypedArrays for inputs (0), weights (3), and biases (4)").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    if (!info[1].IsNumber() || !info[2].IsNumber() || !info[5].IsNumber()) {
+        Napi::TypeError::New(env, "MatMul_GPU Expected Numbers for inputSize (1), outputSize (2), and outPtr (5)").ThrowAsJavaScriptException();
+        return env.Null();
+    }
 
-    
+    auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
     cl_mem dIn  = clCreateBuffer(gpu.context(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputSize, input.Data(), nullptr);
     cl_mem dW   = clCreateBuffer(gpu.context(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * weights.ElementLength(), weights.Data(), nullptr);
@@ -48,6 +54,8 @@ static Napi::Value MatMul_GPU(const Napi::CallbackInfo& info) {
     clEnqueueReadBuffer(queue, dOut, CL_TRUE, 0, sizeof(float) * outputSize, output.Data(), 0, nullptr, nullptr);
 
     clReleaseMemObject(dIn);
+    clReleaseMemObject(dW);
+    clReleaseMemObject(dB);
 
     return output;
 }
@@ -118,6 +126,8 @@ static Napi::Value DeltaMatMul_GPU(const Napi::CallbackInfo& info) {
 
     clReleaseMemObject(dDelta);
     clReleaseMemObject(dOut);
+    clReleaseMemObject(dW);
+
     return output;
 }
 

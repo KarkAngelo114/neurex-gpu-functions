@@ -113,6 +113,8 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     clEnqueueReadBuffer( queue, output_tensor, CL_TRUE, 0, sizeof(float) * outputSize, output.Data(), 0, nullptr, nullptr);
 
     clReleaseMemObject(inputTensor);
+    clReleaseMemObject(weights):
+    clReleaseMemObject(biases);
 
     return output;
 }
@@ -279,8 +281,6 @@ Napi::Value ConvolveDelta_CPU(const Napi::CallbackInfo& info) {
 
     Napi::Float32Array kernels = Rotate_kernels(env, F, KH, KW, C_k, kernelArray);
 
-    // int H = Hp - KH + 1;
-    // int W = Wp - KW + 1;
     
     int outputSize = oH * oW * C_k;
     Napi::Float32Array outputTensor = Napi::Float32Array::New(env, outputSize);
