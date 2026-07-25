@@ -42,6 +42,7 @@ Napi::Value recurrentMatMul_CPU(const Napi::CallbackInfo& info) {
     float* input_weights = input_weight_data.Data();
     float* recurrent_weights = recurrent_weights_data.Data();
     float* biases = biases_array.Data();
+    float* output = output_data.Data();
 
     for (size_t j = 0; j < units; j++) {
         float z = biases[j];
@@ -73,8 +74,8 @@ Napi::Value recurrentTimeDelta_CPU(const Napi::CallbackInfo& info) {
     int c = recurrentWeightShape[0];
     int d = recurrentWeightShape[1];
 
-    const offset = a * b;
-    const length = c * d;
+    int offset = a * b;
+    int length = c * d;
 
     Napi::Float32Array weights_array = subarray(env, weight_data, offset, offset + length); // get the recurrent weights
     Napi::Float32Array output_data = Napi::Float32Array::New(env, delta_array.ElementLength());
