@@ -22,7 +22,7 @@ Napi::Value recurrentMatMul_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     Napi::Float32Array input_data = info[0].As<Napi::Float32Array>();
-    Napi::Float32Arrray prevHiddenState_data = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array prevHiddenState_data = info[1].As<Napi::Float32Array>();
     IntArray inputWeightShape = Vectorize(info[2].As<Napi::Array>());
     IntArray recurrentWeightShape = Vectorize(info[3].As<Napi::Array>());
     Napi::Float32Array weight_data = info[4].As<Napi::Float32Array>(); // [...inputWeights, ...recurrentWeights]
@@ -35,11 +35,11 @@ Napi::Value recurrentMatMul_CPU(const Napi::CallbackInfo& info) {
 
     Napi::Float32Array output_data = Napi::Float32Array::New(env, units);
     Napi::Float32Array input_weights_data = subarray(env, weight_data, 0, range_input_weights);
-    Napi::Float32Array recurrent_weights_data = subarray(env, weight_data, range_input_weights, range_input_weights + recurrentWeightShape[0] * recurrentWeightShape[1])
+    Napi::Float32Array recurrent_weights_data = subarray(env, weight_data, range_input_weights, range_input_weights + recurrentWeightShape[0] * recurrentWeightShape[1]);
 
     float* input = input_data.Data();
     float* prevHiddenState = prevHiddenState_data.Data();
-    float* input_weights = input_weight_data.Data();
+    float* input_weights = input_weights_data.Data();
     float* recurrent_weights = recurrent_weights_data.Data();
     float* biases = biases_array.Data();
     float* output = output_data.Data();
