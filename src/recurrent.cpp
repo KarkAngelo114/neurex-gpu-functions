@@ -64,10 +64,11 @@ Napi::Value recurrentMatMul_CPU(const Napi::CallbackInfo& info) {
 
 Napi::Value recurrentTimeDelta_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
+
     Napi::Float32Array delta_array = info[0].As<Napi::Float32Array>();
-    IntArray inputWeightShape = Vectorize(info[2].As<Napi::Array>());
-    IntArray recurrentWeightShape = Vectorize(info[3].As<Napi::Array>());
-    Napi::Float32Array weight_data = info[4].As<Napi::Float32Array>(); // [...inputWeights, ...recurrentWeights]
+    IntArray inputWeightShape = Vectorize(info[1].As<Napi::Array>());
+    IntArray recurrentWeightShape = Vectorize(info[2].As<Napi::Array>());
+    Napi::Float32Array weight_data = info[3].As<Napi::Float32Array>(); // [...inputWeights, ...recurrentWeights]
 
     int a = inputWeightShape[0];
     int b = inputWeightShape[1];
