@@ -2,6 +2,7 @@
 #include <CL/cl.h>
 #include "gpu/gpu_context.h"
 #include "globals/globals.h"
+#include "functions/functions.h"
 #include <omp.h>
 #include <vector>
 #include <cmath>
@@ -348,6 +349,80 @@ Napi::Value computeBiasGradsForConv_CPU(const Napi::CallbackInfo& info) {
     return biasGrads;
 }
 
+Napi::Value recurrentWeightGradsAccumulation_CPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    // 1. Extract Inputs & Raw Pointers directly
+    float* activation_outputs = info[0].As<Napi::Float32Array>().Data();
+    float* output = info[4].As<Napi::Float32Array>().Data();
+
+    std::vector<const float*> hiddenStates = ExtractFloat32ArrayPointers(info[2].As<Napi::Array>());
+    std::vector<const float*> deltaTs = ExtractFloat32ArrayPointers(info[3].As<Napi::Array>());
+
+    IntArray weightShapeJS = Vectorize(info[5].As<Napi::Array>());
+    uint32_t sequenceLength = info[6].As<Napi::Number>().Uint32Value();
+
+    // 2. Setup Shape Parameters
+    int featureSize = weightShapeJS[0];
+    int units = weightShapeJS[1];
+    size_t totalInputWeights = featureSize * units;
+
+    // Helper buffer for h_prev when t == 0
+    std::vector<float> zero_h_prev(units, 0.0f);
+
+    // 3. Outer Product Loops (Pure C++)
+    for (uint32_t t = 0; t < sequenceLength; ++t) {
+        const float* x_t     = activation_outputs + (t * featureSize);
+        const float* delta_t = deltaTs[t];
+        
+        // Handle t === 0 zero-fill fallback
+        const float* h_prev = (t == 0 || hiddenStates[t - 1] == nullptr)  ? zero_h_prev.data() : hiddenStates[t - 1];
+
+        // dL/dW_x += outer(x_t, delta_t)
+        for (uint32_t i = 0; i < featureSize; ++i) {
+            float xi = x_t[i];
+            size_t rowOffset = i * units;
+            for (uint32_t j = 0; j < units; ++j) {
+                output[rowOffset + j] += xi * delta_t[j];
+            }
+        }
+
+        // dL/dW_h += outer(h_prev, delta_t)
+        for (uint32_t i = 0; i < units; ++i) {
+            float hi = h_prev[i];
+            size_t rowOffset = totalInputWeights + (i * units);
+            for (uint32_t j = 0; j < units; ++j) {
+                output[rowOffset + j] += hi * delta_t[j];
+            }
+        }
+    }
+
+    return info[4];
+}
+
+Napi::Value recurrentBiasGradsAccumulation_CPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    Napi::Float32Array biasGrads_array = info[0].As<Napi::Float32Array>();
+    Napi::Array deltaTsJS = info[1].As<Napi::Array>();
+    int sequenceLength = info[2].As<Napi::Number>().Int32Value();
+    int units = info[3].As<Napi::Number>().Int32Value();
+
+    std::vector<const float*> deltaTs = ExtractFloat32ArrayPointers(deltaTsJS);
+    float* biasGrads = biasGrads_array.Data();
+
+    for (int t = 0; t < sequenceLength; t++) {
+        const float* delta_time_step = deltaTs[t];
+
+        for (int j = 0; j < units; j++) {
+            biasGrads[j] += delta_time_step[j];
+        }
+    }
+
+    return biasGrads_array;
+}
+
+// =================== wrapper ===================== //
+
 Napi::Value computeBiasGradsForConnected_LayerWrapper(const Napi::CallbackInfo& info) {
     if (get_Global_Boolean_On_GPU()) {
         return computeBiasGradsForConnected_Layer_GPU(info);
@@ -379,10 +454,20 @@ Napi::Value computeBiasGradsForConvWrapper(const Napi::CallbackInfo& info) {
     return computeBiasGradsForConv_CPU(info);
 }
 
+Napi::Value recurrentWeightGradsAccumulationWrapper(const Napi::CallbackInfo& info) {
+    return recurrentWeightGradsAccumulation_CPU(info);
+}
+
+Napi::Value recurrentBiasGradsAccumulationWrapper(const Napi::CallbackInfo& info) {
+    return recurrentBiasGradsAccumulation_CPU(info);
+}
+
 /* ================ module exports ===================*/
 void GradientCalculationRegister(Napi::Env env, Napi::Object exports) {
     exports.Set("computeWeightGradientsForWeightsInConnectedLayer", Napi::Function::New(env, ComputeGradientForDenseWeightsWrapper));
     exports.Set("computeKernelGradients", Napi::Function::New(env, computeKernelGradientsWrapper));
     exports.Set("computeBiasGradsForConnected_Layer", Napi::Function::New(env, computeBiasGradsForConnected_LayerWrapper));
     exports.Set("computeBiasGradsForConv", Napi::Function::New(env, computeBiasGradsForConvWrapper));
+    exports.Set("recurrentWeightGradsAccumulation", Napi::Function::New(env, recurrentWeightGradsAccumulationWrapper));
+    exports.Set("recurrentBiasGradsAccumulation", Napi::Function::New(env, recurrentBiasGradsAccumulationWrapper));
 }

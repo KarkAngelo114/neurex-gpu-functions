@@ -112,8 +112,11 @@
         "src/init.cpp",
         "src/gpu/gpu_context.cpp",
         "src/globals/globals.cpp",
+        "src/functions/extendedNapiFunc.cpp",
         "src/embeddings.cpp",
-        "src/loss.cpp"
+        "src/recurrent.cpp",
+        "src/loss.cpp",
+        
       ],
       "include_dirs": [
         "<!@(node -p \"require('node-addon-api').include\")",
