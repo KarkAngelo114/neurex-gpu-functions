@@ -151,7 +151,7 @@ Napi::Value recurrentTimeDelta_GPU(const Napi::CallbackInfo& info) {
     clSetKernelArg(kernel, 3, sizeof(int), &c);
     clSetKernelArg(kernel, 4, sizeof(int), &d);
 
-    size_t globalSize[2] = c;
+    size_t globalSize = c;
 
     clEnqueueNDRangeKernel(queue, kernel, 2, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
     clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float)* delta_array.ElementLength(), output_data.Data(), 0, nullptr, nullptr);
