@@ -47,6 +47,8 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"loss.cl", "mae"},
     {"loss.cl", "cce"},
     {"loss.cl", "bce"},
+    {"recurrent.cl", "recurrentMatMul"},
+    {"recurrent.cl", "recurrentTimeDelta"}
 };
 
 

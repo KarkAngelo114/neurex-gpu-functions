@@ -153,7 +153,6 @@ Napi::Value SGD_wrapper(const Napi::CallbackInfo& info) {
     return SGD_CPU(info);
 }
 
-
 Napi::Value Adam_wrapper(const Napi::CallbackInfo& info) {
     if (get_Global_Boolean_On_GPU()) {
         return Adam_GPU(info);

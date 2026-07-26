@@ -30,6 +30,11 @@ Napi::Float32Array subarray(const Napi::Env env, const Napi::Float32Array& float
     return Napi::Float32Array::New(env, length, float32Array.ArrayBuffer(), byteOffset);
 }
 
+/**
+ * Extracts the float32Array pointers from Napi::Array
+ * 
+ * @param jsArray an array containing Float32Array
+ */
 std::vector<const float*> ExtractFloat32ArrayPointers(const Napi::Array& jsArray) {
     uint32_t len = jsArray.Length();
     std::vector<const float*> pointers(len);
