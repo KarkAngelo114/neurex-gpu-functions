@@ -6,9 +6,14 @@
 #include <cmath>
 
 Napi::Value SGD_GPU(const Napi::CallbackInfo& info) {
+     Napi::Env env = info.Env();
+
     Napi::Float32Array params = info[0].As<Napi::Float32Array>();
     Napi::Float32Array grads = info[1].As<Napi::Float32Array>();
-    float lr = info[2].As<Napi::Number>().FloatValue();
+    Napi::Float32Array velocity = info[2].As<Napi::Float32Array>();
+    float lr = info[3].As<Napi::Number>().FloatValue();
+    float momentum = info[4].As<Napi::Number>().FloatValue();
+
     int param_length = params.ElementLength();
 
     auto& gpu = GpuContext::instance();
@@ -18,37 +23,57 @@ Napi::Value SGD_GPU(const Napi::CallbackInfo& info) {
 
     cl_mem parameters = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* param_length, params.Data(), nullptr);
     cl_mem gradients = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* param_length, grads.Data(), nullptr);
+    cl_mem velocity_array = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* param_length, velocity.Data(), nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &parameters);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &gradients);
-    clSetKernelArg(kernel, 2, sizeof(float), &lr);
-    clSetKernelArg(kernel, 3, sizeof(int), &param_length);
+    clSetKernelArg(kernel, 2, sizeof(cl_mem), &velocity_array);
+    clSetKernelArg(kernel, 3, sizeof(float), &lr);
+    clSetKernelArg(kernel, 4, sizeof(float), &momentum);
+    clSetKernelArg(kernel, 5, sizeof(int), &param_length);
 
     size_t globalSize = (size_t)param_length;
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
     clEnqueueReadBuffer(queue, parameters, CL_TRUE, 0, sizeof(float)* param_length, params.Data(), 0, nullptr, nullptr );
-    clFinish(queue);
+    clEnqueueReadBuffer(queue, velocity_array, CL_TRUE, 0, sizeof(float)* param_length, velocity.Data(), 0, nullptr, nullptr );
+
     clReleaseMemObject(parameters);
     clReleaseMemObject(gradients);
+    clReleaseMemObject(velocity_array);
 
-    return params;
+    Napi::Object output = Napi::Object::New(env);
+    output.Set("params", params);
+    output.Set("velocity", velocity);
+
+    return output;
 }
 
 Napi::Value SGD_CPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
     Napi::Float32Array params = info[0].As<Napi::Float32Array>();
     Napi::Float32Array grads = info[1].As<Napi::Float32Array>();
-    float lr = info[2].As<Napi::Number>().FloatValue();
+    Napi::Float32Array velocity = info[2].As<Napi::Float32Array>();
+    float lr = info[3].As<Napi::Number>().FloatValue();
+    float momentum = info[4].As<Napi::Number>().FloatValue();
+
     size_t element_length = params.ElementLength();
 
     float* p = params.Data();
     float* g = grads.Data();
+    float* v = velocity.Data();
 
     for (size_t i = 0; i < element_length; i++) {
-        p[i] -= lr * g[i];
+        v[i] = momentum * v[i] + g[i];
+
+        p[i] -= lr * v[i];
     }
 
-    return params;
+    Napi::Object output = Napi::Object::New(env);
+    output.Set("params", params);
+    output.Set("velocity", velocity);
+
+    return output;
 }
 
 Napi::Value Adam_GPU(const Napi::CallbackInfo& info) {
