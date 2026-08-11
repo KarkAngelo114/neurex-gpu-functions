@@ -54,7 +54,7 @@ Napi::Value GradientClipping_CPU(const Napi::CallbackInfo& info) {
         }
     }
 
-    return grads;
+    return inputGrads;
 }
 
 Napi::Value gradientClippingWrapper(const Napi::CallbackInfo& info) {
