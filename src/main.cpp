@@ -15,6 +15,7 @@ void _globals(Napi::Env env, Napi::Object exports);
 void Embeddings(Napi::Env env, Napi::Object exports);
 void loss(Napi::Env env, Napi::Object exports);
 void recurrentFunc(Napi::Env env, Napi::Object exports);
+void normalizers(Napi::Env env, Napi::Object exports);
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     ActivationsRegister(env, exports);
@@ -32,6 +33,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     Embeddings(env, exports);
     loss(env, exports);
     recurrentFunc(env, exports);
+    normalizers(env, exports);
     return exports;
 }
 

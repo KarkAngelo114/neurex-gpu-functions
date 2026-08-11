@@ -48,7 +48,8 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"loss.cl", "cce"},
     {"loss.cl", "bce"},
     {"recurrent.cl", "recurrentMatMul"},
-    {"recurrent.cl", "recurrentTimeDelta"}
+    {"recurrent.cl", "recurrentTimeDelta"},
+    {"normalizers.cl", "gradientClipping"},
 };
 
 

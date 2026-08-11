@@ -116,6 +116,7 @@
         "src/embeddings.cpp",
         "src/recurrent.cpp",
         "src/loss.cpp",
+        "src/normalizers.cpp",
         
       ],
       "include_dirs": [
