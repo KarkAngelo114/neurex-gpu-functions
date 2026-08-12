@@ -205,5 +205,5 @@ Napi::Value transConvBackwardWrapper(const Napi::CallbackInfo& info) {
 
 void transConvFunc(Napi::Env env, Napi::Object exports) {
     exports.Set("transConv", Napi::Function::New(env, transConvWrapper));
-    exports.Set("transConvBackward", Napi::Function::New(env, transConvBackwardWrapper))
+    exports.Set("transConvBackward", Napi::Function::New(env, transConvBackwardWrapper));
 }
