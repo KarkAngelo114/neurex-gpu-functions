@@ -4,7 +4,8 @@
 #include "gpu/gpu_context.h"
 #include <vector>
 #include <cmath>
-using IntArray = sts::vector<int>;
+
+using IntArray = std::vector<int>;
 
 
 static IntArray Vectorize(const Napi::Array& arr) {
