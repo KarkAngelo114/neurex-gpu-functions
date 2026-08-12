@@ -37,5 +37,7 @@ __kernel void scale_diff(
 
     if (i >= size) return;
 
-    output[i] = (arr1[i] - arr2[i]) * arr3[i];
+    float scale = 2.0f / size;
+
+    output[i] = (arr1[i] - arr2[i]) * arr3[i] * scale;
 }

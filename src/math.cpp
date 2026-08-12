@@ -143,7 +143,6 @@ Napi::Value scaleDiff_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array output = Napi::Float32Array::New(env, arr_length);
     clEnqueueReadBuffer(queue, output_arr, CL_TRUE, 0, sizeof(float) * arr_length, output.Data(), 0, nullptr, nullptr);
 
-    clFinish(queue);
     clReleaseMemObject(input_arr1);
     clReleaseMemObject(input_arr2);
     clReleaseMemObject(input_arr3);
@@ -157,15 +156,16 @@ Napi::Value scaleDiff_CPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
     Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>();
     Napi::Float32Array arr3 = info[2].As<Napi::Float32Array>();
-    size_t arr_length = arr1.ElementLength();
+    int arr_length = arr1.ElementLength();
     Napi::Float32Array output = Napi::Float32Array::New(env, arr_length);
+    float scale = 2.0f / arr_length;
 
     float* a1 = arr1.Data();
     float* a2 = arr2.Data();
     float* a3 = arr3.Data();
     float* o = output.Data();
 
-    for (size_t i = 0; i < arr_length; i++) o[i] = (a1[i] - a2[i]) * a3[i];
+    for (int i = 0; i < arr_length; i++) o[i] = (a1[i] - a2[i]) * a3[i] * scale;
 
     return output;
 }

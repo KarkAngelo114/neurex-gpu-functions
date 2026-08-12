@@ -1,6 +1,7 @@
 #include <napi.h>
 #include "gpu/gpu_context.h"
 #include "globals/globals.h"
+#include <CL/cl.h>
 #include <cmath>
 
 Napi::Value GradientClipping_GPU(const Napi::CallbackInfo& info) {

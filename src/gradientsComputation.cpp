@@ -421,6 +421,70 @@ Napi::Value recurrentBiasGradsAccumulation_CPU(const Napi::CallbackInfo& info) {
     return biasGrads_array;
 }
 
+Napi::Value accumulateKernelGradsForTransConv_CPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    Napi::Float32Array activation_outputs = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array deltas = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array weightGrads = info[2].As<Napi::Float32Array>();
+    int strides = info[3].As<Napi::Number>().Int32Value();
+    int filters = info[4].As<Napi::Number>().Int32Value();
+    IntArray inputShape = Vectorize(info[5].As<Napi::Array>());
+    IntArray outputShape = Vectorize(info[6].As<Napi::Array>());
+    IntArray weightShape = Vectorize(info[7].As<Napi::Array>());
+
+    int iH = inputShape[0];
+    int iW = inputShape[1];
+    int iD = inputShape[2];
+
+    int oH = outputShape[0];
+    int oW = outputShape[1];
+    int oD = outputShape[2];
+
+    int f = weightShape[0];
+    int kh = weightShape[1];
+    int kw = weightShape[2];
+    int d = weightShape[3];
+
+    int padH = std::max(0, (iH - 1) * strides + kh - oH);
+    int padW = std::max(0, (iW - 1) * strides + kw - oW);
+    int padTop = padH / 2;
+    int padLeft = padW / 2;
+
+    const float* activationData = activation_outputs.Data();
+    const float* deltaData = deltas.Data();
+    float* weightGradsData = weightGrads.Data();
+
+    for (int iy = 0; iy < iH; iy++) {
+        for (int ix = 0; ix < iW; ix++) {
+            int inputBase = (iy * iW + ix) * iD;
+
+            for (int ky = 0; ky < kh; ky++) {
+                int oy = iy * strides + ky - padTop;
+                if (oy < 0 || oy >= oH) continue;
+
+                for (int kx = 0; kx < kw; kx++) {
+                    int ox = ix * strides + kx - padLeft;
+                    if (ox < 0 || ox >= oW) continue;
+
+                    int deltaBase = (oy * oW + ox) * filters;
+
+                    for (int filter = 0; filter < filters; filter++) {
+                        float deltaVal = deltaData[deltaBase + filter];
+                        int gradBase = ((filter * kh + ky) * kw + kx) * iD;
+
+                        for (int c = 0; c < iD; c++) {
+                            weightGradsData[gradBase + c] += activationData[inputBase + c] * deltaVal;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return weightGrads;
+}
+
 // =================== wrapper ===================== //
 
 Napi::Value computeBiasGradsForConnected_LayerWrapper(const Napi::CallbackInfo& info) {
@@ -462,6 +526,11 @@ Napi::Value recurrentBiasGradsAccumulationWrapper(const Napi::CallbackInfo& info
     return recurrentBiasGradsAccumulation_CPU(info);
 }
 
+Napi::Value accumulateKernelGradsForTransConvWrapper(const Napi::CallbackInfo& info) {
+    return accumulateKernelGradsForTransConv_CPU(info);
+}
+
+
 /* ================ module exports ===================*/
 void GradientCalculationRegister(Napi::Env env, Napi::Object exports) {
     exports.Set("computeWeightGradientsForWeightsInConnectedLayer", Napi::Function::New(env, ComputeGradientForDenseWeightsWrapper));
@@ -470,4 +539,5 @@ void GradientCalculationRegister(Napi::Env env, Napi::Object exports) {
     exports.Set("computeBiasGradsForConv", Napi::Function::New(env, computeBiasGradsForConvWrapper));
     exports.Set("recurrentWeightGradsAccumulation", Napi::Function::New(env, recurrentWeightGradsAccumulationWrapper));
     exports.Set("recurrentBiasGradsAccumulation", Napi::Function::New(env, recurrentBiasGradsAccumulationWrapper));
+    exports.Set("accumulateKernelGradsForTransConv", Napi::Function::New(env, accumulateKernelGradsForTransConvWrapper));
 }
