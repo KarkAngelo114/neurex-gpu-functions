@@ -80,7 +80,7 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     cl_mem inputTensor = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputH * inputW * depth, input.Data(), nullptr);
     cl_mem weights = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * weightsArray.ElementLength(), weightsArray.Data(), nullptr);
     cl_mem biases = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * biasesArray.ElementLength(), biasesArray.Data(), nullptr);
-    cl_mem output_tensor = clCreateBuffer(context, CL_MEM_WRITE_ONLY | sizeof(float)* outputH * outputW * numFilters, nullptr, nullptr);
+    cl_mem output_tensor = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float)* outputH * outputW * numFilters, nullptr, nullptr);
 
     cl_kernel kernel = gpu.kernel("convolve");
 
