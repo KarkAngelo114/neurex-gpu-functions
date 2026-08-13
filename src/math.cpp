@@ -165,7 +165,9 @@ Napi::Value scaleDiff_CPU(const Napi::CallbackInfo& info) {
     float* a3 = arr3.Data();
     float* o = output.Data();
 
-    for (int i = 0; i < arr_length; i++) o[i] = (a1[i] - a2[i]) * a3[i] * scale;
+    for (int i = 0; i < arr_length; i++) {
+        o[i] = (a1[i] - a2[i]) * a3[i] * scale;
+    }
 
     return output;
 }

@@ -61,7 +61,6 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     IntArray inputShape = Vectorize(info[4].As<Napi::Array>());
     Napi::Float32Array weightsArray = info[5].As<Napi::Float32Array>();
     Napi::Float32Array biasesArray = info[6].As<Napi::Float32Array>();
-    int outputPointer = info[7].As<Napi::Number>().Int32Value();
 
     int numFilters = kernelShape[0];
     int kernelH = kernelShape[1];
@@ -77,11 +76,11 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
-
-    cl_mem inputTensor = clCreateBuffer(gpu.context(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputH * inputW * depth, input.Data(), nullptr);
-    cl_mem weights = clCreateBuffer(gpu.context(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * weightsArray.ElementLength(), weightsArray.Data(), nullptr);
-    cl_mem biases = clCreateBuffer(gpu.context(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * biasesArray.ElementLength(), biasesArray.Data(), nullptr);
-    cl_mem output_tensor = gpu.output(outputPointer);
+    cl_context context = gpu.context();
+    cl_mem inputTensor = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputH * inputW * depth, input.Data(), nullptr);
+    cl_mem weights = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * weightsArray.ElementLength(), weightsArray.Data(), nullptr);
+    cl_mem biases = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * biasesArray.ElementLength(), biasesArray.Data(), nullptr);
+    cl_mem output_tensor = clCreateBuffer(context, CL_MEM_WRITE_ONLY | sizeof(float)* outputH * outputW * numFilters, nullptr, nullptr);
 
     cl_kernel kernel = gpu.kernel("convolve");
 
@@ -115,7 +114,7 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     clReleaseMemObject(inputTensor);
     clReleaseMemObject(weights);
     clReleaseMemObject(biases);
-
+    clReleaseMemObject(output_tensor);
     return output;
 }
 

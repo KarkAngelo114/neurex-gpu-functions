@@ -20,7 +20,6 @@ Napi::Value GetEmbeddings_GPU(const Napi::CallbackInfo& info) {
     IntArray tokenArray = Vectorize(info[0].As<Napi::Array>());
     int embeddingDim = info[1].As<Napi::Number>().Int32Value();
     Napi::Float32Array params = info[2].As<Napi::Float32Array>();
-    int outputTemplateTensorPointer = info[3].As<Napi::Number>().Int32Value();
 
     int sequence_length = tokenArray.size();
     int totalSize = sequence_length * embeddingDim; // token array length * embeddingDim = output size
@@ -32,7 +31,7 @@ Napi::Value GetEmbeddings_GPU(const Napi::CallbackInfo& info) {
 
     cl_mem tokenBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(int) * sequence_length, tokenArray.data(), nullptr);
     cl_mem lookup = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* params.ElementLength(), params.Data(), nullptr);
-    cl_mem output = gpu.output(outputTemplateTensorPointer); // pre-allocated 1D CL buffer. Can do CL_MEM_READ_WRITE already
+    cl_mem output = clCreateBuffer(context, CL_MEM_WRITE_ONLY | sizeof(float)* totalSize, nullptr, nullptr); 
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &tokenBuffer);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &lookup);
@@ -50,9 +49,10 @@ Napi::Value GetEmbeddings_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array result = Napi::Float32Array::New(env, totalSize);
     clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float) * totalSize, result.Data(), 0, nullptr, nullptr);
 
-    clFinish(queue);
+    clReleaseMemObject(output)
     clReleaseMemObject(tokenBuffer);
     clReleaseMemObject(lookup);
+
 
     return result;
 
@@ -63,14 +63,15 @@ Napi::Value GetEmbeddings_CPU(const Napi::CallbackInfo& info) {
     IntArray tokenArray = Vectorize(info[0].As<Napi::Array>());
     int embeddingDim = info[1].As<Napi::Number>().Int32Value();
     Napi::Float32Array params = info[2].As<Napi::Float32Array>();
-    int outputTemplateTensorPointer = info[3].As<Napi::Number>().Int32Value();
+    int sequenceLength = tokenArray.size();
+    int totalSize = sequenceLength * embeddingDim;
 
-    FloatArray& output = const_cast<FloatArray&>(getGlobalOutputTensors(outputTemplateTensorPointer));
+    Napi::Float32Array outputVector = Napi::Float32Array::New(env, totalSize);
 
     float* lookup = params.Data();
+    float* output = outputVector.Data();
 
     // Iterate through each token in the sequence
-    int sequenceLength = tokenArray.size();
     for (int i = 0; i < sequenceLength; i++) {
         int tokenID = tokenArray[i];
         int startIdx = tokenID * embeddingDim;
@@ -81,11 +82,8 @@ Napi::Value GetEmbeddings_CPU(const Napi::CallbackInfo& info) {
         }
     }
 
-    // Convert output to Napi::Float32Array and return
-    Napi::Float32Array result = Napi::Float32Array::New(env, output.size());
 
-    std::copy(output.begin(), output.end(), result.Data());
-    return result;
+    return outputVector;
 }
 
 

@@ -27,7 +27,6 @@ Napi::Value MaxPooling_GPU(const Napi::CallbackInfo& info) {
     IntArray inputShape = Vectorize(info[2].As<Napi::Array>());
     IntArray outputShape = Vectorize(info[3].As<Napi::Array>());
     size_t strides = info[4].As<Napi::Number>().Int32Value();
-    int outputTensorTemplatePointer = info[5].As<Napi::Number>().Int32Value();
 
     int poolH = pool_size[0];
     int poolW = pool_size[1];
@@ -125,7 +124,6 @@ Napi::Value MaxPooling_CPU(const Napi::CallbackInfo& info) {
     IntArray inputShape = Vectorize(info[2].As<Napi::Array>());
     IntArray outputShape = Vectorize(info[3].As<Napi::Array>());
     size_t strides = info[4].As<Napi::Number>().Int32Value();
-    int outputTensorTemplatePointer = info[5].As<Napi::Number>().Int32Value();
     
     size_t poolH = pool_size[0];
     size_t poolW = pool_size[1];

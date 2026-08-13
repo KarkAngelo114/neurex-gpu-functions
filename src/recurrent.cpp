@@ -26,13 +26,13 @@ Napi::Value recurrentMatMul_GPU(const Napi::CallbackInfo& info) {
     IntArray recurrentWeightShape = Vectorize(info[3].As<Napi::Array>());
     Napi::Float32Array weight_data = info[4].As<Napi::Float32Array>();
     Napi::Float32Array biases_array = info[5].As<Napi::Float32Array>();
-    int outputTemplatePointer = info[6].As<Napi::Number>().Int32Value();
 
     int inputSize = inputWeightShape[0];
     int units = inputWeightShape[1];
     int range_input_weights = inputSize * units;
 
     Napi::Float32Array output_data = Napi::Float32Array::New(env, units);
+
     Napi::Float32Array input_weights_data = subarray(env, weight_data, 0, range_input_weights);
     Napi::Float32Array recurrent_weights_data = subarray(
         env, weight_data, range_input_weights,
@@ -49,7 +49,7 @@ Napi::Value recurrentMatMul_GPU(const Napi::CallbackInfo& info) {
     cl_mem input_weights = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * input_weights_data.ElementLength(), input_weights_data.Data(), nullptr);
     cl_mem recurrent_weights = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * recurrent_weights_data.ElementLength(), recurrent_weights_data.Data(), nullptr);
     cl_mem biases = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * biases_array.ElementLength(), biases_array.Data(), nullptr);
-    cl_mem output = gpu.output(outputTemplatePointer);
+    cl_mem output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float)* units, nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputs);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &prevHiddenState);
@@ -69,6 +69,7 @@ Napi::Value recurrentMatMul_GPU(const Napi::CallbackInfo& info) {
     clReleaseMemObject(input_weights);
     clReleaseMemObject(recurrent_weights);
     clReleaseMemObject(biases);
+    clReleaseMemObject(output);
 
     return output_data;
 }
