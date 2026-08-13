@@ -31,7 +31,7 @@ Napi::Value GetEmbeddings_GPU(const Napi::CallbackInfo& info) {
 
     cl_mem tokenBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(int) * sequence_length, tokenArray.data(), nullptr);
     cl_mem lookup = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* params.ElementLength(), params.Data(), nullptr);
-    cl_mem output = clCreateBuffer(context, CL_MEM_WRITE_ONLY | sizeof(float)* totalSize, nullptr, nullptr); 
+    cl_mem output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float)* totalSize, nullptr, nullptr); 
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &tokenBuffer);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &lookup);
@@ -49,7 +49,7 @@ Napi::Value GetEmbeddings_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array result = Napi::Float32Array::New(env, totalSize);
     clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float) * totalSize, result.Data(), 0, nullptr, nullptr);
 
-    clReleaseMemObject(output)
+    clReleaseMemObject(output);
     clReleaseMemObject(tokenBuffer);
     clReleaseMemObject(lookup);
 
