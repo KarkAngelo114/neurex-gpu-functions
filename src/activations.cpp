@@ -245,6 +245,7 @@ Napi::Value LinearWrapper(const Napi::CallbackInfo& info) {
 /* ========================= Derivatives ============================*/
 
 Napi::Value DReLu_GPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
     size_t input_size = input.ElementLength();
 
@@ -262,23 +263,28 @@ Napi::Value DReLu_GPU(const Napi::CallbackInfo& info) {
     size_t globalSize = (size_t)input_size;
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
-    clEnqueueReadBuffer(queue, inputData, CL_TRUE, 0, sizeof(float)* input_size, input.Data(), 0, nullptr, nullptr);
+    Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
+    clEnqueueReadBuffer(queue, inputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
 
     clFinish(queue);
     clReleaseMemObject(inputData);
 
-    return input;
+    return output;
 }
 
 Napi::Value DReLu_CPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
-    float* data = input.Data();
     size_t input_size = input.ElementLength();
+    
+    Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
+    float* inData = input.Data();
+    float* outData = output.Data();
 
     for (size_t i = 0; i < input_size; i++) {
-        data[i] = data[i] > 0.0f ? 1.0f : 0.0f;
+        outData[i] = inData[i] > 0.0f ? 1.0f : 0.0f;
     }
-    return input;
+    return output;
 }
 
 Napi::Value DReLuWrapper(const Napi::CallbackInfo& info) {
@@ -290,6 +296,7 @@ Napi::Value DReLuWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value DSigmoid_GPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
     int input_size = input.ElementLength();
 
@@ -307,24 +314,29 @@ Napi::Value DSigmoid_GPU(const Napi::CallbackInfo& info) {
     size_t globalSize = (size_t)input_size;
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
-    clEnqueueReadBuffer(queue, inputData, CL_TRUE, 0, sizeof(float)* input_size, input.Data(), 0, nullptr, nullptr);
+    Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
+    clEnqueueReadBuffer(queue, inputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
 
     clFinish(queue);
     clReleaseMemObject(inputData);
 
-    return input;
+    return output;
 }
 
 Napi::Value DSigmoid_CPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
-    float* data = input.Data();
     size_t input_size = input.ElementLength();
+    
+    Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
+    float* inData = input.Data();
+    float* outData = output.Data();
 
     for (size_t i = 0; i < input_size; i++) {
-        float s = 1.0f / (1.0f + std::exp(-data[i]));
-        data[i] = s * (1.0f - s);
+        float s = 1.0f / (1.0f + std::exp(-inData[i]));
+        outData[i] = s * (1.0f - s);
     }
-    return input;
+    return output;
 }
 
 Napi::Value DSigmoidWrapper(const Napi::CallbackInfo& info) {
@@ -336,6 +348,7 @@ Napi::Value DSigmoidWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value DTanh_GPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
     size_t input_size = input.ElementLength();
 
@@ -353,24 +366,29 @@ Napi::Value DTanh_GPU(const Napi::CallbackInfo& info) {
     size_t globalSize = (size_t)input_size;
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
-    clEnqueueReadBuffer(queue, inputData, CL_TRUE, 0, sizeof(float)* input_size, input.Data(), 0, nullptr, nullptr);
+    Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
+    clEnqueueReadBuffer(queue, inputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
 
     clFinish(queue);
     clReleaseMemObject(inputData);
     
-    return input;
+    return output;
 }
 
 Napi::Value DTanh_CPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
-    float* data = input.Data();
     size_t input_size = input.ElementLength();
+    
+    Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
+    float* inData = input.Data();
+    float* outData = output.Data();
 
     for (size_t i = 0; i < input_size; i++) {
-        float t = std::tanh(data[i]);
-        data[i] = 1.0f - (t * t);
+        float t = std::tanh(inData[i]);
+        outData[i] = 1.0f - (t * t);
     }
-    return input;
+    return output;
 }
 
 Napi::Value DTanhWrapper(const Napi::CallbackInfo& info) {
