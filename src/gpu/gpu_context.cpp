@@ -50,6 +50,9 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"recurrent.cl", "recurrentMatMul"},
     {"recurrent.cl", "recurrentTimeDelta"},
     {"normalizers.cl", "gradientClipping"},
+    {"transConv.cl", "transConv"},
+    {"transConv.cl", "transConvBackward"},
+    {"computeKernelGradients.cl", "accumulateTransConvKernelGrads"}
 };
 
 
@@ -113,7 +116,6 @@ bool GpuContext::initialize(const std::string& kernelBasePath, std::string& erro
         return false;
     }
 
-    // OpenCL 1.2 path; if you target 2.0+ use clCreateCommandQueueWithProperties.
     queue_ = clCreateCommandQueue(context_, device_, 0, &err);
     if (err != CL_SUCCESS) { 
         errorOut = "clCreateCommandQueue failed"; 
