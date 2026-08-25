@@ -403,20 +403,20 @@ Napi::Value DSoftmaxWrapper(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array arr1_input = info[0].As<Napi::Float32Array>();
     Napi::Float32Array arr2_input = info[1].As<Napi::Float32Array>();
-    int arr_size = input.ElementLength();
+    int arr_size = arr1_input.ElementLength();
 
     Napi::Float32Array outputArr = Napi::Float32Array::New(env, arr_size);
 
     float* arr1 = arr1_input.Data();
     float* arr2 = arr2_input.Data();
-    float output = outputArr.Data();
+    float* output = outputArr.Data();
 
     float dot_product = 0.0f;
-    for (int i = 0; i < arr1.length; i++) {
+    for (int i = 0; i < arr_size; i++) {
         dot_product += arr2[i] * arr1[i];
     }
 
-    for (int i = 0; i < arr1.length; i++) {
+    for (int i = 0; i < arr_size; i++) {
         output[i] = arr1[i] * (arr2[i] - dot_product);
     }
 
