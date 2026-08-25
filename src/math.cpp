@@ -184,7 +184,7 @@ Napi::Value Scale_GPU(const Napi::CallbackInfo& info) {
     cl_context context = gpu.context();
 
     // 2. Create buffer
-    cl_mem input = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputArray.ElementLength(), inputArray.Data(), nullptr);
+    cl_mem input = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) *size, inputArray.Data(), nullptr);
 
     // 3. Set Arguments
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &input);
@@ -192,12 +192,12 @@ Napi::Value Scale_GPU(const Napi::CallbackInfo& info) {
     clSetKernelArg(kernel, 2, sizeof(int), &size);
 
     // 4. Execute
-    size_t global = grads.ElementLength();
+    size_t global = (size_t)size;
     clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &global, nullptr, 0, nullptr, nullptr);
 
     // 5. Read back into a NEW Float32Array
-    Napi::Float32Array scaledOutput = Napi::Float32Array::New(env, inputArray.ElementLength());
-    clEnqueueReadBuffer(queue, input, CL_TRUE, 0, sizeof(float) * inputArray.ElementLength(), scaledOutput.Data(), 0, nullptr, nullptr);
+    Napi::Float32Array scaledOutput = Napi::Float32Array::New(env, size);
+    clEnqueueReadBuffer(queue, input, CL_TRUE, 0, sizeof(float) * size, scaledOutput.Data(), 0, nullptr, nullptr);
 
     clReleaseMemObject(input);
     
