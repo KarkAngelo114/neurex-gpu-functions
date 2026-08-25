@@ -104,7 +104,6 @@
         "src/convolve.cpp",
         "src/gradientsComputation.cpp",
         "src/optimizer_internals.cpp",
-        "src/gradientScaler.cpp",
         "src/math.cpp",
         "src/pooling.cpp",
         "src/gpuTest.cpp",

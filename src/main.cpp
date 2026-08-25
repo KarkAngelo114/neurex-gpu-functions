@@ -5,7 +5,6 @@ void MatMulRegister(Napi::Env env, Napi::Object exports);
 void ConvolveRegister(Napi::Env env, Napi::Object exports);
 void GradientCalculationRegister(Napi::Env env, Napi::Object exports);
 void OptimizerInternals(Napi::Env env, Napi::Object exports);
-void ScaleGradients(Napi::Env env, Napi::Object exports);
 void Math_OPS(Napi::Env env, Napi::Object exports);
 void Poolings(Napi::Env env, Napi::Object exports);
 void detectGPU(Napi::Env env, Napi::Object exports);
@@ -24,7 +23,6 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     ConvolveRegister(env, exports);
     GradientCalculationRegister(env, exports);
     OptimizerInternals(env, exports);
-    ScaleGradients(env, exports);
     Math_OPS(env, exports);
     Poolings(env, exports);
     detectGPU(env, exports);

@@ -17,6 +17,7 @@ struct kernelDef {
 // {`"kernel file"`,`"<kernel function name>"`}
 static std::vector<kernelDef> kernel_Definitions = {
     {"matmul.cl", "matmul"},
+    {"matmul.cl", "dot_product"},
     {"delta_matmul.cl", "delta_matmul"},
     {"convolve.cl", "convolve"},
     {"delta_convolve.cl", "delta_convolve"},
@@ -37,6 +38,7 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"optimizers.cl", "adam"},
     {"math.cl", "element_wise_mul"},
     {"math.cl", "element_wise_sub"},
+    {"math.cl", "scale"},
     {"math.cl", "scale_diff"},
     {"utils.cl", "apply_padding"},
     {"utils.cl", "dilate"},

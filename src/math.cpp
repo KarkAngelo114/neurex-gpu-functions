@@ -172,6 +172,53 @@ Napi::Value scaleDiff_CPU(const Napi::CallbackInfo& info) {
     return output;
 }
 
+Napi::Value Scale_GPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env(); // 1. Define env
+    Napi::Float32Array inputArray = info[0].As<Napi::Float32Array>();
+    int size = inputArray.ElementLength();
+    int scalingFactor = info[1].As<Napi::Number>().Int32Value();
+
+    auto& gpu = GpuContext::instance();
+    cl_command_queue queue = gpu.queue();
+    cl_kernel kernel = gpu.kernel("scale");
+    cl_context context = gpu.context();
+
+    // 2. Create buffer
+    cl_mem input = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputArray.ElementLength(), inputArray.Data(), nullptr);
+
+    // 3. Set Arguments
+    clSetKernelArg(kernel, 0, sizeof(cl_mem), &input);
+    clSetKernelArg(kernel, 1, sizeof(int), &scalingFactor);
+    clSetKernelArg(kernel, 2, sizeof(int), &size);
+
+    // 4. Execute
+    size_t global = grads.ElementLength();
+    clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &global, nullptr, 0, nullptr, nullptr);
+
+    // 5. Read back into a NEW Float32Array
+    Napi::Float32Array scaledOutput = Napi::Float32Array::New(env, inputArray.ElementLength());
+    clEnqueueReadBuffer(queue, input, CL_TRUE, 0, sizeof(float) * inputArray.ElementLength(), scaledOutput.Data(), 0, nullptr, nullptr);
+
+    clReleaseMemObject(input);
+    
+    return inputArray;
+}
+
+Napi::Value Scale_CPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    Napi::Float32Array inputArray = info[0].As<Napi::Float32Array>();
+    int scalingFactor = info[1].As<Napi::Number>().Int32Value();
+
+    float* data = inputArray.Data();
+    size_t length = inputArray.ElementLength();
+
+    for (size_t i = 0; i < length; i++) {
+        data[i] /= scalingFactor;
+    }
+
+    return inputArray;
+}
+
 Napi::Value element_wise_mul_wrapper(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
@@ -200,8 +247,18 @@ Napi::Value scaleDiffWrapper(const Napi::CallbackInfo& info) {
 
 }
 
+Napi::Value ScalerWrapper(const Napi::CallbackInfo& info) {
+    if (get_Global_Boolean_On_GPU()) {
+        return Scale_GPU(info);
+    }
+
+    return Scale_CPU(info);
+    
+}
+
 void Math_OPS(Napi::Env env, Napi::Object exports) {
     exports.Set("element_wise_mul", Napi::Function::New(env, element_wise_mul_wrapper));
     exports.Set("element_wise_sub", Napi::Function::New(env, element_wise_sub_wrapper));
     exports.Set("scaleDiff", Napi::Function::New(env, scaleDiffWrapper));
+    exports.Set("scale", Napi::Function::New(env, ScalerWrapper));
 }

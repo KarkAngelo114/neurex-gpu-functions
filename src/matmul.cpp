@@ -6,6 +6,7 @@
 #include "globals/globals.h"
 #include <algorithm>
 #include <vector>
+#include "functions/functions.h"
 
 using Array = std::vector<float>;
 
@@ -143,6 +144,70 @@ Napi::Value DeltaMatMul_CPU(const Napi::CallbackInfo& info) {
     return output;
 }
 
+Napi::Value DotProduct_GPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    Napi::Float32Array arr1_input = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array arr2_input = info[1].As<Napi::Float32Array>();
+    int inputSize = info[2].As<Napi::Number>().Int32Value();
+    int outputSize = info[3].As<Napi::Number>().Int32Value();
+
+    Napi::Float32Array outputTensor = Napi::Float32Array::New(env, outputSize);
+
+    auto& gpu = GpuContext::instance();
+    cl_context context = gpu.context();
+    cl_command_queue queue = gpu.queue();
+    cl_kernel kernel = gpu.kernel("dot_product");
+
+    cl_mem inputArr1 = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* arr1_input.ElementLength(), arr1_input.Data(), nullptr);
+    cl_mem inputArr2 = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* arr2_input.ElementLength(), arr2_input.Data(), nullptr);
+    cl_mem output = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* outputSize, outputTensor.Data(), nullptr);
+
+    clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputArr1);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), &inputArr2);
+    clSetKernelArg(kernel, 2, sizeof(cl_mem), &output);
+    clSetKernelArg(kernel, 3, sizeof(int), &inputSize);
+    clSetKernelArg(kernel, 4, sizeof(int), &outputSize);
+
+    size_t globalSize = (size_t)outputSize;
+
+    clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float)* outputSize, outputTensor.Data(), 0, nullptr, nullptr );
+
+    clReleaseMemObject(inputArr1);
+    clReleaseMemObject(inputArr2);
+    clReleaseMemObject(output);
+
+    return outputTensor;
+}
+
+Napi::Value DotProduct_CPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    Napi::Float32Array arr1_input = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array arr2_input = info[1].As<Napi::Float32Array>();
+    int inputSize = info[2].As<Napi::Number>().Int32Value();
+    int outputSize = info[3].As<Napi::Number>().Int32Value();
+
+    Napi::Float32Array outputTensor = Napi::Float32Array::New(env, outputSize);
+
+    float* arr1 = arr1_input.Data();
+    float* arr2 = arr2_input.Data();
+    float* output = outputTensor.Data();
+
+    for (int i = 0; i < inputSize; i++) {
+        const float inputVal = arr1[i];
+        const int rowStart = i * outputSize;
+
+        for (int j = 0; j < outputSize; j++) {
+            output[j] += inputVal * arr2[rowStart + j];
+        }
+    }
+
+    return outputTensor;
+
+}
+
 // ================== Wrappers ====================== //
 Napi::Value MatMulWrapper(const Napi::CallbackInfo& info) {
 
@@ -160,8 +225,16 @@ Napi::Value DeltaMatMulWrapper(const Napi::CallbackInfo& info) {
     return DeltaMatMul_CPU(info);
 }
 
+Napi::Value DotProductWrapper(const Napi::CallbackInfo& info) {
+    if (get_Global_Boolean_On_GPU()) {
+        return DotProduct_GPU(info);
+    }
+    return DotProduct_CPU(info);
+}
+
 // =================== MODULE EXPORT ===================
 void MatMulRegister(Napi::Env env, Napi::Object exports) {
     exports.Set("MatMul", Napi::Function::New(env, MatMulWrapper));
     exports.Set("DeltaMatMul", Napi::Function::New(env, DeltaMatMulWrapper));
+    exports.Set("dotProduct", Napi::Function::New(env, DotProductWrapper));
 }

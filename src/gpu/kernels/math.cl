@@ -41,3 +41,18 @@ __kernel void scale_diff(
 
     output[i] = (arr1[i] - arr2[i]) * arr3[i] * scale;
 }
+
+
+__kernel void scale(
+    __global float* input,
+    const int scalingFactor,
+    const int size
+) {
+
+    int i = get_global_id(0);
+    
+    if (size > 0) {
+        input[i] = input[i] / (float)scalingFactor;
+    }
+
+}
