@@ -229,7 +229,7 @@ Mapi::Value accumulate_element_wise_mul_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
     Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>();
     Napi::Float32Array arr3 = info[2].As<Napi::Float32Array>();
-    int size = inputArray1.ElementLength();
+    int size = arr1.ElementLength();
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
