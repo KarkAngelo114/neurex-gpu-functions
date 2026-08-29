@@ -75,7 +75,7 @@ Napi::Value LayerNorm_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array outputTensor = Napi::Float32Array::New(env, size);
 
     auto& gpu = GpuContext::instance();
-    cl_command queue = gpu.queue();
+    cl_command_queue queue = gpu.queue();
     cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("layer_norm_standard_size");
 
