@@ -1,6 +1,5 @@
 // src/matmul.cpp
 #include <napi.h>
-#include <omp.h>
 #include <CL/cl.h>
 #include "gpu/gpu_context.h"
 #include "globals/globals.h"
@@ -68,12 +67,11 @@ Napi::Value MatMul_CPU(const Napi::CallbackInfo& info) {
     float* b = biases.Data();
     float* output = outputVector.Data();
 
-    #pragma omp parallel for
     for (int i = 0; i < outputSize; i++) {
         output[i] = b[i];
     }
     
-    #pragma omp parallel for
+
     for (int i = 0; i < inputSize; i++) {
         float v = in[i];
         int offset = i * outputSize;
@@ -135,7 +133,6 @@ Napi::Value DeltaMatMul_CPU(const Napi::CallbackInfo& info) {
     const float* w = weights.Data();
     float* o = output.Data();
 
-    #pragma omp parallel for
     for (int i = 0; i < inputSize; i++) {
         float sum = 0.0f;
         size_t offset = i * outputSize;
@@ -198,7 +195,6 @@ Napi::Value DotProduct_CPU(const Napi::CallbackInfo& info) {
     float* arr2 = arr2_input.Data();
     float* output = outputTensor.Data();
 
-    #pragma omp parallel for
     for (int i = 0; i < inputSize; i++) {
         const float inputVal = arr1[i];
         const int rowStart = i * outputSize;

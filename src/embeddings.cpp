@@ -1,5 +1,4 @@
 #include <napi.h>
-#include <omp.h>
 #include <CL/cl.h>
 #include "globals/globals.h"
 #include "gpu/gpu_context.h"
@@ -73,7 +72,6 @@ Napi::Value GetEmbeddings_CPU(const Napi::CallbackInfo& info) {
     float* output = outputVector.Data();
 
     // Iterate through each token in the sequence
-    #pragma omp parallel for
     for (int i = 0; i < sequenceLength; i++) {
         int tokenID = tokenArray[i];
         int startIdx = tokenID * embeddingDim;
@@ -137,8 +135,7 @@ Napi::Value ReturnEmbeddings_CPU(const Napi::CallbackInfo& info) {
 
     float* deltaData = delta.Data();
     float* gradsData = weightGrads.Data();
-
-    #pragma omp parallel for
+    
     for (int i = 0; i < (int)activation_outputs.size(); i++) {
         int tokenId = activation_outputs[i];
 

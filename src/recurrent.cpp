@@ -1,6 +1,5 @@
 #include <napi.h>
 #include <CL/cl.h>
-#include <omp.h>
 #include "gpu/gpu_context.h"
 #include "globals/globals.h"
 #include "functions/functions.h"
@@ -101,7 +100,6 @@ Napi::Value recurrentMatMul_CPU(const Napi::CallbackInfo& info) {
     float* biases = biases_array.Data();
     float* output = output_data.Data();
 
-    #pragma omp parallel for
     for (int j = 0; j < units; j++) {
         float z = biases[j];
 
@@ -189,7 +187,6 @@ Napi::Value recurrentTimeDelta_CPU(const Napi::CallbackInfo& info) {
     float* weights = weights_array.Data();
     float* output = output_data.Data();
 
-    #pragma omp parallel for
     for (int i = 0; i < c; i++) {
         float sum = 0.0f;
         int offset = i * c;

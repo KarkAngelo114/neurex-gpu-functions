@@ -1,6 +1,5 @@
 #include <napi.h>
 #include <CL/cl.h>
-#include <omp.h>
 #include <cmath>
 #include <limits>
 #include "gpu/gpu_context.h"
@@ -144,7 +143,6 @@ Napi::Value MaxPooling_CPU(const Napi::CallbackInfo& info) {
     int* max = maxArray.Data();
     float* out = output.Data();
 
-    #pragma omp parallel for
     for (int d = 0; d < (int)inputD; d++) {
         for (size_t i = 0; i < outputH; i++) {
             for (size_t j = 0;  j < outputW; j++) {
@@ -244,7 +242,6 @@ Napi::Value MaxPoolDelta_CPU(const Napi::CallbackInfo& info) {
     int* indices = indicesArray.Data();
     float* o = output.Data();
 
-    #pragma omp parallel for
     for (int i = 0; i < elementLength; i++) {
         int idx = indices[i];
         o[idx] += inputData[i]; 

@@ -1,5 +1,4 @@
 #include <napi.h>
-#include <omp.h>
 #include <CL/cl.h>
 #include <vector>
 #include <cstring>

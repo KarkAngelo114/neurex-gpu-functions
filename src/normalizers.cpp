@@ -81,7 +81,6 @@ Napi::Value LayerNorm_GPU(const Napi::CallbackInfo& info) {
 
     // compute mean
     float mean = 0.0f;
-    #pragma omp parallel for reduction(+:mean)
     for (int i = 0; i < size; i++) {
         mean += input[i];
     }
@@ -91,7 +90,6 @@ Napi::Value LayerNorm_GPU(const Napi::CallbackInfo& info) {
 
     // compute variance
     float variance = 0.0f;
-    #pragma omp parallel for reduction(+:variance)
     for (int i = 0; i < size; i++) {
         float diff = input[i] - mean;
         variance += diff * diff;
@@ -148,7 +146,6 @@ Napi::Value LayerNorm_CPU(const Napi::CallbackInfo& info) {
     float* output = outputTensor.Data();
 
     float mean = 0.0f;
-    #pragma omp parallel for reduction(+:mean)
     for (int i = 0; i < size; i++) {
         mean += input[i];
     }
@@ -156,7 +153,6 @@ Napi::Value LayerNorm_CPU(const Napi::CallbackInfo& info) {
     mean /= size;
 
     float variance = 0.0f;
-    #pragma omp parallel for reduction(+:variance)
     for (int i = 0; i < size; i++) {
         float diff = input[i] - mean;
         variance += diff * diff;

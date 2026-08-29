@@ -3,7 +3,6 @@
 #include "gpu/gpu_context.h"
 #include "globals/globals.h"
 #include "functions/functions.h"
-#include <omp.h>
 #include <vector>
 #include <cmath>
 using IntArray = std::vector<int>;
@@ -73,7 +72,6 @@ Napi::Value ComputeGradientForDenseWeights_CPU(const Napi::CallbackInfo& info) {
     float* d = deltas.Data();
     float* wg = weightGrads.Data();
 
-    #pragma omp parallel for
     for (int i = 0; i < inputSize; i++) {
         float inputVal = a[i];
         int offset = i * outputSize;
@@ -124,7 +122,6 @@ Napi::Value computeBiasGradsForConnected_Layer_CPU(const Napi::CallbackInfo& inf
     float* d = deltas.Data();
     size_t length = biasgrads.ElementLength();
 
-    #pragma omp parallel for
     for (int i = 0; i < length; i++) {
         bg[i] += d[i];
     }
@@ -230,7 +227,6 @@ Napi::Value computeKernelGradients_CPU(const Napi::CallbackInfo& info) {
     float* delta = deltaTensor.Data();
     float* weightGrads = weightGradsTensor.Data();
 
-    #pragma omp parallel for
     for (int f = 0; f < Cout; f++) {
         for (int kh = 0; kh < Kh; kh++) {
             for (int kw = 0; kw < Kw; kw++) {
@@ -336,7 +332,6 @@ Napi::Value computeBiasGradsForConv_CPU(const Napi::CallbackInfo& info) {
     float* bg = biasGrads.Data();
     float* d = deltas.Data();
 
-    #pragma omp parallel for
     for (int f = 0; f < numFilters; f++) {
         float sum = 0.0f;
 
@@ -414,7 +409,6 @@ Napi::Value recurrentBiasGradsAccumulation_CPU(const Napi::CallbackInfo& info) {
     std::vector<const float*> deltaTs = ExtractFloat32ArrayPointers(deltaTsJS);
     float* biasGrads = biasGrads_array.Data();
 
-    #pragma omp parallel for
     for (int t = 0; t < sequenceLength; t++) {
         const float* delta_time_step = deltaTs[t];
 
@@ -535,7 +529,6 @@ Napi::Value accumulateKernelGradsForTransConv_CPU(const Napi::CallbackInfo& info
     const float* deltaData = deltas.Data();
     float* weightGradsData = weightGrads.Data();
 
-    #pragma omp parallel for
     for (int iy = 0; iy < iH; iy++) {
         for (int ix = 0; ix < iW; ix++) {
             int inputBase = (iy * iW + ix) * iD;
