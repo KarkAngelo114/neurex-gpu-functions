@@ -46,14 +46,15 @@ Napi::Value element_wise_mul_CPU(const Napi::CallbackInfo& info) {
     
     Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
     Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>();
-    size_t arr_length = arr1.ElementLength();
+    int arr_length = arr1.ElementLength();
     Napi::Float32Array output = Napi::Float32Array::New(env, arr_length);
 
     float* a1 = arr1.Data();
     float* a2 = arr2.Data();
     float* o = output.Data();
 
-    for (size_t i = 0; i < arr_length; i++) {
+    #pragma omp parallel for
+    for (int i = 0; i < arr_length; i++) {
         o[i] = a1[i] * a2[i];
     }
 
@@ -100,14 +101,17 @@ Napi::Value element_wise_sub_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
     Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>();
-    size_t arr_length = arr1.ElementLength();
+    int arr_length = arr1.ElementLength();
     Napi::Float32Array output = Napi::Float32Array::New(env, arr_length);
 
     float* a1 = arr1.Data();
     float* a2 = arr2.Data();
     float* o = output.Data();
 
-    for (size_t i = 0; i < arr_length; i++) o[i] = a1[i] - a2[i]; 
+    #pragma omp parallel for
+    for (int i = 0; i < arr_length; i++) {
+        o[i] = a1[i] - a2[i];
+    } 
 
     return output;
 }
@@ -165,6 +169,7 @@ Napi::Value scaleDiff_CPU(const Napi::CallbackInfo& info) {
     float* a3 = arr3.Data();
     float* o = output.Data();
 
+    #pragma omp parallel for
     for (int i = 0; i < arr_length; i++) {
         o[i] = (a1[i] - a2[i]) * a3[i] * scale;
     }
@@ -210,13 +215,63 @@ Napi::Value Scale_CPU(const Napi::CallbackInfo& info) {
     int scalingFactor = info[1].As<Napi::Number>().Int32Value();
 
     float* data = inputArray.Data();
-    size_t length = inputArray.ElementLength();
+    int length = inputArray.ElementLength();
 
-    for (size_t i = 0; i < length; i++) {
+    #pragma omp parallel for
+    for (int i = 0; i < length; i++) {
         data[i] /= scalingFactor;
     }
 
     return inputArray;
+}
+
+Mapi::Value accumulate_element_wise_mul_GPU(const Napi::CallbackInfo& info) {
+    Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array arr3 = info[2].As<Napi::Float32Array>();
+    int size = inputArray1.ElementLength();
+
+    auto& gpu = GpuContext::instance();
+    cl_command_queue queue = gpu.queue();
+    cl_context context = gpu.context();
+    cl_kernel kernel = gpu.kernel("accumulate_element_wise_mul");
+
+    cl_mem input_arr1 = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * size, arr1.Data(), nullptr);
+    cl_mem input_arr2 = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * size, arr2.Data(), nullptr);
+    cl_mem input_arr3 = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * size, arr3.Data(), nullptr);
+
+    clSetKernelArg(kernel, 0, sizeof(cl_mem), &input_arr1);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), &input_arr2);
+    clSetKernelArg(kernel, 2, sizeof(cl_mem), &input_arr3);
+    clSetKernelArg(kernel, 3, sizeof(int), &size);
+    
+    size_t globalSize = (size_t)size;
+    clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
+
+    clEnqueueReadBuffer(queue, input_arr3, CL_TRUE, 0, sizeof(float) * size, arr3.Data(), 0, nullptr, nullptr);
+
+    clReleaseMemObject(input_arr1);
+    clReleaseMemObject(input_arr2);
+    clReleaseMemObject(input_arr3);
+
+    return arr3;
+}
+
+Napi::Value accumulate_element_wise_mul_CPU(const Napi::CallbackInfo& info) {
+    Napi::Float32Array inputArray1 = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array inputArray2 = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array inputArray3 = info[2].As<Napi::Float32Array>();
+
+    float* arr1 = inputArray1.Data();
+    float* arr2 = inputArray2.Data();
+    float* arr3 = inputArray3.Data();
+
+    #pragma omp parallel for
+    for (int i = 0; i < delta.length; i++) {
+        arr3[i] += arr2[i] * arr1[i];
+    }
+
+    return inputArray3;
 }
 
 Napi::Value element_wise_mul_wrapper(const Napi::CallbackInfo& info) {
@@ -256,9 +311,17 @@ Napi::Value ScalerWrapper(const Napi::CallbackInfo& info) {
     
 }
 
+Napi::Value accumulate_element_wise_mul_wrapper(const Napi::CallbackInfo& info) {
+    if (get_Global_Boolean_On_GPU()) {
+        return accumulate_element_wise_mul_GPU(info);
+    }
+    return accumulate_element_wise_mul_CPU(info);
+}
+
 void Math_OPS(Napi::Env env, Napi::Object exports) {
     exports.Set("element_wise_mul", Napi::Function::New(env, element_wise_mul_wrapper));
     exports.Set("element_wise_sub", Napi::Function::New(env, element_wise_sub_wrapper));
     exports.Set("scaleDiff", Napi::Function::New(env, scaleDiffWrapper));
     exports.Set("scale", Napi::Function::New(env, ScalerWrapper));
+    exports.Set("accumulate_element_wise_mul", Napi::Function::New(env, accumulate_element_wise_mul_wrapper));
 }

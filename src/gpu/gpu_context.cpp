@@ -40,6 +40,7 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"math.cl", "element_wise_sub"},
     {"math.cl", "scale"},
     {"math.cl", "scale_diff"},
+    {"math.cl", "accumulate_element_wise_mul"},
     {"utils.cl", "apply_padding"},
     {"utils.cl", "dilate"},
     {"maxpool.cl","maxpooldelta"},
@@ -52,6 +53,7 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"recurrent.cl", "recurrentMatMul"},
     {"recurrent.cl", "recurrentTimeDelta"},
     {"normalizers.cl", "gradientClipping"},
+    {"normalizers.cl", "layer_norm_standard_size"},
     {"transConv.cl", "transConv"},
     {"transConv.cl", "transConvBackward"},
     {"computeKernelGradients.cl", "accumulateTransConvKernelGrads"}

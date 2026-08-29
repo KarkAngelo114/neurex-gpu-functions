@@ -1,5 +1,6 @@
 #include <napi.h>
 #include <CL/cl.h>
+#include <omp.h>
 #include "globals/globals.h"
 #include "gpu/gpu_context.h"
 #include <vector>
@@ -144,6 +145,7 @@ Napi::Value transConv_CPU(const Napi::CallbackInfo& info) {
     
 
     // set biases before hand
+    #pragma omp parallel for
     for (int y = 0; y < oH; y++) {
         for (int x = 0; x < oW; x++) {
 
@@ -155,6 +157,7 @@ Napi::Value transConv_CPU(const Napi::CallbackInfo& info) {
         }
     }
 
+    #pragma omp parallel for
     for (int iy = 0; iy < iH; iy++) {
         for (int ix = 0; ix < iW; ix++) {
 
@@ -313,6 +316,7 @@ Napi::Value transConvBackward_CPU(const Napi::CallbackInfo& info) {
     float* weights = weightsArray.Data();
     float* deltaInput = outputTensor.Data();
 
+    #pragma omp parallel for
     for (int iy = 0; iy < iH; iy++) {
         for (int ix = 0; ix < iW; ix++) {
             for (int ky = 0; ky < kh; ky++) {

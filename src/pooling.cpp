@@ -144,7 +144,8 @@ Napi::Value MaxPooling_CPU(const Napi::CallbackInfo& info) {
     int* max = maxArray.Data();
     float* out = output.Data();
 
-    for (size_t d = 0; d < inputD; d++) {
+    #pragma omp parallel for
+    for (int d = 0; d < (int)inputD; d++) {
         for (size_t i = 0; i < outputH; i++) {
             for (size_t j = 0;  j < outputW; j++) {
                 float maxVal = -std::numeric_limits<float>::infinity();
@@ -234,6 +235,7 @@ Napi::Value MaxPoolDelta_CPU(const Napi::CallbackInfo& info) {
     int H = info[2].As<Napi::Number>().Int32Value();
     int W = info[3].As<Napi::Number>().Int32Value();
     int D = info[4].As<Napi::Number>().Int32Value();
+    int elementLength = indicesArray.ElementLength();
     int size = H * W * D;
 
     Napi::Float32Array output = Napi::Float32Array::New(env, size);
@@ -242,7 +244,8 @@ Napi::Value MaxPoolDelta_CPU(const Napi::CallbackInfo& info) {
     int* indices = indicesArray.Data();
     float* o = output.Data();
 
-    for (size_t i = 0; i < indicesArray.ElementLength(); i++) {
+    #pragma omp parallel for
+    for (int i = 0; i < elementLength; i++) {
         int idx = indices[i];
         o[idx] += inputData[i]; 
     }

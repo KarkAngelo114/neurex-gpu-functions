@@ -171,7 +171,7 @@ Napi::Value Convolve_CPU(const Napi::CallbackInfo& info) {
                         int inputBase = (inY * inputW + inX) * depth;
                         int kernelBase = filterOffset + (ky * kernelW + kx) * depth;
                         int c = 0;
-
+                        
                         for (; c <= depth - 4; c += 4) {
                             sum += input[inputBase + c] * weights[kernelBase + c];
                             sum += input[inputBase + c + 1] * weights[kernelBase + c + 1];

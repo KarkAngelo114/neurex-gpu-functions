@@ -56,3 +56,16 @@ __kernel void scale(
     }
 
 }
+
+__kernel void accumulate_element_wise_mul(
+    __global const float* arr1,
+    __global const float* arr2,
+    __global float* arr3,
+    const int size
+) {
+    int i = get_global_id(0);
+
+    if (i >= size) return;
+
+    arr3[i] += arr2[i] * arr1[i];
+}

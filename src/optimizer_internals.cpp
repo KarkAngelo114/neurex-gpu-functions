@@ -64,9 +64,9 @@ Napi::Value SGD_CPU(const Napi::CallbackInfo& info) {
     float* g = grads.Data();
     float* v = velocity.Data();
 
+    #pragma omp parallel for
     for (size_t i = 0; i < element_length; i++) {
         v[i] = momentum * v[i] + g[i];
-
         p[i] -= lr * v[i];
     }
 
@@ -144,14 +144,15 @@ Napi::Value Adam_CPU(const Napi::CallbackInfo& info) {
     float beta1 = info[6].As<Napi::Number>().FloatValue();
     float beta2 = info[7].As<Napi::Number>().FloatValue();
     float epsilon = info[8].As<Napi::Number>().FloatValue();
-    size_t params_len = params.ElementLength();
+    int params_len = params.ElementLength();
 
     float* p = params.Data();
     float* g = grads.Data();
     float* sm = stateM.Data();
     float* sv = stateV.Data();
 
-    for (size_t i = 0; i < params_len; i++) {
+    #pragma omp parallel for
+    for (int i = 0; i < params_len; i++) {
         float grad = g[i];
 
         sm[i] = beta1 * sm[i] + (1 - beta1) * grad;

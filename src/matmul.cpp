@@ -68,10 +68,12 @@ Napi::Value MatMul_CPU(const Napi::CallbackInfo& info) {
     float* b = biases.Data();
     float* output = outputVector.Data();
 
+    #pragma omp parallel for
     for (int i = 0; i < outputSize; i++) {
         output[i] = b[i];
     }
     
+    #pragma omp parallel for
     for (int i = 0; i < inputSize; i++) {
         float v = in[i];
         int offset = i * outputSize;
@@ -124,7 +126,7 @@ Napi::Value DeltaMatMul_GPU(const Napi::CallbackInfo& info) {
 Napi::Value DeltaMatMul_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array delta = info[0].As<Napi::Float32Array>();
-    size_t inputSize  = info[1].As<Napi::Number>().Int32Value();
+    int inputSize  = info[1].As<Napi::Number>().Int32Value();
     size_t outputSize = info[2].As<Napi::Number>().Int32Value();
     Napi::Float32Array weights = info[3].As<Napi::Float32Array>();
     Napi::Float32Array output = Napi::Float32Array::New(env, inputSize);
@@ -133,7 +135,8 @@ Napi::Value DeltaMatMul_CPU(const Napi::CallbackInfo& info) {
     const float* w = weights.Data();
     float* o = output.Data();
 
-    for (size_t i = 0; i < inputSize; i++) {
+    #pragma omp parallel for
+    for (int i = 0; i < inputSize; i++) {
         float sum = 0.0f;
         size_t offset = i * outputSize;
         for (size_t j = 0; j < outputSize; j++) {
@@ -195,6 +198,7 @@ Napi::Value DotProduct_CPU(const Napi::CallbackInfo& info) {
     float* arr2 = arr2_input.Data();
     float* output = outputTensor.Data();
 
+    #pragma omp parallel for
     for (int i = 0; i < inputSize; i++) {
         const float inputVal = arr1[i];
         const int rowStart = i * outputSize;

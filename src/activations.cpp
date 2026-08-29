@@ -17,6 +17,7 @@
 */
 
 #include <napi.h>
+#include <omp.h>
 #include <CL/cl.h>
 #include <vector>
 #include <algorithm>
@@ -58,9 +59,10 @@ Napi::Value Relu_GPU(const Napi::CallbackInfo& info) {
 Napi::Value Relu_CPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
     float* data = input.Data();
-    size_t input_size = input.ElementLength();
+    int input_size = input.ElementLength();
 
-    for (size_t i = 0; i < input_size; i++) {
+    #pragma omp parallel for
+    for (int i = 0; i < input_size; i++) {
         data[i] = data[i] > 0.0f ? data[i] : 0.0f;
     }
     return input;
@@ -104,9 +106,10 @@ Napi::Value Sigmoid_CPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
 
     float* data = input.Data();
-    size_t input_size = input.ElementLength();
+    int input_size = input.ElementLength();
 
-    for (size_t i = 0; i < input_size; i++) {
+    #pragma omp parallel for
+    for (int i = 0; i < input_size; i++) {
         data[i] = 1.0f / (1.0f + exp(-data[i]));
     }
 
@@ -149,12 +152,13 @@ Napi::Value Tanh_GPU(const Napi::CallbackInfo& info) {
 
 Napi::Value Tanh_CPU(const Napi::CallbackInfo& info) { 
 
-   Napi::Float32Array input = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array input = info[0].As<Napi::Float32Array>();
 
-   float* data = input.Data();
-   size_t input_size = input.ElementLength();
+    float* data = input.Data();
+    int input_size = input.ElementLength();
 
-    for (size_t i = 0; i < input_size; i++) {
+    #pragma omp parallel for
+    for (int i = 0; i < input_size; i++) {
         data[i] = tanh(data[i]);
     }
 
@@ -275,13 +279,14 @@ Napi::Value DReLu_GPU(const Napi::CallbackInfo& info) {
 Napi::Value DReLu_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
-    size_t input_size = input.ElementLength();
+    int input_size = input.ElementLength();
     
     Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
     float* inData = input.Data();
     float* outData = output.Data();
 
-    for (size_t i = 0; i < input_size; i++) {
+    #pragma omp parallel for
+    for (int i = 0; i < input_size; i++) {
         outData[i] = inData[i] > 0.0f ? 1.0f : 0.0f;
     }
     return output;
@@ -326,13 +331,14 @@ Napi::Value DSigmoid_GPU(const Napi::CallbackInfo& info) {
 Napi::Value DSigmoid_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
-    size_t input_size = input.ElementLength();
+    int input_size = input.ElementLength();
     
     Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
     float* inData = input.Data();
     float* outData = output.Data();
 
-    for (size_t i = 0; i < input_size; i++) {
+    #pragma omp parallel for
+    for (int i = 0; i < input_size; i++) {
         float s = 1.0f / (1.0f + std::exp(-inData[i]));
         outData[i] = s * (1.0f - s);
     }
@@ -378,13 +384,14 @@ Napi::Value DTanh_GPU(const Napi::CallbackInfo& info) {
 Napi::Value DTanh_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
-    size_t input_size = input.ElementLength();
+    int input_size = input.ElementLength();
     
     Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
     float* inData = input.Data();
     float* outData = output.Data();
 
-    for (size_t i = 0; i < input_size; i++) {
+    #pragma omp parallel for
+    for (int i = 0; i < input_size; i++) {
         float t = std::tanh(inData[i]);
         outData[i] = 1.0f - (t * t);
     }
