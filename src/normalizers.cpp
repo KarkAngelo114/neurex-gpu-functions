@@ -118,7 +118,7 @@ Napi::Value LayerNorm_GPU(const Napi::CallbackInfo& info) {
 
     size_t globalSize = (size_t)size;
 
-    clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, nullptr, 0, nullptr);
+    clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
     
     clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float)* size, outputTensor.Data(), 0, nullptr, nullptr);
     
