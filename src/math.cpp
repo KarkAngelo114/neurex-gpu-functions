@@ -261,13 +261,14 @@ Napi::Value accumulate_element_wise_mul_CPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array inputArray1 = info[0].As<Napi::Float32Array>();
     Napi::Float32Array inputArray2 = info[1].As<Napi::Float32Array>();
     Napi::Float32Array inputArray3 = info[2].As<Napi::Float32Array>();
+    int size = inputArray1.ElementLength();
 
     float* arr1 = inputArray1.Data();
     float* arr2 = inputArray2.Data();
     float* arr3 = inputArray3.Data();
 
     #pragma omp parallel for
-    for (int i = 0; i < delta.length; i++) {
+    for (int i = 0; i < size; i++) {
         arr3[i] += arr2[i] * arr1[i];
     }
 
