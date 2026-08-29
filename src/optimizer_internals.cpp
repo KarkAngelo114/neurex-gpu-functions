@@ -58,14 +58,14 @@ Napi::Value SGD_CPU(const Napi::CallbackInfo& info) {
     float lr = info[3].As<Napi::Number>().FloatValue();
     float momentum = info[4].As<Napi::Number>().FloatValue();
 
-    size_t element_length = params.ElementLength();
+    int element_length = params.ElementLength();
 
     float* p = params.Data();
     float* g = grads.Data();
     float* v = velocity.Data();
 
     #pragma omp parallel for
-    for (size_t i = 0; i < element_length; i++) {
+    for (int i = 0; i < element_length; i++) {
         v[i] = momentum * v[i] + g[i];
         p[i] -= lr * v[i];
     }
