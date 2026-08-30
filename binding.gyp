@@ -174,7 +174,15 @@
           "msvs_settings": {
             "VCCLCompilerTool": {
               "ExceptionHandling": 1,
-              "AdditionalOptions": [ "/std:c++17", "/O2", "/arch:AVX2", "/fp:fast", "/EHsc", "/openmp" ],
+              "AdditionalOptions": [ 
+                "/std:c++17", 
+                "/O2", 
+                "/arch:AVX2", 
+                "/fp:fast", 
+                "/EHsc", 
+                "-Xclang", 
+                "-fopenmp" 
+              ],
               "RuntimeLibrary": 2
             },
             "VCLinkerTool": {

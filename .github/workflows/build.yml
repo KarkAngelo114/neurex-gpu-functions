@@ -159,6 +159,9 @@ jobs:
 
       - name: Build prebuilt binaries
         run: npx prebuildify --napi --strip --arch=${{ matrix.arch }}
+        env:
+          CC: clang-cl
+          CXX: clang-cl
 
       - name: Upload prebuilds artifact
         uses: actions/upload-artifact@v4
