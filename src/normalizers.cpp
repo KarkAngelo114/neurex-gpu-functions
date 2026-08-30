@@ -11,7 +11,7 @@ Napi::Value GradientClipping_GPU(const Napi::CallbackInfo& info) {
 
     Napi::Float32Array inputGrads = info[0].As<Napi::Float32Array>();
     float threshold = info[1].As<Napi::Number>().FloatValue();
-    int size = grads.ElementLength();
+    int size = inputGrads.ElementLength();
 
     float* grads = inputGrads.Data();
 
