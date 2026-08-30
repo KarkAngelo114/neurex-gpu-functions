@@ -175,12 +175,10 @@
             "VCCLCompilerTool": {
               "ExceptionHandling": 1,
               "AdditionalOptions": [ 
-                "/std:c++17", 
-                "/O2", 
-                "/arch:AVX2", 
-                "/fp:fast", 
-                "/EHsc", 
-                "-Xclang", 
+                "-std=c++17", 
+                "-O3", 
+                "-mavx2", 
+                "-ffast-math", 
                 "-fopenmp" 
               ],
               "RuntimeLibrary": 2
