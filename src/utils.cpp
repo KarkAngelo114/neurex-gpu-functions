@@ -237,18 +237,20 @@ Napi::Value ApplyPadding_CPU(const Napi::CallbackInfo& info) {
 
 }
 
+// ================ wrappers ==================
+
 Napi::Value ApplyPadding_Wrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return ApplyPadding_GPU(info);
-    }
+    // if (get_Global_Boolean_On_GPU()) {
+    //     return ApplyPadding_GPU(info);
+    // }
 
     return ApplyPadding_CPU(info);
 }
 
 Napi::Value DilateInputWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return DilateInput_GPU(info);
-    }
+    // if (get_Global_Boolean_On_GPU()) {
+    //     return DilateInput_GPU(info);
+    // }
     return DilateInput_CPU(info);
 }
 

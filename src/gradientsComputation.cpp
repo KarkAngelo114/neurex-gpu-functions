@@ -572,32 +572,32 @@ Napi::Value accumulateKernelGradsForTransConv_CPU(const Napi::CallbackInfo& info
 // =================== wrapper ===================== //
 
 Napi::Value computeBiasGradsForConnected_LayerWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return computeBiasGradsForConnected_Layer_GPU(info);
-    }
+    // if (get_Global_Boolean_On_GPU()) {
+    //     return computeBiasGradsForConnected_Layer_GPU(info);
+    // }
 
     return computeBiasGradsForConnected_Layer_CPU(info);
 }
 
 Napi::Value ComputeGradientForDenseWeightsWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return ComputeGradientForDenseWeights_GPU(info);
-    }
+    // if (get_Global_Boolean_On_GPU()) {
+    //     return ComputeGradientForDenseWeights_GPU(info);
+    // }
     return ComputeGradientForDenseWeights_CPU(info);
 }
 
 Napi::Value computeKernelGradientsWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return computeKernelGradients_GPU(info);
-    }
+    // if (get_Global_Boolean_On_GPU()) {
+    //     return computeKernelGradients_GPU(info);
+    // }
 
     return computeKernelGradients_CPU(info);
 }
 
 Napi::Value computeBiasGradsForConvWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return computeBiasGradsForConv_GPU(info);
-    }
+    // if (get_Global_Boolean_On_GPU()) {
+    //     return computeBiasGradsForConv_GPU(info);
+    // }
 
     return computeBiasGradsForConv_CPU(info);
 }
@@ -611,9 +611,9 @@ Napi::Value recurrentBiasGradsAccumulationWrapper(const Napi::CallbackInfo& info
 }
 
 Napi::Value accumulateKernelGradsForTransConvWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return accumulateKernelGradsForTransConv_GPU(info);
-    }
+    // if (get_Global_Boolean_On_GPU()) {
+    //     return accumulateKernelGradsForTransConv_GPU(info);
+    // }
     return accumulateKernelGradsForTransConv_CPU(info);
 }
 

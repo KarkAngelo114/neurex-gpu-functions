@@ -194,17 +194,18 @@ Napi::Value LayerNorm_CPU(const Napi::CallbackInfo& info) {
     return outputTensor;
 }
 
+// ============== wrappers ==============
 Napi::Value gradientClippingWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return GradientClipping_GPU(info);
-    }
+    // if (get_Global_Boolean_On_GPU()) {
+    //     return GradientClipping_GPU(info);
+    // }
     return GradientClipping_CPU(info);
 }
 
 Napi::Value LayerNormWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return LayerNorm_GPU(info);
-    }
+    // if (get_Global_Boolean_On_GPU()) {
+    //     return LayerNorm_GPU(info);
+    // }
 
     return LayerNorm_CPU(info);
 }

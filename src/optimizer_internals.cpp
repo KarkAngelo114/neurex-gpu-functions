@@ -174,18 +174,20 @@ Napi::Value Adam_CPU(const Napi::CallbackInfo& info) {
     return output;
 }
 
+// =============== wrappers ===============
+
 Napi::Value SGD_wrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return SGD_GPU(info);
-    }
+    // if (get_Global_Boolean_On_GPU()) {
+    //     return SGD_GPU(info);
+    // }
 
     return SGD_CPU(info);
 }
 
 Napi::Value Adam_wrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return Adam_GPU(info);
-    }
+    // if (get_Global_Boolean_On_GPU()) {
+    //     return Adam_GPU(info);
+    // }
 
     return Adam_CPU(info);
 }

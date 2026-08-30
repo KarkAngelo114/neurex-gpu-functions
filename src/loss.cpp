@@ -268,25 +268,25 @@ Napi::Value BCE_CPU(const Napi::CallbackInfo& info) {
 
 // =========================== wrappers ========================= //
 Napi::Value MSE_Wrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return MSE_GPU(info);
-    }
+    // if (get_Global_Boolean_On_GPU()) {
+    //     return MSE_GPU(info);
+    // }
 
     return MSE_CPU(info);
 }
 
 Napi::Value MAE_Wrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return MAE_GPU(info);
-    }
+    // if (get_Global_Boolean_On_GPU()) {
+    //     return MAE_GPU(info);
+    // }
 
     return MAE_CPU(info);
 }
 
 Napi::Value CCE_Wrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return CCE_GPU(info);
-    }
+    // if (get_Global_Boolean_On_GPU()) {
+    //     return CCE_GPU(info);
+    // }
     return CCE_CPU(info);
 }
 
@@ -295,9 +295,9 @@ Napi::Value SCCE_Wrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value BCE_Wrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return BCE_GPU(info);
-    }
+    // if (get_Global_Boolean_On_GPU()) {
+    //     return BCE_GPU(info);
+    // }
 
     return BCE_CPU(info);
 }
