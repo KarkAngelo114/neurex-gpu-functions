@@ -157,11 +157,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build prebuilt binaries
+      - name: Build prebuilt binaries (Windows)
+        if: runner.os == 'Windows'
         run: npx prebuildify --napi --strip --arch=${{ matrix.arch }}
         env:
-          CC: ${{ runner.os == 'Windows' && 'clang-cl' || '' }}
-          CXX: ${{ runner.os == 'Windows' && 'clang-cl' || '' }}
+          CC: clang-cl
+          CXX: clang-cl
+
+      - name: Build prebuilt binaries (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: npx prebuildify --napi --strip --arch=${{ matrix.arch }}
 
       - name: Upload prebuilds artifact
         uses: actions/upload-artifact@v4
