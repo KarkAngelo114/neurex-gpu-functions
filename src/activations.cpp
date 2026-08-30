@@ -62,6 +62,7 @@ Napi::Value Relu_CPU(const Napi::CallbackInfo& info) {
     int input_size = input.ElementLength();
 
     #pragma omp parallel for
+    #pragma omp unroll partial(4)
     for (int i = 0; i < input_size; i++) {
         data[i] = data[i] > 0.0f ? data[i] : 0.0f;
     }
@@ -109,6 +110,7 @@ Napi::Value Sigmoid_CPU(const Napi::CallbackInfo& info) {
     int input_size = input.ElementLength();
 
     #pragma omp parallel for
+    #pragma omp unroll partial(4)
     for (int i = 0; i < input_size; i++) {
         data[i] = 1.0f / (1.0f + exp(-data[i]));
     }
@@ -158,6 +160,7 @@ Napi::Value Tanh_CPU(const Napi::CallbackInfo& info) {
     int input_size = input.ElementLength();
 
     #pragma omp parallel for
+    #pragma omp unroll partial(4)
     for (int i = 0; i < input_size; i++) {
         data[i] = tanh(data[i]);
     }
@@ -217,16 +220,19 @@ Napi::Value Softmax_CPU(const Napi::CallbackInfo& info) {
     size_t input_size = input.ElementLength();
 
     float max_val = data[0];
+    #pragma omp unroll partial(4)
     for (size_t i = 1; i < input_size; i++) {
         if (data[i] > max_val) max_val = data[i];
     }
 
     float sum = 0.0f;
+    #pragma omp unroll partial(4)
     for (size_t i = 0; i < input_size; i++) {
         data[i] = std::exp(data[i] - max_val);
         sum += data[i];
     }
 
+    #pragma omp unroll partial(4)
     for (size_t i = 0; i < input_size; i++) {
         data[i] /= sum;
     }
@@ -286,6 +292,7 @@ Napi::Value DReLu_CPU(const Napi::CallbackInfo& info) {
     float* outData = output.Data();
 
     #pragma omp parallel for
+    #pragma omp unroll partial(4)
     for (int i = 0; i < input_size; i++) {
         outData[i] = inData[i] > 0.0f ? 1.0f : 0.0f;
     }
@@ -338,6 +345,7 @@ Napi::Value DSigmoid_CPU(const Napi::CallbackInfo& info) {
     float* outData = output.Data();
 
     #pragma omp parallel for
+    #pragma omp unroll partial(4)
     for (int i = 0; i < input_size; i++) {
         float s = 1.0f / (1.0f + std::exp(-inData[i]));
         outData[i] = s * (1.0f - s);
@@ -391,6 +399,7 @@ Napi::Value DTanh_CPU(const Napi::CallbackInfo& info) {
     float* outData = output.Data();
 
     #pragma omp parallel for
+    #pragma omp unroll partial(4)
     for (int i = 0; i < input_size; i++) {
         float t = std::tanh(inData[i]);
         outData[i] = 1.0f - (t * t);
@@ -419,10 +428,13 @@ Napi::Value DSoftmaxWrapper(const Napi::CallbackInfo& info) {
     float* output = outputArr.Data();
 
     float dot_product = 0.0f;
+    
+    #pragma omp unroll partial(4)
     for (int i = 0; i < arr_size; i++) {
         dot_product += arr2[i] * arr1[i];
     }
 
+    #pragma omp unroll partial(4)
     for (int i = 0; i < arr_size; i++) {
         output[i] = arr1[i] * (arr2[i] - dot_product);
     }

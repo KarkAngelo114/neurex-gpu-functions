@@ -65,6 +65,7 @@ Napi::Value SGD_CPU(const Napi::CallbackInfo& info) {
     float* v = velocity.Data();
 
     #pragma omp parallel for
+    #pragma omp unroll partial(4)
     for (int i = 0; i < element_length; i++) {
         v[i] = momentum * v[i] + g[i];
         p[i] -= lr * v[i];
@@ -152,6 +153,7 @@ Napi::Value Adam_CPU(const Napi::CallbackInfo& info) {
     float* sv = stateV.Data();
 
     #pragma omp parallel for
+    #pragma omp unroll partial(4)
     for (int i = 0; i < params_len; i++) {
         float grad = g[i];
 

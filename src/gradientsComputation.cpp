@@ -1,5 +1,6 @@
 #include <napi.h>
 #include <CL/cl.h>
+#include <omp.h>
 #include "gpu/gpu_context.h"
 #include "globals/globals.h"
 #include "functions/functions.h"
@@ -75,6 +76,8 @@ Napi::Value ComputeGradientForDenseWeights_CPU(const Napi::CallbackInfo& info) {
     for (int i = 0; i < inputSize; i++) {
         float inputVal = a[i];
         int offset = i * outputSize;
+
+        #pragma omp unroll partial(4)
         for (size_t j = 0; j < outputSize; j++) {
             wg[offset + j] += inputVal * d[j];
         }
@@ -122,6 +125,7 @@ Napi::Value computeBiasGradsForConnected_Layer_CPU(const Napi::CallbackInfo& inf
     float* d = deltas.Data();
     size_t length = biasgrads.ElementLength();
 
+    #pragma omp unroll partial(4)
     for (int i = 0; i < length; i++) {
         bg[i] += d[i];
     }
@@ -381,6 +385,8 @@ Napi::Value recurrentWeightGradsAccumulation_CPU(const Napi::CallbackInfo& info)
         for (uint32_t i = 0; i < featureSize; ++i) {
             float xi = x_t[i];
             size_t rowOffset = i * units;
+
+            #pragma omp unroll partial(4)
             for (uint32_t j = 0; j < units; ++j) {
                 output[rowOffset + j] += xi * delta_t[j];
             }
@@ -390,6 +396,8 @@ Napi::Value recurrentWeightGradsAccumulation_CPU(const Napi::CallbackInfo& info)
         for (uint32_t i = 0; i < units; ++i) {
             float hi = h_prev[i];
             size_t rowOffset = totalInputWeights + (i * units);
+
+            #pragma omp unroll partial(4)
             for (uint32_t j = 0; j < units; ++j) {
                 output[rowOffset + j] += hi * delta_t[j];
             }
@@ -412,6 +420,7 @@ Napi::Value recurrentBiasGradsAccumulation_CPU(const Napi::CallbackInfo& info) {
     for (int t = 0; t < sequenceLength; t++) {
         const float* delta_time_step = deltaTs[t];
 
+        #pragma omp unroll partial(4)
         for (int j = 0; j < units; j++) {
             biasGrads[j] += delta_time_step[j];
         }
@@ -547,6 +556,7 @@ Napi::Value accumulateKernelGradsForTransConv_CPU(const Napi::CallbackInfo& info
                         float deltaVal = deltaData[deltaBase + filter];
                         int gradBase = ((filter * kh + ky) * kw + kx) * iD;
 
+                        #pragma omp unroll partial(4)
                         for (int c = 0; c < iD; c++) {
                             weightGradsData[gradBase + c] += activationData[inputBase + c] * deltaVal;
                         }

@@ -186,6 +186,7 @@ Napi::Value transConv_CPU(const Napi::CallbackInfo& info) {
 
                         int weightBase = ((filter * kh + ky) * kw + kx) * d;
 
+                        #pragma omp unroll partial(4)
                         for (int c = 0; c < d; c++) {
                             sum += input[inputBase + c] * weights[weightBase + c];
                         }
@@ -332,6 +333,7 @@ Napi::Value transConvBackward_CPU(const Napi::CallbackInfo& info) {
                         int weightBase = ((filter * kh + ky) * kw + kx) * d;
                         int inputBase = (iy * iW + ix) * iD;
 
+                        #pragma omp unroll partial(4)
                         for (int c = 0; c < d; c++) {
 
                             deltaInput[inputBase + c] += deltaY * weights[weightBase + c];

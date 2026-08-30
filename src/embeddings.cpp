@@ -1,4 +1,5 @@
 #include <napi.h>
+#include <omp.h>
 #include <CL/cl.h>
 #include "globals/globals.h"
 #include "gpu/gpu_context.h"
@@ -76,6 +77,7 @@ Napi::Value GetEmbeddings_CPU(const Napi::CallbackInfo& info) {
         int tokenID = tokenArray[i];
         int startIdx = tokenID * embeddingDim;
         
+        #pragma omp unroll partial(4)
         // Copy the embedding row into the output at the correct offset
         for (int j = 0; j < embeddingDim; j++) {
             output[i * embeddingDim + j] = lookup[startIdx + j];
@@ -144,6 +146,7 @@ Napi::Value ReturnEmbeddings_CPU(const Napi::CallbackInfo& info) {
         int gradOffset = tokenId * embeddingDim;
         int deltaOffset = i * embeddingDim;
 
+        #pragma omp unroll partial(4)
         for (int d = 0; d < embeddingDim; d++) {
             gradsData[gradOffset + d] += deltaData[deltaOffset + d];
         }

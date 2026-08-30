@@ -21,7 +21,6 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"delta_matmul.cl", "delta_matmul"},
     {"convolve.cl", "convolve"},
     {"delta_convolve.cl", "delta_convolve"},
-    {"scaleGrads.cl", "scaleGrads"},
     {"maxpool.cl","maxpool"},
     {"computeBiasGradsForConnected_Layer.cl", "computeBiasGradsForConnected_Layer"},
     {"computeWeightGradsForConnected_Layer.cl", "computeWeightGradsForConnected_Layer"},
