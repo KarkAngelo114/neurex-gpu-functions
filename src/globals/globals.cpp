@@ -17,30 +17,30 @@ bool get_Global_Boolean_On_GPU() {
     return global_boolean_On_GPU_state;
 }
 
-Napi::Value setOutputTemplateTensors(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
+// Napi::Value setOutputTemplateTensors(const Napi::CallbackInfo& info) {
+//     Napi::Env env = info.Env();
 
-    Napi::Array outputTensors = info[0].As<Napi::Array>();
-    uint32_t globalOutputTensorSize = outputTensors.Length();
-    global_output_Tensor.resize(globalOutputTensorSize);
+//     Napi::Array outputTensors = info[0].As<Napi::Array>();
+//     uint32_t globalOutputTensorSize = outputTensors.Length();
+//     global_output_Tensor.resize(globalOutputTensorSize);
 
-    for (uint32_t i = 0; i < globalOutputTensorSize; i++) {
-        Napi::Float32Array output_tensor_templates = outputTensors.Get(i).As<Napi::Float32Array>();
+//     for (uint32_t i = 0; i < globalOutputTensorSize; i++) {
+//         Napi::Float32Array output_tensor_templates = outputTensors.Get(i).As<Napi::Float32Array>();
 
-        global_output_Tensor[i].assign(output_tensor_templates.Data(), output_tensor_templates.Data() + output_tensor_templates.ElementLength());
-    }
+//         global_output_Tensor[i].assign(output_tensor_templates.Data(), output_tensor_templates.Data() + output_tensor_templates.ElementLength());
+//     }
 
-    if (get_Global_Boolean_On_GPU()) {
-        std::string err;
-        bool ok = GpuContext::instance().uploadOutputTemplates(global_output_Tensor, err);
-        if (!ok) {
-            Napi::TypeError::New(env, err).ThrowAsJavaScriptException();
-        }
-    }
+//     if (get_Global_Boolean_On_GPU()) {
+//         std::string err;
+//         bool ok = GpuContext::instance().uploadOutputTemplates(global_output_Tensor, err);
+//         if (!ok) {
+//             Napi::TypeError::New(env, err).ThrowAsJavaScriptException();
+//         }
+//     }
     
 
-    return env.Undefined();
-}
+//     return env.Undefined();
+// }
 
 
 
