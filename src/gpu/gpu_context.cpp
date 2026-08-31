@@ -17,7 +17,6 @@ struct kernelDef {
 // {`"kernel file"`,`"<kernel function name>"`}
 static std::vector<kernelDef> kernel_Definitions = {
     {"matmul.cl", "matmul"},
-    {"matmul.cl", "dot_product"},
     {"delta_matmul.cl", "delta_matmul"},
     {"convolve.cl", "convolve"},
     {"delta_convolve.cl", "delta_convolve"},
