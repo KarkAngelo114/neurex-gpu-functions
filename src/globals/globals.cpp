@@ -2,15 +2,8 @@
 #include <vector>
 #include "../gpu/gpu_context.h"
 #include "globals.h"
-using Array = std::vector<float>;
-using Matrix = std::vector<Array>;
 
 static bool global_boolean_On_GPU_state;
-
-// get the corresponding output tensor template using a pointer
-const Array& getGlobalOutputTensors(int pointer) {
-    return global_output_Tensor[pointer];
-}
 
 // get the boolean state initiated by JS
 bool get_Global_Boolean_On_GPU() {
