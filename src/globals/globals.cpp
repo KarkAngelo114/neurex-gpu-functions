@@ -5,18 +5,17 @@
 using Array = std::vector<float>;
 using Matrix = std::vector<Array>;
 
-static Matrix global_output_Tensor;
 static bool global_boolean_On_GPU_state;
 
 // get the corresponding output tensor template using a pointer
 const Array& getGlobalOutputTensors(int pointer) {
     return global_output_Tensor[pointer];
 }
+
 // get the boolean state initiated by JS
 bool get_Global_Boolean_On_GPU() {
     return global_boolean_On_GPU_state;
 }
-
 
 Napi::Value setOutputTemplateTensors(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
@@ -55,6 +54,5 @@ Napi::Value setOnGPU_Boolean_State(const Napi::CallbackInfo& info) {
 
 
 void _globals(Napi::Env env, Napi::Object exports) {
-    exports.Set("uploadOutputTensorTemplates", Napi::Function::New(env, setOutputTemplateTensors));
     exports.Set("setOnGPU", Napi::Function::New(env, setOnGPU_Boolean_State));
 }

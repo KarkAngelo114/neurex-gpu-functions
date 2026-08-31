@@ -116,7 +116,8 @@
         "src/recurrent.cpp",
         "src/loss.cpp",
         "src/normalizers.cpp",
-        "src/transConv.cpp"
+        "src/transConv.cpp",
+        "src/attention.cpp",
       ],
       "include_dirs": [
         "<!@(node -p \"require('node-addon-api').include\")",
