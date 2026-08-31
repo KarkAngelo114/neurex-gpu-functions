@@ -2,6 +2,7 @@
 #include "functions.h"
 #include <vector>
 
+using NapiArrayChunk = std::vector<Napi::Float32Array>;
 
 /**
  * Gets a new Float32Array view of the ArrayBuffer passed to this function, referencing the elements at begin, inclusive, up to end, exclusive.
@@ -28,6 +29,29 @@ Napi::Float32Array subarray(const Napi::Env env, const Napi::Float32Array& float
 
     // 3. Create a view on the existing ArrayBuffer
     return Napi::Float32Array::New(env, length, float32Array.ArrayBuffer(), byteOffset);
+}
+
+Napi::Float32Array concatenateFloat32Array(const Napi::Env env, const NapiArrayChunk& chunks) {
+    size_t totalLength = 0;
+    for (const auto& chunk : chunks) {
+        totalLength += chunk.ElementLength();
+    }
+
+    Napi::ArrayBuffer arrayBuffer = Napi::ArrayBuffer::New(env, totalLength * sizeof(float));
+    Napi::Float32Array result = Napi::Float32Array::New(env, totalLength, arrayBuffer, 0);
+
+    float* destPtr = result.Data();
+    size_t offset = 0;
+
+    for (const auto& chunk : chunks) {
+        size_t chunkLen = chunk.ElementLength();
+        if (chunkLen > 0) {
+            std::memcpy(destPtr + offset, chunk.Data(), chunkLen * sizeof(float));
+            offset += chunkLen;
+        }
+    }
+
+    return result;
 }
 
 /**

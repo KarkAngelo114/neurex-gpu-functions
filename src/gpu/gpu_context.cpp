@@ -49,13 +49,12 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"loss.cl", "mae"},
     {"loss.cl", "cce"},
     {"loss.cl", "bce"},
-    {"recurrent.cl", "recurrentMatMul"},
-    {"recurrent.cl", "recurrentTimeDelta"},
     {"normalizers.cl", "gradientClipping"},
     {"normalizers.cl", "layer_norm_standard_size"},
     {"transConv.cl", "transConv"},
     {"transConv.cl", "transConvBackward"},
-    {"computeKernelGradients.cl", "accumulateTransConvKernelGrads"}
+    {"computeKernelGradients.cl", "accumulateTransConvKernelGrads"},
+    {"attention.cl", "projectQKV"}
 };
 
 

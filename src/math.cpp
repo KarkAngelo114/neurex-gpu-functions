@@ -283,44 +283,44 @@ Napi::Value accumulate_element_wise_mul_CPU(const Napi::CallbackInfo& info) {
 // ====== wrappers ================
 
 Napi::Value element_wise_mul_wrapper(const Napi::CallbackInfo& info) {
-    // if (get_Global_Boolean_On_GPU()) {
-    //     return element_wise_mul_GPU(info);
-    // }
+    if (get_Global_Boolean_On_GPU()) {
+        return element_wise_mul_GPU(info);
+    }
 
     return element_wise_mul_CPU(info);
 }
 
 Napi::Value element_wise_sub_wrapper(const Napi::CallbackInfo& info) {
-    // if (get_Global_Boolean_On_GPU()) {
-    //     return element_wise_sub_GPU(info);
-    // }
+    if (get_Global_Boolean_On_GPU()) {
+        return element_wise_sub_GPU(info);
+    }
 
     return element_wise_sub_CPU(info);
 
 }
 
 Napi::Value scaleDiffWrapper(const Napi::CallbackInfo& info) {
-    // if (get_Global_Boolean_On_GPU()) {
-    //     return scaleDiff_GPU(info);
-    // }
+    if (get_Global_Boolean_On_GPU()) {
+        return scaleDiff_GPU(info);
+    }
 
     return scaleDiff_CPU(info);
 
 }
 
 Napi::Value ScalerWrapper(const Napi::CallbackInfo& info) {
-    // if (get_Global_Boolean_On_GPU()) {
-    //     return Scale_GPU(info);
-    // }
+    if (get_Global_Boolean_On_GPU()) {
+        return Scale_GPU(info);
+    }
 
     return Scale_CPU(info);
     
 }
 
 Napi::Value accumulate_element_wise_mul_wrapper(const Napi::CallbackInfo& info) {
-    // if (get_Global_Boolean_On_GPU()) {
-    //     return accumulate_element_wise_mul_GPU(info);
-    // }
+    if (get_Global_Boolean_On_GPU()) {
+        return accumulate_element_wise_mul_GPU(info);
+    }
     return accumulate_element_wise_mul_CPU(info);
 }
 
