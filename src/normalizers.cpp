@@ -132,8 +132,8 @@ Napi::Value LayerNorm_GPU(const Napi::CallbackInfo& info) {
     clSetKernelArg(kernel, 2, sizeof(cl_mem), &_beta);
     clSetKernelArg(kernel, 3, sizeof(cl_mem), &output);
     clSetKernelArg(kernel, 4, sizeof(float), &mean);
-    clSetKernelArg(kernel, 3, sizeof(float), &std);
-    clSetKernelArg(kernel, 3, sizeof(int), &size);
+    clSetKernelArg(kernel, 5, sizeof(float), &std);
+    clSetKernelArg(kernel, 6, sizeof(int), &size);
 
     size_t globalSize = (size_t)size;
 
