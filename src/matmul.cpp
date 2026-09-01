@@ -20,13 +20,14 @@ Napi::Value MatMul_GPU(const Napi::CallbackInfo& info) {
     int outputSize = info[2].As<Napi::Number>().Int32Value();
     Napi::Float32Array weights = info[3].As<Napi::Float32Array>();
     Napi::Float32Array biases = info[4].As<Napi::Float32Array>();
+    int pointer = info[5].As<Napi::Number>().Int32Value();
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
     cl_context context = gpu.context();
     cl_mem dIn  = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputSize, input.Data(), nullptr);
-    cl_mem dW   = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * weights.ElementLength(), weights.Data(), nullptr);
-    cl_mem dB   = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * biases.ElementLength(), biases.Data(), nullptr);
+    cl_mem dW   = gpu.getWeights(pointer);
+    cl_mem dB   = gpu.getBiases(pointer);
     cl_mem dOut = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * outputSize, nullptr, nullptr);
 
     cl_kernel k = gpu.kernel("matmul");
@@ -46,8 +47,6 @@ Napi::Value MatMul_GPU(const Napi::CallbackInfo& info) {
     clEnqueueReadBuffer(queue, dOut, CL_TRUE, 0, sizeof(float) * outputSize, output.Data(), 0, nullptr, nullptr);
 
     clReleaseMemObject(dIn);
-    clReleaseMemObject(dW);
-    clReleaseMemObject(dB);
     clReleaseMemObject(dOut);
 
     return output;
@@ -96,6 +95,7 @@ Napi::Value DeltaMatMul_GPU(const Napi::CallbackInfo& info) {
     int inputSize  = info[1].As<Napi::Number>().Int32Value();
     int outputSize = info[2].As<Napi::Number>().Int32Value();
     Napi::Float32Array weightsArray = info[3].As<Napi::Float32Array>();
+    int pointer = info[4].As<Napi::Number>().Int32Value();
 
     auto& gpu = GpuContext::instance();
     cl_context ctx = gpu.context();
@@ -105,7 +105,7 @@ Napi::Value DeltaMatMul_GPU(const Napi::CallbackInfo& info) {
     cl_int err;
     cl_mem dDelta = clCreateBuffer(ctx, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)*outputSize, delta.Data(), &err);
     cl_mem dOut = clCreateBuffer(ctx, CL_MEM_WRITE_ONLY, sizeof(float)*inputSize, nullptr, &err);
-    cl_mem dW = clCreateBuffer(ctx, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * weightsArray.ElementLength(), weightsArray.Data(), nullptr);
+    cl_mem dW = gpu.getWeights(pointer);
 
     clSetKernelArg(k, 0, sizeof(cl_mem), &dDelta);
     clSetKernelArg(k, 1, sizeof(cl_mem), &dW);
@@ -121,7 +121,6 @@ Napi::Value DeltaMatMul_GPU(const Napi::CallbackInfo& info) {
 
     clReleaseMemObject(dDelta);
     clReleaseMemObject(dOut);
-    clReleaseMemObject(dW);
 
     return output;
 }

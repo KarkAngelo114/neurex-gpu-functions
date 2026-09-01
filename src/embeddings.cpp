@@ -21,6 +21,7 @@ Napi::Value GetEmbeddings_GPU(const Napi::CallbackInfo& info) {
     IntArray tokenArray = Vectorize(info[0].As<Napi::Array>());
     int embeddingDim = info[1].As<Napi::Number>().Int32Value();
     Napi::Float32Array params = info[2].As<Napi::Float32Array>();
+    int pointer = info[3].As<Napi::Number>().Int32Value();
 
     int sequence_length = tokenArray.size();
     int totalSize = sequence_length * embeddingDim; // token array length * embeddingDim = output size
@@ -31,7 +32,7 @@ Napi::Value GetEmbeddings_GPU(const Napi::CallbackInfo& info) {
     cl_kernel kernel = gpu.kernel("getEmbeddings");
 
     cl_mem tokenBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(int) * sequence_length, tokenArray.data(), nullptr);
-    cl_mem lookup = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* params.ElementLength(), params.Data(), nullptr);
+    cl_mem lookup = gpu.getWeights(pointer);
     cl_mem output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float)* totalSize, nullptr, nullptr); 
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &tokenBuffer);
@@ -52,7 +53,6 @@ Napi::Value GetEmbeddings_GPU(const Napi::CallbackInfo& info) {
 
     clReleaseMemObject(output);
     clReleaseMemObject(tokenBuffer);
-    clReleaseMemObject(lookup);
 
 
     return result;

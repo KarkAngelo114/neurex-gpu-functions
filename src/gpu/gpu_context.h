@@ -5,6 +5,8 @@
 #include <unordered_map>
 using FloatArray = std::vector<float>;
 using Matrix = std::vector<FloatArray>;
+using CL_MEM_ARRAY = std::vector<cl_mem>;
+
 
 class GpuContext {
     public:
@@ -12,21 +14,32 @@ class GpuContext {
 
         // Called from JS (once) after detectGPU() decided we have one.
         bool initialize(const std::string& kernelBasePath, std::string& errorOut);
-        void shutdown();
+        bool shutdown();
 
         bool hasGPU() { 
             return has_gpu_; 
         }
 
-        bool uploadOutputTemplates(const Matrix& outputs, std::string& errorOut);
+        bool uploadParams(const Matrix& weightMatrix, const Matrix& biasMatrix, std::string& errorOut);
+
+        void clearParams();
 
         /**
-         * fetches the corresponding output tensor template for the current layer (for feedfoward process only) using a pointer
+         * fetches the corresponding weights for the current layer
          * @param pointer
-         * @return a Float32Array of output tensor template
+         * @return cl_mem of weights
          */
-        cl_mem output(int pointer) { 
-            return d_outputs_[pointer]; 
+        cl_mem getWeights(int pointer) {
+            return weights[pointer];
+        }
+
+        /**
+         * fetches the corresponding biases for the current layer
+         * @param pointer
+         * @return cl_mem of biases
+         */
+        cl_mem getBiases(int pointer) {
+            return biases[pointer];
         }
 
         cl_context context() { 
@@ -51,6 +64,7 @@ class GpuContext {
         cl_context     context_  = nullptr;
         cl_command_queue queue_  = nullptr;
         cl_program     program_  = nullptr;
-        std::vector<cl_mem> d_outputs_;
+        CL_MEM_ARRAY weights;
+        CL_MEM_ARRAY biases;
         std::unordered_map<std::string, cl_kernel> kernels_;
 };

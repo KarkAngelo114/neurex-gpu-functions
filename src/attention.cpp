@@ -42,6 +42,7 @@ Napi::Value projectToQKV_GPU(const Napi::CallbackInfo& info) {
     int embeddingDim = info[7].As<Napi::Number>().Int32Value();
     int sequenceLen = info[8].As<Napi::Number>().Int32Value();
     int size = embeddingDim * sequenceLen;
+    int pointer = info[9].As<Napi::Number>().Int32Value();
 
     Napi::Float32Array Q = Napi::Float32Array::New(env, size);
     Napi::Float32Array K = Napi::Float32Array::New(env, size);
@@ -53,13 +54,9 @@ Napi::Value projectToQKV_GPU(const Napi::CallbackInfo& info) {
     cl_kernel kernel = gpu.kernel("projectQKV");
 
 
-    Napi::Float32Array concat_weights = concatenateFloat32Array(env, {Q_weights_tensor, K_weights_tensor, V_weights_tensor});
-    Napi::Float32Array concat_bias = concatenateFloat32Array(env, {Q_bias_tensor, K_bias_tensor, V_bias_tensor});
-
-
     cl_mem input = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* inputTensor.ElementLength(), inputTensor.Data(), nullptr);
-    cl_mem weights = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* concat_weights.ElementLength(), concat_weights.Data(), nullptr);
-    cl_mem biases = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* concat_bias.ElementLength(), concat_bias.Data(), nullptr);
+    cl_mem weights = gpu.getWeights(pointer);
+    cl_mem biases = gpu.getBiases(pointer);
     cl_mem _Q = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float)* size, nullptr, nullptr);
     cl_mem _K = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float)* size, nullptr, nullptr);
     cl_mem _V = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float)* size, nullptr, nullptr);
@@ -81,8 +78,6 @@ Napi::Value projectToQKV_GPU(const Napi::CallbackInfo& info) {
     clEnqueueReadBuffer( queue, _V, CL_TRUE, 0, sizeof(float) * size, V.Data(), 0, nullptr, nullptr);
 
     clReleaseMemObject(input);
-    clReleaseMemObject(weights);
-    clReleaseMemObject(biases);
     clReleaseMemObject(_Q);
     clReleaseMemObject(_K);
     clReleaseMemObject(_V);
