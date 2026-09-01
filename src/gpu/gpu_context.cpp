@@ -53,7 +53,8 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"transConv.cl", "transConv"},
     {"transConv.cl", "transConvBackward"},
     {"computeKernelGradients.cl", "accumulateTransConvKernelGrads"},
-    {"attention.cl", "projectQKV"}
+    {"attention.cl", "projectQKV"},
+    {"attention.cl", "OutputWeightProjection"}
 };
 
 
