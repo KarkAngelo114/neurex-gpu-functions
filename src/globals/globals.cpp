@@ -83,5 +83,5 @@ Napi::Value shutdownGPU(const Napi::CallbackInfo& info) {
 void _globals(Napi::Env env, Napi::Object exports) {
     exports.Set("setOnGPU", Napi::Function::New(env, setOnGPU_Boolean_State));
     exports.Set("UploadParams", Napi::Function::New(env, UploadParams));
-    exports.Set("shutdoown", Napi::Function::New(env, shutdownGPU));
+    exports.Set("shutdown", Napi::Function::New(env, shutdownGPU));
 }
