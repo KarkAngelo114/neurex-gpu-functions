@@ -89,6 +89,7 @@ Napi::Value LayerNorm_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array betaTensor = info[3].As<Napi::Float32Array>();
     float eps = info[4].As<Napi::Number>().FloatValue();
     int pointer = info[5].As<Napi::Number>().Int32Value();
+    std::string modelID = info[0].As<Napi::String>().Utf8Value();
 
     float* input = inputTensor.Data();
     Napi::Float32Array outputTensor = Napi::Float32Array::New(env, size);
@@ -123,8 +124,8 @@ Napi::Value LayerNorm_GPU(const Napi::CallbackInfo& info) {
     float std = std::sqrt(variance + eps);
 
     cl_mem _input = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* size, inputTensor.Data(), nullptr);
-    cl_mem _gamma = gpu.getWeights(pointer);
-    cl_mem _beta = gpu.getBiases(pointer);
+    cl_mem _gamma = gpu.getWeights(modelID, pointer);
+    cl_mem _beta = gpu.getBiases(modelID, pointer);
     cl_mem output = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* size, outputTensor.Data(), nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &_input);

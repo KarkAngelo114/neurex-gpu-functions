@@ -21,13 +21,14 @@ Napi::Value MatMul_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array weights = info[3].As<Napi::Float32Array>();
     Napi::Float32Array biases = info[4].As<Napi::Float32Array>();
     int pointer = info[5].As<Napi::Number>().Int32Value();
+    std::string modelID = info[0].As<Napi::String>().Utf8Value();
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
     cl_context context = gpu.context();
     cl_mem dIn  = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputSize, input.Data(), nullptr);
-    cl_mem dW   = gpu.getWeights(pointer);
-    cl_mem dB   = gpu.getBiases(pointer);
+    cl_mem dW   = gpu.getWeights(modelID, pointer);
+    cl_mem dB   = gpu.getBiases(modelID, pointer);
     cl_mem dOut = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * outputSize, nullptr, nullptr);
 
     cl_kernel k = gpu.kernel("matmul");
@@ -94,6 +95,7 @@ Napi::Value DeltaMatMul_GPU(const Napi::CallbackInfo& info) {
     int outputSize = info[2].As<Napi::Number>().Int32Value();
     Napi::Float32Array weightsArray = info[3].As<Napi::Float32Array>();
     int pointer = info[4].As<Napi::Number>().Int32Value();
+    std::string modelID = info[0].As<Napi::String>().Utf8Value();
 
     auto& gpu = GpuContext::instance();
     cl_context ctx = gpu.context();
@@ -103,7 +105,7 @@ Napi::Value DeltaMatMul_GPU(const Napi::CallbackInfo& info) {
     cl_int err;
     cl_mem dDelta = clCreateBuffer(ctx, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)*outputSize, delta.Data(), &err);
     cl_mem dOut = clCreateBuffer(ctx, CL_MEM_WRITE_ONLY, sizeof(float)*inputSize, nullptr, &err);
-    cl_mem dW = gpu.getWeights(pointer);
+    cl_mem dW = gpu.getWeights(modelID, pointer);
 
     clSetKernelArg(k, 0, sizeof(cl_mem), &dDelta);
     clSetKernelArg(k, 1, sizeof(cl_mem), &dW);
@@ -184,6 +186,7 @@ Napi::Value ProjectOutput_GPU(const Napi::CallbackInfo& info) {
     int embedDim = info[1].As<Napi::Number>().Int32Value();
     int seqLen = info[2].As<Napi::Number>().Int32Value();
     int pointer = info[3].As<Napi::Number>().Int32Value();
+    std::string modelID = info[0].As<Napi::String>().Utf8Value();
 
     auto& gpu = GpuContext::instance();
     cl_context ctx = gpu.context();
@@ -191,8 +194,8 @@ Napi::Value ProjectOutput_GPU(const Napi::CallbackInfo& info) {
 
     cl_mem dIn = clCreateBuffer(ctx, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * input.ElementLength(), input.Data(), nullptr);
     cl_mem dOut = clCreateBuffer(ctx, CL_MEM_WRITE_ONLY, sizeof(float) * input.ElementLength(), nullptr, nullptr);
-    cl_mem dW = gpu.getWeights(pointer);
-    cl_mem dB = gpu.getBiases(pointer);
+    cl_mem dW = gpu.getWeights(modelID, pointer);
+    cl_mem dB = gpu.getBiases(modelID, pointer);
 
     cl_kernel k = gpu.kernel("OutputWeightProjection");
     clSetKernelArg(k, 0, sizeof(cl_mem), &dIn);
@@ -229,11 +232,6 @@ Napi::Value DeltaMatMulWrapper(const Napi::CallbackInfo& info) {
         return DeltaMatMul_GPU(info);
     }
     return DeltaMatMul_CPU(info);
-}
-
-Napi::Value project_O_matmul(const Napi::CallbackInfo& info) {
-
-    return ProjectOutput_GPU(info);
 }
 
 Napi::Value DotProductWrapper(const Napi::CallbackInfo& info) {

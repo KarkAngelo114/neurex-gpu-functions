@@ -29,6 +29,7 @@ Napi::Value transConv_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array weightsArray = info[6].As<Napi::Float32Array>();
     Napi::Float32Array biasesArray = info[7].As<Napi::Float32Array>();
     int pointer = info[8].As<Napi::Number>().Int32Value();
+    std::string modelID = info[0].As<Napi::String>().Utf8Value();
 
     int iH = inputShape[0];
     int iW = inputShape[1];
@@ -57,8 +58,8 @@ Napi::Value transConv_GPU(const Napi::CallbackInfo& info) {
     cl_kernel kernel = gpu.kernel("transConv");
 
     cl_mem input = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputTensor.ElementLength(), inputTensor.Data(), nullptr);
-    cl_mem weights = gpu.getWeights(pointer);
-    cl_mem biases = gpu.getBiases(pointer);
+    cl_mem weights = gpu.getWeights(modelID, pointer);
+    cl_mem biases = gpu.getBiases(modelID, pointer);
     cl_mem output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * outputSize, nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &input);
@@ -211,6 +212,7 @@ Napi::Value transConvBackward_GPU(const Napi::CallbackInfo& info) {
     IntArray weightShape = Vectorize(info[5].As<Napi::Array>());
     Napi::Float32Array weightsArray = info[6].As<Napi::Float32Array>();
     int pointer = info[7].As<Napi::Number>().Int32Value();
+    std::string modelID = info[0].As<Napi::String>().Utf8Value();
 
     int iH = inputShape[0];
     int iW = inputShape[1];
@@ -238,7 +240,7 @@ Napi::Value transConvBackward_GPU(const Napi::CallbackInfo& info) {
     cl_kernel kernel = gpu.kernel("transConvBackward");
 
     cl_mem delta = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * deltaTensor.ElementLength(), deltaTensor.Data(), nullptr);
-    cl_mem weights = gpu.getWeights(pointer);
+    cl_mem weights = gpu.getWeights(modelID, pointer);
     cl_mem output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * outputTensor.ElementLength(), nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &delta);

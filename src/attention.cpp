@@ -43,6 +43,7 @@ Napi::Value projectToQKV_GPU(const Napi::CallbackInfo& info) {
     int sequenceLen = info[8].As<Napi::Number>().Int32Value();
     int size = embeddingDim * sequenceLen;
     int pointer = info[9].As<Napi::Number>().Int32Value();
+    std::string modelID = info[0].As<Napi::String>().Utf8Value();
 
     Napi::Float32Array Q = Napi::Float32Array::New(env, size);
     Napi::Float32Array K = Napi::Float32Array::New(env, size);
@@ -55,8 +56,8 @@ Napi::Value projectToQKV_GPU(const Napi::CallbackInfo& info) {
 
 
     cl_mem input = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* inputTensor.ElementLength(), inputTensor.Data(), nullptr);
-    cl_mem weights = gpu.getWeights(pointer);
-    cl_mem biases = gpu.getBiases(pointer);
+    cl_mem weights = gpu.getWeights(modelID, pointer);
+    cl_mem biases = gpu.getBiases(modelID, pointer);
     cl_mem _Q = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float)* size, nullptr, nullptr);
     cl_mem _K = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float)* size, nullptr, nullptr);
     cl_mem _V = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float)* size, nullptr, nullptr);

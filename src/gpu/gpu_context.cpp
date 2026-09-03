@@ -180,8 +180,8 @@ bool GpuContext::initialize(const std::string& kernelBasePath, std::string& erro
 // shutdown GPU. Clears all stored clBuffers and kernels
 bool GpuContext::shutdown() {
     try {
-        clearParams();
-    
+        clearAllParams();
+
         for (auto& kv : kernels_) clReleaseKernel(kv.second);
         kernels_.clear();
         if (program_) { clReleaseProgram(program_); program_ = nullptr; }
@@ -197,58 +197,64 @@ bool GpuContext::shutdown() {
     }
     
 }
-
-/**
- * uploads parameters to memory
- */
-bool GpuContext::uploadParams(const Matrix& weightMatrix, const Matrix& biasMatrix, std::string& errorOut) {
+bool GpuContext::uploadParams(const std::string& modelID, const Matrix& weightMatrix, const Matrix& biasMatrix, std::string& errorOut) {
     if (!has_gpu_) {
         errorOut = "GPU context is not initialized.";
         return false;
     }
 
     cl_int err;
-    clearParams(); // Release previous buffers if any exist
+    clearParams(modelID);
 
-    // Upload weights
+    CL_MEM_ARRAY newWeights;
+    CL_MEM_ARRAY newBiases;
+
     for (const auto& layerWeights : weightMatrix) {
-
-        cl_mem weightBuffer = clCreateBuffer(context_, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * layerWeights.size(), const_cast<float*>(layerWeights.data()), &err);
-
+        cl_mem weightBuffer = clCreateBuffer(context_, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
+            sizeof(float) * layerWeights.size(), const_cast<float*>(layerWeights.data()), &err);
         if (err != CL_SUCCESS) {
             errorOut = "Failed to allocate GPU buffer for weights.";
             return false;
         }
-
-        weights.push_back(weightBuffer);
+        newWeights.push_back(weightBuffer);
     }
 
-    // Upload biases
     for (const auto& layerBiases : biasMatrix) {
-
-        cl_mem biasBuffer = clCreateBuffer(context_, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * layerBiases.size(), const_cast<float*>(layerBiases.data()), &err);
-
+        cl_mem biasBuffer = clCreateBuffer(context_, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
+            sizeof(float) * layerBiases.size(), const_cast<float*>(layerBiases.data()), &err);
         if (err != CL_SUCCESS) {
             errorOut = "Failed to allocate GPU buffer for biases.";
             return false;
         }
-
-        biases.push_back(biasBuffer);
+        newBiases.push_back(biasBuffer);
     }
 
+    weightsByModel_[modelID] = std::move(newWeights);
+    biasesByModel_[modelID] = std::move(newBiases);
     return true;
 }
 
-void GpuContext::clearParams() {
-    for (auto buf : weights) {
-        if (buf) clReleaseMemObject(buf);
+void GpuContext::clearParams(const std::string& modelID) {
+    auto itWeights = weightsByModel_.find(modelID);
+    if (itWeights != weightsByModel_.end()) {
+        for (auto buf : itWeights->second) if (buf) clReleaseMemObject(buf);
+        weightsByModel_.erase(itWeights);
     }
-    weights.clear();
 
-    for (auto buf : biases) {
-        if (buf) clReleaseMemObject(buf);
+    auto itBiases = biasesByModel_.find(modelID);
+    if (itBiases != biasesByModel_.end()) {
+        for (auto buf : itBiases->second) if (buf) clReleaseMemObject(buf);
+        biasesByModel_.erase(itBiases);
     }
-    biases.clear();
+}
+
+void GpuContext::clearAllParams() {
+    for (auto& entry : weightsByModel_)
+        for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
+    for (auto& entry : biasesByModel_)
+        for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
+    weightsByModel_.clear();
+    biasesByModel_.clear();
 }
 
 cl_kernel GpuContext::kernel(const std::string& name) const {

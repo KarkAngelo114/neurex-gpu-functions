@@ -12,7 +12,6 @@ class GpuContext {
     public:
         static GpuContext& instance();
 
-        // Called from JS (once) after detectGPU() decided we have one.
         bool initialize(const std::string& kernelBasePath, std::string& errorOut);
         bool shutdown();
 
@@ -20,26 +19,33 @@ class GpuContext {
             return has_gpu_; 
         }
 
-        bool uploadParams(const Matrix& weightMatrix, const Matrix& biasMatrix, std::string& errorOut);
+        // upload model parameters each referenced with a model ID
+        bool uploadParams(const std::string& modelID, const Matrix& weightMatrix, const Matrix& biasMatrix, std::string& errorOut);
 
-        void clearParams();
+        // release one model's buffers
+        void clearParams(const std::string& modelID);
+
+        // release everything (used by shutdown())
+        void clearAllParams();
 
         /**
-         * fetches the corresponding weights for the current layer
-         * @param pointer
-         * @return cl_mem of weights
+         * fetches the corresponding weights for the current layer, scoped to modelID
+         * @param modelID use to reference what model's weights will get
+         * @param pointer use to reference the specific layer's parameter
+         * @return a clBuffer
          */
-        cl_mem getWeights(int pointer) {
-            return weights[pointer];
+        cl_mem getWeights(const std::string& modelID, int pointer) const {
+            return weightsByModel_.at(modelID).at(static_cast<size_t>(pointer));
         }
 
         /**
-         * fetches the corresponding biases for the current layer
-         * @param pointer
-         * @return cl_mem of biases
+         * fetches the corresponding biases for the current layer, scoped to modelID
+         * @param modelID use to reference what model's weights will get
+         * @param pointer use to reference the specific layer's parameter
+         * @return a clBuffer
          */
-        cl_mem getBiases(int pointer) {
-            return biases[pointer];
+        cl_mem getBiases(const std::string& modelID, int pointer) const {
+            return biasesByModel_.at(modelID).at(static_cast<size_t>(pointer));
         }
 
         cl_context context() { 
@@ -64,7 +70,7 @@ class GpuContext {
         cl_context     context_  = nullptr;
         cl_command_queue queue_  = nullptr;
         cl_program     program_  = nullptr;
-        CL_MEM_ARRAY weights;
-        CL_MEM_ARRAY biases;
+        std::unordered_map<std::string, CL_MEM_ARRAY> weightsByModel_;
+        std::unordered_map<std::string, CL_MEM_ARRAY> biasesByModel_;
         std::unordered_map<std::string, cl_kernel> kernels_;
 };
