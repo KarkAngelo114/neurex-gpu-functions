@@ -89,7 +89,7 @@ Napi::Value LayerNorm_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array betaTensor = info[3].As<Napi::Float32Array>();
     float eps = info[4].As<Napi::Number>().FloatValue();
     int pointer = info[5].As<Napi::Number>().Int32Value();
-    std::string modelID = info[0].As<Napi::String>().Utf8Value();
+    std::string modelID = info[6].As<Napi::String>().Utf8Value();
 
     float* input = inputTensor.Data();
     Napi::Float32Array outputTensor = Napi::Float32Array::New(env, size);

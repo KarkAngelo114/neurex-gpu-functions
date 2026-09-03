@@ -22,7 +22,7 @@ Napi::Value GetEmbeddings_GPU(const Napi::CallbackInfo& info) {
     int embeddingDim = info[1].As<Napi::Number>().Int32Value();
     Napi::Float32Array params = info[2].As<Napi::Float32Array>();
     int pointer = info[3].As<Napi::Number>().Int32Value();
-    std::string modelID = info[0].As<Napi::String>().Utf8Value();
+    std::string modelID = info[4].As<Napi::String>().Utf8Value();
 
     int sequence_length = tokenArray.size();
     int totalSize = sequence_length * embeddingDim; // token array length * embeddingDim = output size

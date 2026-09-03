@@ -21,7 +21,7 @@ Napi::Value MatMul_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array weights = info[3].As<Napi::Float32Array>();
     Napi::Float32Array biases = info[4].As<Napi::Float32Array>();
     int pointer = info[5].As<Napi::Number>().Int32Value();
-    std::string modelID = info[0].As<Napi::String>().Utf8Value();
+    std::string modelID = info[6].As<Napi::String>().Utf8Value();
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
@@ -95,7 +95,7 @@ Napi::Value DeltaMatMul_GPU(const Napi::CallbackInfo& info) {
     int outputSize = info[2].As<Napi::Number>().Int32Value();
     Napi::Float32Array weightsArray = info[3].As<Napi::Float32Array>();
     int pointer = info[4].As<Napi::Number>().Int32Value();
-    std::string modelID = info[0].As<Napi::String>().Utf8Value();
+    std::string modelID = info[5].As<Napi::String>().Utf8Value();
 
     auto& gpu = GpuContext::instance();
     cl_context ctx = gpu.context();
@@ -186,7 +186,7 @@ Napi::Value ProjectOutput_GPU(const Napi::CallbackInfo& info) {
     int embedDim = info[1].As<Napi::Number>().Int32Value();
     int seqLen = info[2].As<Napi::Number>().Int32Value();
     int pointer = info[3].As<Napi::Number>().Int32Value();
-    std::string modelID = info[0].As<Napi::String>().Utf8Value();
+    std::string modelID = info[4].As<Napi::String>().Utf8Value();
 
     auto& gpu = GpuContext::instance();
     cl_context ctx = gpu.context();

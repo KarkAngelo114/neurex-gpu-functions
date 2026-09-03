@@ -43,7 +43,7 @@ Napi::Value projectToQKV_GPU(const Napi::CallbackInfo& info) {
     int sequenceLen = info[8].As<Napi::Number>().Int32Value();
     int size = embeddingDim * sequenceLen;
     int pointer = info[9].As<Napi::Number>().Int32Value();
-    std::string modelID = info[0].As<Napi::String>().Utf8Value();
+    std::string modelID = info[10].As<Napi::String>().Utf8Value();
 
     Napi::Float32Array Q = Napi::Float32Array::New(env, size);
     Napi::Float32Array K = Napi::Float32Array::New(env, size);
@@ -141,7 +141,6 @@ Napi::Value projectToQKV_CPU(const Napi::CallbackInfo& info) {
 
     return output;
 }
-
 
 Napi::Value projectToQKV_Wrapper(const Napi::CallbackInfo& info) {
     if (get_Global_Boolean_On_GPU()) {

@@ -61,7 +61,7 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array weightsArray = info[5].As<Napi::Float32Array>();
     Napi::Float32Array biasesArray = info[6].As<Napi::Float32Array>();
     int pointer = info[7].As<Napi::Number>().Int32Value();
-    std::string modelID = info[0].As<Napi::String>().Utf8Value();
+    std::string modelID = info[8].As<Napi::String>().Utf8Value();
 
     int numFilters = kernelShape[0];
     int kernelH = kernelShape[1];
