@@ -212,7 +212,7 @@ Napi::Value RMSProp_GPU(const Napi::CallbackInfo& info) {
     clReleaseMemObject(sqAvg);
 
     Napi::Object output = Napi::Object::New(env);
-    output.Set("Params", paramTensor);
+    output.Set("params", paramTensor);
     output.Set("sqAvg", sqAvgTensor);
     return output;
 }
@@ -240,7 +240,7 @@ Napi::Value RMSProp_CPU(const Napi::CallbackInfo& info) {
 
 
     Napi::Object output = Napi::Object::New(env);
-    output.Set("Params", paramTensor);
+    output.Set("params", paramTensor);
     output.Set("sqAvg", sqAvgTensor);
     return output;
 }
