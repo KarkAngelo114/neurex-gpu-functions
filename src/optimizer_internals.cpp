@@ -135,6 +135,7 @@ Napi::Value Adam_GPU(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value Adam_CPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
     Napi::Float32Array params = info[0].As<Napi::Float32Array>();
     Napi::Float32Array grads = info[1].As<Napi::Float32Array>();
     Napi::Float32Array stateM = info[2].As<Napi::Float32Array>();
