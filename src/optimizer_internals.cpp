@@ -193,7 +193,7 @@ Napi::Value RMSProp_GPU(const Napi::CallbackInfo& info) {
     cl_mem sqAvg = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(Float)* size, sqAvgTensor.Data(), nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &params);
-    clSetKernelArg(kernel, 1, sizeof(cl_mme), &grads);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), &grads);
     clSetKernelArg(kernel, 2, sizeof(cl_mem), &sqAvg);
     clSetKernelArg(kernel, 3, sizeof(float), &lr);
     clSetKernelArg(kernel, 4, sizeof(float), &epsilon);
@@ -226,7 +226,7 @@ Napi::Value RMSProp_CPU(const Napi::CallbackInfo& info) {
     float decayRate = info[5].As<Napi::Number>().FloatValue();
     int size = paramTensor.ElementLength();
 
-    float* parms = paramTensor.Data();
+    float* params = paramTensor.Data();
     float* grads = gradTensor.Data();
     float* sqAvg = sqAvgTensor.Data();
 
