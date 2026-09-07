@@ -273,5 +273,5 @@ Napi::Value RMSProp_wrapper(const Napi::CallbackInfo& info) {
 void OptimizerInternals(Napi::Env env, Napi::Object exports) {
     exports.Set("SGD", Napi::Function::New(env, SGD_wrapper));
     exports.Set("Adam", Napi::Function::New(env, Adam_wrapper));
-    exports.Set("RMSProp");
+    exports.Set("RMSProp", Napi::Function::New(env, RMSProp_wrapper));
 }
