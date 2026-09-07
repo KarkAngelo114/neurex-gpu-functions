@@ -190,7 +190,7 @@ Napi::Value RMSProp_GPU(const Napi::CallbackInfo& info) {
 
     cl_mem params = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* size, paramTensor.Data(), nullptr);
     cl_mem grads = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* size, gradTensor.Data(), nullptr);
-    cl_mem sqAvg = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(Float)* size, sqAvgTensor.Data(), nullptr);
+    cl_mem sqAvg = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* size, sqAvgTensor.Data(), nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &params);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &grads);
