@@ -173,7 +173,7 @@ Napi::Value Adam_CPU(const Napi::CallbackInfo& info) {
     return output;
 }
 
-Nap::Value RMSProp_GPU(const Napi::CallbackInfo& info) {
+Napi::Value RMSProp_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array paramTensor = info[0].As<Napi::Float32Array>();
     Napi::Float32Array gradTensor = info[1].As<Napi::Float32Array>();
@@ -216,7 +216,7 @@ Nap::Value RMSProp_GPU(const Napi::CallbackInfo& info) {
     return output;
 }
 
-Nap::Value RMSProp_CPU(const Napi::CallbackInfo& info) {
+Napi::Value RMSProp_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array paramTensor = info[0].As<Napi::Float32Array>();
     Napi::Float32Array gradTensor = info[1].As<Napi::Float32Array>();
