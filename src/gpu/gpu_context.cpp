@@ -34,6 +34,7 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"activations.cl", "dtanh"},
     {"optimizers.cl", "sgd"},
     {"optimizers.cl", "adam"},
+    {"optimizers.cl", "rmsprop"},
     {"math.cl", "element_wise_mul"},
     {"math.cl", "element_wise_sub"},
     {"math.cl", "scale"},

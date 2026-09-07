@@ -135,7 +135,6 @@ Napi::Value Adam_GPU(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value Adam_CPU(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
     Napi::Float32Array params = info[0].As<Napi::Float32Array>();
     Napi::Float32Array grads = info[1].As<Napi::Float32Array>();
     Napi::Float32Array stateM = info[2].As<Napi::Float32Array>();
@@ -174,6 +173,77 @@ Napi::Value Adam_CPU(const Napi::CallbackInfo& info) {
     return output;
 }
 
+Nap::Value RMSProp_GPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    Napi::Float32Array paramTensor = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array gradTensor = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array sqAvgTensor = info[2].As<Napi::Float32Array>();
+    float lr = info[3].As<Napi::Number>().FloatValue();
+    float epsilon = info[4].As<Napi::Number>().FloatValue();
+    float decayRate = info[5].As<Napi::Number>().FloatValue();
+    int size = paramTensor.ElementLength();
+
+    auto& gpu = GpuContext::instance();
+    cl_command_queue queue = gpu.queue();
+    cl_context context = gpu.context();
+    cl_kernel kernel = gpu.kernel("rmsprop");
+
+    cl_mem params = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* size, paramTensor.Data(), nullptr);
+    cl_mem grads = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* size, gradTensor.Data(), nullptr);
+    cl_mem sqAvg = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(Float)* size, sqAvgTensor.Data(), nullptr);
+
+    clSetKernelArg(kernel, 0, sizeof(cl_mem), &params);
+    clSetKernelArg(kernel, 1, sizeof(cl_mme), &grads);
+    clSetKernelArg(kernel, 2, sizeof(cl_mem), &sqAvg);
+    clSetKernelArg(kernel, 3, sizeof(float), &lr);
+    clSetKernelArg(kernel, 4, sizeof(float), &epsilon);
+    clSetKernelArg(kernel, 5, sizeof(float), &decayRate);
+    clSetKernelArg(kernel, 6, sizeof(int), &size);
+
+    size_t globalSize = (size_t)size;
+    clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
+
+    clEnqueueReadBuffer(queue, params, CL_TRUE, 0, sizeof(float)* size, paramTensor.Data(), 0, nullptr, nullptr );
+    clEnqueueReadBuffer(queue, sqAvg, CL_TRUE, 0, sizeof(float)* size, sqAvgTensor.Data(), 0, nullptr, nullptr );
+
+    clReleaseMemObject(params);
+    clReleaseMemObject(grads);
+    clReleaseMemObject(sqAvg);
+
+    Napi::Object output = Napi::Object::New(env);
+    output.Set("Params", paramTensor);
+    output.Set("sqAvg", sqAvgTensor);
+    return output;
+}
+
+Nap::Value RMSProp_CPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    Napi::Float32Array paramTensor = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array gradTensor = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array sqAvgTensor = info[2].As<Napi::Float32Array>();
+    float lr = info[3].As<Napi::Number>().FloatValue();
+    float epsilon = info[4].As<Napi::Number>().FloatValue();
+    float decayRate = info[5].As<Napi::Number>().FloatValue();
+    int size = paramTensor.ElementLength();
+
+    float* parms = paramTensor.Data();
+    float* grads = gradTensor.Data();
+    float* sqAvg = sqAvgTensor.Data();
+
+    #pragma omp parallel for
+    #pragma omp unroll partial(4)
+    for (int i = 0; i < size; i++) {
+        sqAvg[i] = decayRate * sqAvg[i] + (1 - decayRate) * (grads[i] * grads[i]);
+        params[i] -= (lr / (sqrt(sqAvg[i]) + epsilon)) * grads[i];
+    }
+
+
+    Napi::Object output = Napi::Object::New(env);
+    output.Set("Params", paramTensor);
+    output.Set("sqAvg", sqAvgTensor);
+    return output;
+}
+
 // =============== wrappers ===============
 
 Napi::Value SGD_wrapper(const Napi::CallbackInfo& info) {
@@ -192,8 +262,16 @@ Napi::Value Adam_wrapper(const Napi::CallbackInfo& info) {
     return Adam_CPU(info);
 }
 
+Napi::Value RMSProp_wrapper(const Napi::CallbackInfo& info) {
+    if (get_Global_Boolean_On_GPU()) {
+        return RMSProp_GPU(info);
+    }
+    return RMSProp_CPU(info);
+}
+
 // ======== exports ======== //
 void OptimizerInternals(Napi::Env env, Napi::Object exports) {
     exports.Set("SGD", Napi::Function::New(env, SGD_wrapper));
     exports.Set("Adam", Napi::Function::New(env, Adam_wrapper));
+    exports.Set("RMSProp");
 }
