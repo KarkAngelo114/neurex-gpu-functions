@@ -14,6 +14,9 @@ Napi::Value SGD_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array velocity = info[2].As<Napi::Float32Array>();
     float lr = info[3].As<Napi::Number>().FloatValue();
     float momentum = info[4].As<Napi::Number>().FloatValue();
+    int pointer = info[5].As<Napi::Number>().Int32Value();
+    std::string paramType = info[6].As<Napi::String>().Utf8Value();
+    std::string modelID = info[7].As<Napi::String>().Utf8Value();
 
     int param_length = params.ElementLength();
 
@@ -22,7 +25,7 @@ Napi::Value SGD_GPU(const Napi::CallbackInfo& info) {
     cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("sgd");
 
-    cl_mem parameters = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* param_length, params.Data(), nullptr);
+    cl_mem parameters = (paramType == "weights") ? gpu.getWeights(modelID, pointer) : gpu.getBiases(modelID, pointer);
     cl_mem gradients = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* param_length, grads.Data(), nullptr);
     cl_mem velocity_array = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* param_length, velocity.Data(), nullptr);
 
@@ -39,7 +42,7 @@ Napi::Value SGD_GPU(const Napi::CallbackInfo& info) {
     clEnqueueReadBuffer(queue, parameters, CL_TRUE, 0, sizeof(float)* param_length, params.Data(), 0, nullptr, nullptr );
     clEnqueueReadBuffer(queue, velocity_array, CL_TRUE, 0, sizeof(float)* param_length, velocity.Data(), 0, nullptr, nullptr );
 
-    clReleaseMemObject(parameters);
+
     clReleaseMemObject(gradients);
     clReleaseMemObject(velocity_array);
 
@@ -89,6 +92,9 @@ Napi::Value Adam_GPU(const Napi::CallbackInfo& info) {
     float beta1 = info[6].As<Napi::Number>().FloatValue();
     float beta2 = info[7].As<Napi::Number>().FloatValue();
     float epsilon = info[8].As<Napi::Number>().FloatValue();
+    int pointer = info[9].As<Napi::Number>().Int32Value();
+    std::string paramType = info[10].As<Napi::String>().Utf8Value();
+    std::string modelID = info[11].As<Napi::String>().Utf8Value();
     int params_len = params.ElementLength();
 
     auto& gpu = GpuContext::instance();
@@ -96,7 +102,7 @@ Napi::Value Adam_GPU(const Napi::CallbackInfo& info) {
     cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("adam");
 
-    cl_mem parameters = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* params_len, params.Data(), nullptr);
+    cl_mem parameters = (paramType == "weights") ? gpu.getWeights(modelID, pointer) : gpu.getBiases(modelID, pointer);
     cl_mem gradients = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* params_len, grads.Data(), nullptr);
     cl_mem M = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* params_len, stateM.Data(), nullptr);
     cl_mem V = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* params_len, stateV.Data(), nullptr);
@@ -120,8 +126,6 @@ Napi::Value Adam_GPU(const Napi::CallbackInfo& info) {
     clEnqueueReadBuffer(queue, M, CL_TRUE, 0, sizeof(float)* params_len, stateM.Data(), 0, nullptr, nullptr);
     clEnqueueReadBuffer(queue, V, CL_TRUE, 0, sizeof(float)* params_len, stateV.Data(), 0, nullptr, nullptr);
 
-    clFinish(queue);
-    clReleaseMemObject(parameters);
     clReleaseMemObject(gradients);
     clReleaseMemObject(M);
     clReleaseMemObject(V);
@@ -182,6 +186,10 @@ Napi::Value RMSProp_GPU(const Napi::CallbackInfo& info) {
     float lr = info[3].As<Napi::Number>().FloatValue();
     float epsilon = info[4].As<Napi::Number>().FloatValue();
     float decayRate = info[5].As<Napi::Number>().FloatValue();
+    int pointer = info[6].As<Napi::Number>().Int32Value();
+    std::string paramType = info[7].As<Napi::String>().Utf8Value();
+    std::string modelID = info[8].As<Napi::String>().Utf8Value();
+
     int size = paramTensor.ElementLength();
 
     auto& gpu = GpuContext::instance();
@@ -189,7 +197,7 @@ Napi::Value RMSProp_GPU(const Napi::CallbackInfo& info) {
     cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("rmsprop");
 
-    cl_mem params = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* size, paramTensor.Data(), nullptr);
+    cl_mem params = (paramType == "weights") ? gpu.getWeights(modelID, pointer) : gpu.getBiases(modelID, pointer);
     cl_mem grads = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* size, gradTensor.Data(), nullptr);
     cl_mem sqAvg = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* size, sqAvgTensor.Data(), nullptr);
 
@@ -207,7 +215,6 @@ Napi::Value RMSProp_GPU(const Napi::CallbackInfo& info) {
     clEnqueueReadBuffer(queue, params, CL_TRUE, 0, sizeof(float)* size, paramTensor.Data(), 0, nullptr, nullptr );
     clEnqueueReadBuffer(queue, sqAvg, CL_TRUE, 0, sizeof(float)* size, sqAvgTensor.Data(), 0, nullptr, nullptr );
 
-    clReleaseMemObject(params);
     clReleaseMemObject(grads);
     clReleaseMemObject(sqAvg);
 
