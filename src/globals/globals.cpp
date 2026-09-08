@@ -63,7 +63,14 @@ Napi::Value ReleaseParams(const Napi::CallbackInfo& info) {
     }
 
     std::string modelID = info[0].As<Napi::String>().Utf8Value();
-    GpuContext::instance().clearParams(modelID);
+    auto& gpu = GpuContext::instance();
+    gpu.clearParams(modelID);
+    // clearParams() only releases weights/biases now (see gpu_context.cpp for why).
+    // ReleaseParams is JS's explicit "I'm done with this model" signal, so it's the
+    // right place to also drop the model's cached optimizer states (m/v/velocity/sqAvg).
+    gpu.clearOptimizerStates(modelID);
+
+    std::cout << "> State buffers has been cleared." << std::endl;
 
     return env.Undefined();
 }

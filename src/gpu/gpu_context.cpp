@@ -247,6 +247,14 @@ void GpuContext::clearParams(const std::string& modelID) {
         for (auto buf : itBiases->second) if (buf) clReleaseMemObject(buf);
         biasesByModel_.erase(itBiases);
     }
+
+    // NOTE: optimizer states (m/v/velocity/sqAvg) are intentionally NOT cleared here.
+    // clearParams() is called from two places with two different intents:
+    //   - uploadParams(): re-syncing the SAME model's weights/biases mid-training.
+    //     The optimizer states must survive this, otherwise every training step
+    //     would reset them to zero and the whole point of caching them is lost.
+    //   - ReleaseParams() (JS-facing): the model is actually being torn down.
+    //     That call site explicitly calls clearOptimizerStates() itself; see globals.cpp.
 }
 
 void GpuContext::clearAllParams() {
@@ -256,9 +264,77 @@ void GpuContext::clearAllParams() {
         for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
     weightsByModel_.clear();
     biasesByModel_.clear();
+
+    for (auto& entry : mStatesWeights_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
+    for (auto& entry : mStatesBiases_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
+    for (auto& entry : vStatesWeights_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
+    for (auto& entry : vStatesBiases_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
+    for (auto& entry : velocityWeights_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
+    for (auto& entry : velocityBiases_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
+    for (auto& entry : sqAvgWeights_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
+    for (auto& entry : sqAvgBiases_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
+    mStatesWeights_.clear(); mStatesBiases_.clear();
+    vStatesWeights_.clear(); vStatesBiases_.clear();
+    velocityWeights_.clear(); velocityBiases_.clear();
+    sqAvgWeights_.clear(); sqAvgBiases_.clear();
 }
 
 cl_kernel GpuContext::kernel(const std::string& name) const {
     auto it = kernels_.find(name);
     return it == kernels_.end() ? nullptr : it->second;
+}
+
+// ===================== Optimizer state caching =====================
+
+cl_mem GpuContext::getOrCreateStateBuffer(std::unordered_map<std::string, CL_MEM_ARRAY>& store, const std::string& modelID, int pointer, size_t length, const float* initialData) {
+    auto& layerBuffers = store[modelID]; // creates empty vector on first touch for this model
+
+    size_t idx = static_cast<size_t>(pointer);
+    if (idx >= layerBuffers.size()) {
+        layerBuffers.resize(idx + 1, nullptr);
+    }
+
+    if (layerBuffers[idx] == nullptr) {
+        cl_int err;
+        // COPY_HOST_PTR seeds the buffer with initialData (zeros on first-ever step).
+        // From then on this exact buffer persists and is updated in place by the kernel.
+        layerBuffers[idx] = clCreateBuffer(context_, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * length, const_cast<float*>(initialData), &err);
+    }
+
+    return layerBuffers[idx];
+}
+
+cl_mem GpuContext::getOrCreate_M(const std::string& modelID, int pointer, bool isWeights, size_t length, const float* initialData) {
+    return getOrCreateStateBuffer(isWeights ? mStatesWeights_ : mStatesBiases_, modelID, pointer, length, initialData);
+}
+
+cl_mem GpuContext::getOrCreate_V(const std::string& modelID, int pointer, bool isWeights, size_t length, const float* initialData) {
+    return getOrCreateStateBuffer(isWeights ? vStatesWeights_ : vStatesBiases_, modelID, pointer, length, initialData);
+}
+
+cl_mem GpuContext::getOrCreate_Velocity(const std::string& modelID, int pointer, bool isWeights, size_t length, const float* initialData) {
+    return getOrCreateStateBuffer(isWeights ? velocityWeights_ : velocityBiases_, modelID, pointer, length, initialData);
+}
+
+cl_mem GpuContext::getOrCreate_SqAvg(const std::string& modelID, int pointer, bool isWeights, size_t length, const float* initialData) {
+    return getOrCreateStateBuffer(isWeights ? sqAvgWeights_ : sqAvgBiases_, modelID, pointer, length, initialData);
+}
+
+static void releaseAndClearModelEntry(std::unordered_map<std::string, CL_MEM_ARRAY>& store, const std::string& modelID) {
+    auto it = store.find(modelID);
+    if (it != store.end()) {
+        for (auto buf : it->second) if (buf) clReleaseMemObject(buf);
+        store.erase(it);
+    }
+}
+
+void GpuContext::clearOptimizerStates(const std::string& modelID) {
+    releaseAndClearModelEntry(mStatesWeights_, modelID);
+    releaseAndClearModelEntry(mStatesBiases_, modelID);
+    releaseAndClearModelEntry(vStatesWeights_, modelID);
+    releaseAndClearModelEntry(vStatesBiases_, modelID);
+    releaseAndClearModelEntry(velocityWeights_, modelID);
+    releaseAndClearModelEntry(velocityBiases_, modelID);
+    releaseAndClearModelEntry(sqAvgWeights_, modelID);
+    releaseAndClearModelEntry(sqAvgBiases_, modelID);
 }
