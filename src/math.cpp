@@ -280,6 +280,26 @@ Napi::Value accumulate_element_wise_mul_CPU(const Napi::CallbackInfo& info) {
     return inputArray3;
 }
 
+Napi::Value element_wise_add_CPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array output = Napi::Float32Array::New(env, arr1.ElementSize());
+
+    float* a1 = arr1.Data();
+    float* a2 = arr2.Data();
+    float* o = output.Data();
+
+    #pragma omp parallel for
+    #pragma omp unroll partial(4)
+    for (int i = 0; i < arr1.ElementSize(); i++) {
+        o[i] = a1[i] + a2[i];
+    }
+
+    return output;
+    
+}
+
 // ====== wrappers ================
 
 Napi::Value element_wise_mul_wrapper(const Napi::CallbackInfo& info) {
@@ -324,10 +344,15 @@ Napi::Value accumulate_element_wise_mul_wrapper(const Napi::CallbackInfo& info) 
     return accumulate_element_wise_mul_CPU(info);
 }
 
+Napi::Value element_wise_add_wrapper(const Napi::CallbackInfo& info) {
+    return element_wise_add_CPU(info);
+}
+
 void Math_OPS(Napi::Env env, Napi::Object exports) {
     exports.Set("element_wise_mul", Napi::Function::New(env, element_wise_mul_wrapper));
     exports.Set("element_wise_sub", Napi::Function::New(env, element_wise_sub_wrapper));
     exports.Set("scaleDiff", Napi::Function::New(env, scaleDiffWrapper));
     exports.Set("scale", Napi::Function::New(env, ScalerWrapper));
     exports.Set("accumulate_element_wise_mul", Napi::Function::New(env, accumulate_element_wise_mul_wrapper));
+    exports.Set("element_wise_add");
 }

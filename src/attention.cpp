@@ -365,7 +365,7 @@ Napi::Value CoreMultiHeadAttention_CPU(const Napi::CallbackInfo& info) {
     int numHeads = info[5].As<Napi::Number>().Int32Value();
     int headDim = info[6].As<Napi::Number>().Int32Value();
     float dkRoot = info[7].As<Napi::Number>().FloatValue();
-    bool useCasualMasking = info[8].As<Napi::Boolean>().Value();
+    bool useCausalMasking = info[8].As<Napi::Boolean>().Value();
 
     // int pointer = info[9].As<Napi::Number>().Int32Value(); // use only on GPU side
     // String ModelID = info[10].As<Napi::String>().Utf8Value(); // use only on GPU side
@@ -436,7 +436,7 @@ Napi::Value CoreMultiHeadAttention_CPU(const Napi::CallbackInfo& info) {
         }
 
         // causal masking happens BEFORE scaling, matching the JS order
-        if (useCasualMasking) {
+        if (useCausalMasking) {
             _helper_applyCausalMask(scores.data(), seqLen, -1e9f);
         }
 
@@ -488,7 +488,7 @@ Napi::Value CoreMultiHeadAttentionBackward_CPU(const Napi::CallbackInfo& info) {
     int numHeads = info[8].As<Napi::Number>().Int32Value();
     int headDim = info[9].As<Napi::Number>().Int32Value();
     float dkRoot = info[10].As<Napi::Number>().FloatValue();
-    bool useCasualMasking = info[11].As<Napi::Boolean>().Value();
+    bool useCausalMasking = info[11].As<Napi::Boolean>().Value();
 
     // int pointer = info[12].As<Napi::Number>().Int32Value(); // GPU side only
     // String modelID = info[13].As<Napi::String>().Utf8Value(); // GPU side only
@@ -575,7 +575,7 @@ Napi::Value CoreMultiHeadAttentionBackward_CPU(const Napi::CallbackInfo& info) {
         _helper_scale(dScaled.data(), scoresPerHead, dkRoot);
 
         // causal masking on dScores happens AFTER scaling, matching the JS order — masked positions get zero gradient
-        if (useCasualMasking) {
+        if (useCausalMasking) {
             _helper_applyCausalMask(dScaled.data(), seqLen, 0.0f);
         }
 
