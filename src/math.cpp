@@ -284,7 +284,9 @@ Napi::Value element_wise_add_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
     Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>();
-    Napi::Float32Array output = Napi::Float32Array::New(env, arr1.ElementSize());
+    int size = arr1.ElementLength();
+    Napi::Float32Array output = Napi::Float32Array::New(env, size);
+    
 
     float* a1 = arr1.Data();
     float* a2 = arr2.Data();
@@ -292,7 +294,7 @@ Napi::Value element_wise_add_CPU(const Napi::CallbackInfo& info) {
 
     #pragma omp parallel for
     #pragma omp unroll partial(4)
-    for (int i = 0; i < arr1.ElementSize(); i++) {
+    for (int i = 0; i < size; i++) {
         o[i] = a1[i] + a2[i];
     }
 
