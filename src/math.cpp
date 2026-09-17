@@ -354,5 +354,5 @@ void Math_OPS(Napi::Env env, Napi::Object exports) {
     exports.Set("scaleDiff", Napi::Function::New(env, scaleDiffWrapper));
     exports.Set("scale", Napi::Function::New(env, ScalerWrapper));
     exports.Set("accumulate_element_wise_mul", Napi::Function::New(env, accumulate_element_wise_mul_wrapper));
-    exports.Set("element_wise_add");
+    exports.Set("element_wise_add", Napi::Function::New(env, element_wise_add_CPU));
 }
