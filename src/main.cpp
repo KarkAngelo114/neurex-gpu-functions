@@ -17,6 +17,7 @@ void recurrentFunc(Napi::Env env, Napi::Object exports);
 void normalizers(Napi::Env env, Napi::Object exports);
 void transConvFunc(Napi::Env env, Napi::Object exports);
 void attentionFunctions(Napi::Env env, Napi::Object exports);
+void encoders(Napi::Env env, Napi::Object exports);
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     ActivationsRegister(env, exports);
@@ -36,6 +37,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     normalizers(env, exports);
     transConvFunc(env, exports);
     attentionFunctions(env, exports);
+    encoders(env, exports);
     return exports;
 }
 

@@ -47,11 +47,7 @@ Napi::Value Relu_GPU(const Napi::CallbackInfo& info) {
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
     clEnqueueReadBuffer(queue, inputData, CL_TRUE, 0, sizeof(float)* input_size, input.Data(), 0, nullptr, nullptr);
-
-    clFinish(queue);
     clReleaseMemObject(inputData);
-
-
     return input;
 
 }
@@ -67,13 +63,6 @@ Napi::Value Relu_CPU(const Napi::CallbackInfo& info) {
         data[i] = data[i] > 0.0f ? data[i] : 0.0f;
     }
     return input;
-}
-
-Napi::Value ReluWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return Relu_GPU(info);
-    }
-    return Relu_CPU(info);
 }
 
 Napi::Value Sigmoid_GPU(const Napi::CallbackInfo& info) {
@@ -96,7 +85,6 @@ Napi::Value Sigmoid_GPU(const Napi::CallbackInfo& info) {
 
     clEnqueueReadBuffer(queue, inputData, CL_TRUE, 0, sizeof(float)* input_size, input.Data(), 0, nullptr, nullptr);
 
-    clFinish(queue);
     clReleaseMemObject(inputData);
 
     return input;
@@ -116,13 +104,6 @@ Napi::Value Sigmoid_CPU(const Napi::CallbackInfo& info) {
     }
 
     return input;
-}
-
-Napi::Value SigmoidWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return Sigmoid_GPU(info);
-    }
-    return Sigmoid_CPU(info);
 }
 
 Napi::Value Tanh_GPU(const Napi::CallbackInfo& info) { 
@@ -146,7 +127,6 @@ Napi::Value Tanh_GPU(const Napi::CallbackInfo& info) {
 
     clEnqueueReadBuffer(queue, inputData, CL_TRUE, 0, sizeof(float)* input_size, input.Data(), 0, nullptr, nullptr);
 
-    clFinish(queue);
     clReleaseMemObject(inputData);
 
     return input;
@@ -166,14 +146,6 @@ Napi::Value Tanh_CPU(const Napi::CallbackInfo& info) {
     }
 
    return input;
-}
-
-Napi::Value TanhWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return Tanh_GPU(info);
-    }
-
-    return Tanh_CPU(info);
 }
 
 Napi::Value Softmax_GPU(const Napi::CallbackInfo& info) {
@@ -207,8 +179,6 @@ Napi::Value Softmax_GPU(const Napi::CallbackInfo& info) {
 
     clEnqueueReadBuffer(queue, buffer, CL_TRUE, 0, sizeof(float) * inputSize, data, 0, nullptr, nullptr);
 
-    clFinish(queue);
-
     clReleaseMemObject(buffer);
 
     return input;
@@ -240,18 +210,6 @@ Napi::Value Softmax_CPU(const Napi::CallbackInfo& info) {
     return input;
 }
 
-Napi::Value SoftmaxWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return Softmax_GPU(info);
-    }
-
-    return Softmax_CPU(info);
-}
-
-Napi::Value LinearWrapper(const Napi::CallbackInfo& info) {
-    return info[0];
-}
-
 /* ========================= Derivatives ============================*/
 
 Napi::Value DReLu_GPU(const Napi::CallbackInfo& info) {
@@ -276,7 +234,6 @@ Napi::Value DReLu_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
     clEnqueueReadBuffer(queue, inputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
 
-    clFinish(queue);
     clReleaseMemObject(inputData);
 
     return output;
@@ -297,14 +254,6 @@ Napi::Value DReLu_CPU(const Napi::CallbackInfo& info) {
         outData[i] = inData[i] > 0.0f ? 1.0f : 0.0f;
     }
     return output;
-}
-
-Napi::Value DReLuWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return DReLu_GPU(info);
-    }
-
-    return DReLu_CPU(info);
 }
 
 Napi::Value DSigmoid_GPU(const Napi::CallbackInfo& info) {
@@ -329,7 +278,6 @@ Napi::Value DSigmoid_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
     clEnqueueReadBuffer(queue, inputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
 
-    clFinish(queue);
     clReleaseMemObject(inputData);
 
     return output;
@@ -351,14 +299,6 @@ Napi::Value DSigmoid_CPU(const Napi::CallbackInfo& info) {
         outData[i] = s * (1.0f - s);
     }
     return output;
-}
-
-Napi::Value DSigmoidWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return DSigmoid_GPU(info);
-    }
-
-    return DSigmoid_CPU(info);
 }
 
 Napi::Value DTanh_GPU(const Napi::CallbackInfo& info) {
@@ -383,7 +323,6 @@ Napi::Value DTanh_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
     clEnqueueReadBuffer(queue, inputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
 
-    clFinish(queue);
     clReleaseMemObject(inputData);
     
     return output;
@@ -407,12 +346,55 @@ Napi::Value DTanh_CPU(const Napi::CallbackInfo& info) {
     return output;
 }
 
-Napi::Value DTanhWrapper(const Napi::CallbackInfo& info) {
+// =============== wrappers ====================
+Napi::Value ReluWrapper(const Napi::CallbackInfo& info) {
     if (get_Global_Boolean_On_GPU()) {
-        return DTanh_GPU(info);
+        return Relu_GPU(info);
+    }
+    return Relu_CPU(info);
+}
+
+Napi::Value SigmoidWrapper(const Napi::CallbackInfo& info) {
+    if (get_Global_Boolean_On_GPU()) {
+        return Sigmoid_GPU(info);
+    }
+    return Sigmoid_CPU(info);
+}
+
+Napi::Value TanhWrapper(const Napi::CallbackInfo& info) {
+    if (get_Global_Boolean_On_GPU()) {
+        return Tanh_GPU(info);
     }
 
-    return DTanh_CPU(info);
+    return Tanh_CPU(info);
+}
+
+Napi::Value SoftmaxWrapper(const Napi::CallbackInfo& info) {
+    if (get_Global_Boolean_On_GPU()) {
+        return Softmax_GPU(info);
+    }
+
+    return Softmax_CPU(info);
+}
+
+Napi::Value LinearWrapper(const Napi::CallbackInfo& info) {
+    return info[0];
+}
+
+Napi::Value DReLuWrapper(const Napi::CallbackInfo& info) {
+    if (get_Global_Boolean_On_GPU()) {
+        return DReLu_GPU(info);
+    }
+
+    return DReLu_CPU(info);
+}
+
+Napi::Value DSigmoidWrapper(const Napi::CallbackInfo& info) {
+    if (get_Global_Boolean_On_GPU()) {
+        return DSigmoid_GPU(info);
+    }
+
+    return DSigmoid_CPU(info);
 }
 
 Napi::Value DSoftmaxWrapper(const Napi::CallbackInfo& info) {
@@ -451,6 +433,14 @@ Napi::Value DLinearWrapper(const Napi::CallbackInfo& info) {
     std::fill(output.Data(), output.Data() + arr_size, 1.0f);
 
     return output;
+}
+
+Napi::Value DTanhWrapper(const Napi::CallbackInfo& info) {
+    if (get_Global_Boolean_On_GPU()) {
+        return DTanh_GPU(info);
+    }
+
+    return DTanh_CPU(info);
 }
 
 void ActivationsRegister(Napi::Env env, Napi::Object exports) {

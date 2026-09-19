@@ -211,8 +211,6 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     int oH = outputShape[0];
     int oW = outputShape[1];
 
-    Napi::Float32Array kernels = Rotate_kernels(env, F, KH, KW, C_k, kernelsArray);
-
     int outputSize = oH * oW * C_k;
     
     auto& gpu = GpuContext::instance();
@@ -220,10 +218,9 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("delta_convolve");
 
-    cl_int err = CL_SUCCESS;
-    cl_mem delta = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * Hp * Wp * C_in, inputTensor.Data(), &err);
-    cl_mem weights = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * kernels.ElementLength(), kernels.Data(), &err);
-    cl_mem outputBuf = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * outputSize, nullptr, &err);
+    cl_mem delta = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * Hp * Wp * C_in, inputTensor.Data(), nullptr);
+    cl_mem weights = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * kernelsArray.ElementLength(), kernelsArray.Data(), nullptr);
+    cl_mem outputBuf = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * outputSize, nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &delta);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &weights);

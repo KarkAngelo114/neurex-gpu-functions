@@ -57,7 +57,6 @@ Napi::Value DilateInput_GPU(const Napi::CallbackInfo& info) {
 
     clEnqueueNDRangeKernel(queue, kernel, 3, 0, globalSize, nullptr, 0, nullptr, nullptr);
     clEnqueueReadBuffer(queue, outputTensor, CL_TRUE, 0, sizeof(float)* dilatedSize, dilatedOutput.Data(), 0, nullptr, nullptr);
-    clFinish(queue);
 
     clReleaseMemObject(inputTensor);
     clReleaseMemObject(outputTensor);
@@ -165,7 +164,6 @@ Napi::Value ApplyPadding_GPU(const Napi::CallbackInfo& info) {
     // Cleanup
     clReleaseMemObject(inputTensor);
     clReleaseMemObject(outputTensor);
-    clFinish(queue);
 
     // Create output array
     Napi::Float32Array outputData = Napi::Float32Array::New(env, outputSize);

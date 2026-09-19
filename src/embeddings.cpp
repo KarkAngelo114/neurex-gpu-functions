@@ -120,7 +120,6 @@ Napi::Value ReturnEmbeddings_GPU(const Napi::CallbackInfo& info) {
 
     clEnqueueNDRangeKernel(queue, kernel, 2, 0, globalSize, nullptr, 0, nullptr,nullptr);
     clEnqueueReadBuffer(queue, gradients, CL_TRUE, 0, sizeof(float)* weightGrads.ElementLength(), weightGrads.Data(), 0, nullptr, nullptr);
-    clFinish(queue);
     clReleaseMemObject(tokenBuffer);
     clReleaseMemObject(delta_input);
     clReleaseMemObject(gradients);

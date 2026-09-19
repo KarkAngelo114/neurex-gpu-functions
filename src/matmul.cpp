@@ -150,73 +150,6 @@ Napi::Value DeltaMatMul_CPU(const Napi::CallbackInfo& info) {
     return output;
 }
 
-Napi::Value DotProduct_CPU(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-
-    Napi::Float32Array arr1_input = info[0].As<Napi::Float32Array>();
-    Napi::Float32Array arr2_input = info[1].As<Napi::Float32Array>();
-    int inputSize = info[2].As<Napi::Number>().Int32Value();
-    int outputSize = info[3].As<Napi::Number>().Int32Value();
-
-    Napi::Float32Array outputTensor = Napi::Float32Array::New(env, outputSize);
-
-    float* arr1 = arr1_input.Data();
-    float* arr2 = arr2_input.Data();
-    float* output = outputTensor.Data();
-
-    #pragma omp parallel for schedule(static)
-    for (int i = 0; i < inputSize; i++) {
-        const float inputVal = arr1[i];
-        const int rowStart = i * outputSize;
-
-        #pragma omp unroll partial(4)
-        for (int j = 0; j < outputSize; j++) {
-            output[j] += inputVal * arr2[rowStart + j];
-        }
-    }
-
-    return outputTensor;
-
-}
-
-Napi::Value ProjectOutput_GPU(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-
-    Napi::Float32Array input = info[0].As<Napi::Float32Array>(); // mhaOutput
-    int embedDim = info[1].As<Napi::Number>().Int32Value();
-    int seqLen = info[2].As<Napi::Number>().Int32Value();
-    int pointer = info[3].As<Napi::Number>().Int32Value();
-    std::string modelID = info[4].As<Napi::String>().Utf8Value();
-
-    auto& gpu = GpuContext::instance();
-    cl_context ctx = gpu.context();
-    cl_command_queue queue = gpu.queue();
-
-    cl_mem dIn = clCreateBuffer(ctx, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * input.ElementLength(), input.Data(), nullptr);
-    cl_mem dOut = clCreateBuffer(ctx, CL_MEM_WRITE_ONLY, sizeof(float) * input.ElementLength(), nullptr, nullptr);
-    cl_mem dW = gpu.getWeights(modelID, pointer);
-    cl_mem dB = gpu.getBiases(modelID, pointer);
-
-    cl_kernel k = gpu.kernel("OutputWeightProjection");
-    clSetKernelArg(k, 0, sizeof(cl_mem), &dIn);
-    clSetKernelArg(k, 1, sizeof(cl_mem), &dW);
-    clSetKernelArg(k, 2, sizeof(cl_mem), &dB);
-    clSetKernelArg(k, 3, sizeof(cl_mem), &dOut);
-    clSetKernelArg(k, 4, sizeof(int), &embedDim);
-    clSetKernelArg(k, 5, sizeof(int), &seqLen);
-
-    size_t global = seqLen;
-    clEnqueueNDRangeKernel(queue, k, 1, nullptr, &global, nullptr, 0, nullptr, nullptr);
-
-    Napi::Float32Array output = Napi::Float32Array::New(env, input.ElementLength());
-    clEnqueueReadBuffer(queue, dOut, CL_TRUE, 0, sizeof(float) * input.ElementLength(), output.Data(), 0, nullptr, nullptr);
-
-    clReleaseMemObject(dIn);
-    clReleaseMemObject(dOut);
-
-    return output;
-}
-
 // ================== Wrappers ====================== //
 Napi::Value MatMulWrapper(const Napi::CallbackInfo& info) {
 
@@ -234,14 +167,9 @@ Napi::Value DeltaMatMulWrapper(const Napi::CallbackInfo& info) {
     return DeltaMatMul_CPU(info);
 }
 
-Napi::Value DotProductWrapper(const Napi::CallbackInfo& info) {
-    return DotProduct_CPU(info);
-}
 
 // =================== MODULE EXPORT ===================
 void MatMulRegister(Napi::Env env, Napi::Object exports) {
     exports.Set("MatMul", Napi::Function::New(env, MatMulWrapper));
     exports.Set("DeltaMatMul", Napi::Function::New(env, DeltaMatMulWrapper));
-    exports.Set("dotProduct", Napi::Function::New(env, DotProductWrapper));
-    exports.Set("ProjectOutput_GPU", Napi::Function::New(env, ProjectOutput_GPU));
 }
