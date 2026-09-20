@@ -12,7 +12,7 @@ class GpuContext {
     public:
         static GpuContext& instance();
 
-        bool initialize(const std::string& kernelBasePath, std::string& errorOut);
+        bool initialize(const std::string& kernelBasePath, uint32_t deviceIndex, std::string& errorOut);
         bool shutdown();
 
         bool hasGPU() { 

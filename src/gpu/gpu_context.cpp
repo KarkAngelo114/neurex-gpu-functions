@@ -13,6 +13,11 @@ struct kernelDef {
     std::string funcName;
 };
 
+static struct EnumeratedDevice {
+    cl_platform_id platform;
+    cl_device_id   device;
+};
+
 // Future self and to others: register kernel source here.
 // {`"kernel file"`,`"<kernel function name>"`}
 static std::vector<kernelDef> kernel_Definitions = {
@@ -60,6 +65,8 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"attention.cl", "multi_head_attention_backward"},
     {"attention.cl", "multi_head_attention_backward_dmha"},
     {"attention.cl", "multi_head_attention_backward_dx"},
+    {"attention.cl", "accumulate_attention_weight_grads"},
+    {"attention.cl", "accumulate_attention_bias_grads"},
 };
 
 
@@ -86,38 +93,55 @@ static std::string LoadKernelFile(const std::string& path) {
     return buffer.str();
 }
 
-bool GpuContext::initialize(const std::string& kernelBasePath, std::string& errorOut) {
-    if (has_gpu_) return true; // idempotent
+static std::vector<EnumeratedDevice> enumerateGPUDevices(cl_uint* platformCountOut, cl_int* errOut) {
+    std::vector<EnumeratedDevice> result;
+    cl_uint platformCount = 0;
+    cl_int err = clGetPlatformIDs(0, nullptr, &platformCount);
+    if (platformCountOut) *platformCountOut = platformCount;
+    if (errOut) *errOut = err;
+    if (err != CL_SUCCESS || platformCount == 0) return result;
 
-    cl_int err;
+    std::vector<cl_platform_id> platforms(platformCount);
+    err = clGetPlatformIDs(platformCount, platforms.data(), nullptr);
+    if (errOut) *errOut = err;
+    if (err != CL_SUCCESS) return result;
 
-    // Pick first GPU on first platform that has one.
-    cl_uint platCount = 0;
-    clGetPlatformIDs(0, nullptr, &platCount);
-    if (platCount == 0) { 
-        errorOut = "no OpenCL platforms"; 
-        return false; 
+    for (auto platform : platforms) {
+        cl_uint deviceCount = 0;
+        if (clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 0, nullptr, &deviceCount) != CL_SUCCESS
+            || deviceCount == 0) continue;
+
+        std::vector<cl_device_id> devices(deviceCount);
+        if (clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, deviceCount, devices.data(), nullptr) != CL_SUCCESS)
+            continue;
+
+        for (auto d : devices) result.push_back({platform, d});
+    }
+    return result;
+}
+
+
+bool GpuContext::initialize(const std::string& kernelBasePath, uint32_t deviceIndex, std::string& errorOut) {
+    if (has_gpu_) return true;
+
+    cl_int err = CL_SUCCESS;
+    auto devices = enumerateGPUDevices(nullptr, &err);
+    
+    if (err != CL_SUCCESS || devices.empty()) {
+        errorOut = "no OpenCL GPU devices available";
+        return false;
+    }
+    if (deviceIndex >= devices.size()) {
+        errorOut = "device index " + std::to_string(deviceIndex) + " out of range (found " +
+                   std::to_string(devices.size()) + " devices)";
+        return false;
     }
 
-    std::vector<cl_platform_id> plats(platCount);
-    clGetPlatformIDs(platCount, plats.data(), nullptr);
-
-    for (auto p : plats) {
-        cl_uint dCount = 0;
-        if (clGetDeviceIDs(p, CL_DEVICE_TYPE_GPU, 0, nullptr, &dCount) != CL_SUCCESS) continue;
-        if (dCount == 0) continue;
-        std::vector<cl_device_id> devs(dCount);
-        clGetDeviceIDs(p, CL_DEVICE_TYPE_GPU, dCount, devs.data(), nullptr);
-        platform_ = p;
-        device_   = devs[0];
-        break;
-    }
-    if (!device_) {
-        errorOut = "no GPU device"; 
-        return false; 
-    }
+    platform_ = devices[deviceIndex].platform;
+    device_   = devices[deviceIndex].device;
 
     context_ = clCreateContext(nullptr, 1, &device_, nullptr, nullptr, &err);
+
     if (err != CL_SUCCESS) {
         errorOut = "clCreateContext failed"; 
         return false;

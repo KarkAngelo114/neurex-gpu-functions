@@ -3,24 +3,36 @@
 #include <vector>
 #include <string>
 
+#include <napi.h>
+#include <CL/cl.h>
+#include <algorithm>
+#include <string>
+#include <vector>
+
 struct GPUInfo {
+    uint32_t index = 0;
     std::string name;
     std::string vendor;
     std::string driverVersion;
     std::string openclVersion;
     std::string platformName;
-    cl_ulong       globalMemBytes   = 0;
-    cl_uint        computeUnits     = 0;
-    cl_uint        maxClockMHz      = 0;
-    cl_bool        hostUnifiedMemory= CL_FALSE;
-    cl_device_type deviceType       = 0;
+    cl_ulong globalMemBytes = 0;
+    cl_uint computeUnits = 0;
+    cl_uint maxClockMHz = 0;
+    cl_bool hostUnifiedMemory = CL_FALSE;
+    cl_device_type deviceType = 0;
 };
 
 struct DetectionResult {
     bool ok = true;
-    std::string error;          // empty if ok
+    std::string error;
     cl_uint platformCount = 0;
     std::vector<GPUInfo> devices;
+};
+
+struct EnumeratedDevice {
+    cl_platform_id platform;
+    cl_device_id   device;
 };
 
 
@@ -46,71 +58,71 @@ static std::string getPlatformString(cl_platform_id p, cl_platform_info param) {
     return out;
 }
 
-DetectionResult detectOpenCLDevices() {
-    DetectionResult result;
-
-    cl_uint platformCount = 0;
-    cl_int err = clGetPlatformIDs(0, nullptr, &platformCount);
-    if (err != CL_SUCCESS) {
-        result.ok = false;
-        result.error = "clGetPlatformIDs failed (code " + std::to_string(err) + ")";
-        return result;
-    }
-    result.platformCount = platformCount;
-    if (platformCount == 0) return result; // ok=true, empty devices
-
-    std::vector<cl_platform_id> platforms(platformCount);
-    err = clGetPlatformIDs(platformCount, platforms.data(), nullptr);
-    if (err != CL_SUCCESS) {
-        result.ok = false;
-        result.error = "clGetPlatformIDs (fetch) failed (code " + std::to_string(err) + ")";
-        return result;
-    }
-
-    for (auto platform : platforms) {
-        std::string platformName = getPlatformString(platform, CL_PLATFORM_NAME);
-
-        cl_uint deviceCount = 0;
-        err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 0, nullptr, &deviceCount);
-        // CL_DEVICE_NOT_FOUND just means this platform has no GPU; skip quietly
-        if (err == CL_DEVICE_NOT_FOUND || deviceCount == 0) continue;
-        if (err != CL_SUCCESS) continue;
-
-        std::vector<cl_device_id> devices(deviceCount);
-        err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, deviceCount, devices.data(), nullptr);
-        if (err != CL_SUCCESS) continue;
-
-        for (auto device : devices) {
-            GPUInfo info;
-            info.platformName   = platformName;
-            info.name           = getDeviceString(device, CL_DEVICE_NAME);
-            info.vendor         = getDeviceString(device, CL_DEVICE_VENDOR);
-            info.driverVersion  = getDeviceString(device, CL_DRIVER_VERSION);
-            info.openclVersion  = getDeviceString(device, CL_DEVICE_VERSION);
-
-            clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_SIZE,
-                            sizeof(cl_ulong), &info.globalMemBytes, nullptr);
-            clGetDeviceInfo(device, CL_DEVICE_MAX_COMPUTE_UNITS,
-                            sizeof(cl_uint),  &info.computeUnits, nullptr);
-            clGetDeviceInfo(device, CL_DEVICE_MAX_CLOCK_FREQUENCY,
-                            sizeof(cl_uint),  &info.maxClockMHz, nullptr);
-            clGetDeviceInfo(device, CL_DEVICE_HOST_UNIFIED_MEMORY,
-                            sizeof(cl_bool),  &info.hostUnifiedMemory, nullptr);
-            clGetDeviceInfo(device, CL_DEVICE_TYPE,
-                            sizeof(cl_device_type), &info.deviceType, nullptr);
-
-            result.devices.push_back(std::move(info));
-        }
-    }
-
-    return result;
-}
-
 static const char* deviceTypeToString(cl_device_type t) {
     if (t & CL_DEVICE_TYPE_GPU)         return "gpu";
     if (t & CL_DEVICE_TYPE_CPU)         return "cpu";
     if (t & CL_DEVICE_TYPE_ACCELERATOR) return "accelerator";
     return "unknown";
+}
+
+std::vector<EnumeratedDevice> enumerateGPUDevices(cl_uint* platformCountOut, cl_int* errOut) {
+    std::vector<EnumeratedDevice> result;
+    cl_uint platformCount = 0;
+    cl_int err = clGetPlatformIDs(0, nullptr, &platformCount);
+    if (platformCountOut) *platformCountOut = platformCount;
+    if (errOut) *errOut = err;
+    if (err != CL_SUCCESS || platformCount == 0) return result;
+
+    std::vector<cl_platform_id> platforms(platformCount);
+    err = clGetPlatformIDs(platformCount, platforms.data(), nullptr);
+    if (errOut) *errOut = err;
+    if (err != CL_SUCCESS) return result;
+
+    for (auto platform : platforms) {
+        cl_uint deviceCount = 0;
+        if (clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 0, nullptr, &deviceCount) != CL_SUCCESS
+            || deviceCount == 0) continue;
+
+        std::vector<cl_device_id> devices(deviceCount);
+        if (clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, deviceCount, devices.data(), nullptr) != CL_SUCCESS)
+            continue;
+
+        for (auto d : devices) result.push_back({platform, d});
+    }
+    return result;
+}
+
+DetectionResult detectOpenCLDevices() {
+    DetectionResult result;
+    cl_int err = CL_SUCCESS;
+    auto found = enumerateGPUDevices(&result.platformCount, &err);
+
+    if (err != CL_SUCCESS) {
+        result.ok = false;
+        result.error = "OpenCL platform enumeration failed (code " + std::to_string(err) + ")";
+        return result;
+    }
+
+    uint32_t idx = 0;
+    for (auto& e : found) {
+        GPUInfo info;
+        info.index          = idx++;
+        info.platformName   = getPlatformString(e.platform, CL_PLATFORM_NAME);
+        info.name           = getDeviceString(e.device, CL_DEVICE_NAME);
+        info.vendor         = getDeviceString(e.device, CL_DEVICE_VENDOR);
+        info.driverVersion  = getDeviceString(e.device, CL_DRIVER_VERSION);
+        info.openclVersion  = getDeviceString(e.device, CL_DEVICE_VERSION);
+
+        clGetDeviceInfo(e.device, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong), &info.globalMemBytes, nullptr);
+        clGetDeviceInfo(e.device, CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(cl_uint), &info.computeUnits, nullptr);
+        clGetDeviceInfo(e.device, CL_DEVICE_MAX_CLOCK_FREQUENCY, sizeof(cl_uint), &info.maxClockMHz, nullptr);
+        clGetDeviceInfo(e.device, CL_DEVICE_HOST_UNIFIED_MEMORY, sizeof(cl_bool), &info.hostUnifiedMemory, nullptr);
+        clGetDeviceInfo(e.device, CL_DEVICE_TYPE, sizeof(cl_device_type), &info.deviceType, nullptr);
+
+        result.devices.push_back(std::move(info));
+    }
+
+    return result;
 }
 
 Napi::Value CheckGPUWrapper(const Napi::CallbackInfo& info) {
@@ -124,6 +136,7 @@ Napi::Value CheckGPUWrapper(const Napi::CallbackInfo& info) {
     out.Set("platformCount", Napi::Number::New(env, det.platformCount));
 
     Napi::Array arr = Napi::Array::New(env, det.devices.size());
+
     for (size_t i = 0; i < det.devices.size(); i++) {
         const auto& d = det.devices[i];
         Napi::Object data = Napi::Object::New(env);
@@ -140,9 +153,11 @@ Napi::Value CheckGPUWrapper(const Napi::CallbackInfo& info) {
         data.Set("computeUnits",       Napi::Number::New(env, d.computeUnits));
         data.Set("maxClockMHz",        Napi::Number::New(env, d.maxClockMHz));
         data.Set("hostUnifiedMemory",  Napi::Boolean::New(env, d.hostUnifiedMemory == CL_TRUE));
+        data.Set("index", Napi::Number::New(env, d.index));
 
         arr[i] = data;
     }
+
     out.Set("devices", arr);
 
     return out;
