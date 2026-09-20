@@ -13,7 +13,7 @@ struct kernelDef {
     std::string funcName;
 };
 
-static struct EnumeratedDevice {
+struct EnumeratedDevice {
     cl_platform_id platform;
     cl_device_id   device;
 };
