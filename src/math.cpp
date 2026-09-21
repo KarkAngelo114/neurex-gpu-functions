@@ -220,9 +220,15 @@ Napi::Value Scale_CPU(const Napi::CallbackInfo& info) {
     float* data = inputArray.Data();
     int length = inputArray.ElementLength();
 
-    #pragma omp parallel for
-    #pragma omp unroll partial(4)
-    for (int i = 0; i < length; i++) {
+    int i = 0;
+    for (; i <= length - 4; i += 4) {
+        data[i] /= scalingFactor;
+        data[i + 1] /= scalingFactor;
+        data[i + 2] /= scalingFactor;
+        data[i + 3] /= scalingFactor;
+    }
+
+    for (; i < length; i++) {
         data[i] /= scalingFactor;
     }
 
