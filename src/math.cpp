@@ -221,7 +221,7 @@ Napi::Value Scale_CPU(const Napi::CallbackInfo& info) {
     int length = inputArray.ElementLength();
 
     int i = 0;
-    for (; i <= length - 4; i += 4) {
+    for (; i + 3 < length; i += 4) {
         data[i] /= scalingFactor;
         data[i + 1] /= scalingFactor;
         data[i + 2] /= scalingFactor;

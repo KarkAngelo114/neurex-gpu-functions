@@ -569,7 +569,173 @@ Napi::Value accumulateKernelGradsForTransConv_CPU(const Napi::CallbackInfo& info
     return weightGrads;
 }
 
-// =================== wrapper ===================== //
+Napi::Value AccumulateAttentionWeightsGradients_CPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    auto dQ = info[0].As<Napi::Float32Array>();
+    auto dK = info[1].As<Napi::Float32Array>();
+    auto dV = info[2].As<Napi::Float32Array>();
+    auto dMhaOutput = info[3].As<Napi::Float32Array>();
+    auto mhaOutput = info[4].As<Napi::Float32Array>();
+    auto activationOutputs = info[5].As<Napi::Float32Array>();
+    auto weightGrads = info[6].As<Napi::Float32Array>();
+    int embedDim = info[7].As<Napi::Number>().Int32Value();
+    int seqLen = info[8].As<Napi::Number>().Int32Value();
+
+    const float* deltas[] = {dQ.Data(), dK.Data(), dV.Data(), dMhaOutput.Data()};
+    const float* inputs[] = {activationOutputs.Data(), activationOutputs.Data(), activationOutputs.Data(), mhaOutput.Data()};
+    float* output = weightGrads.Data();
+    size_t blockSize = static_cast<size_t>(embedDim) * embedDim;
+
+    for (int block = 0; block < 4; block++) {
+        for (int i = 0; i < embedDim; i++) {
+            for (int j = 0; j < embedDim; j++) {
+                float sum = 0.0f;
+
+                int t = 0;
+                for (; t + 3 < seqLen; t += 4) {
+                    sum += inputs[block][t * embedDim + i] * deltas[block][t * embedDim + j];
+                    sum += inputs[block][(t + 1) * embedDim + i] * deltas[block][(t + 1) * embedDim + j];
+                    sum += inputs[block][(t + 2) * embedDim + i] * deltas[block][(t + 2) * embedDim + j];
+                    sum += inputs[block][(t + 3) * embedDim + i] * deltas[block][(t + 3) * embedDim + j];
+                }
+                for (; t < seqLen; t++) {
+                    sum += inputs[block][t * embedDim + i] * deltas[block][t * embedDim + j];
+                }
+
+                output[block * blockSize + i * embedDim + j] += sum;
+            }
+        }
+    }
+
+    return weightGrads;
+}
+
+Napi::Value AccumulateAttentionWeightsGradients_GPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    auto dQ = info[0].As<Napi::Float32Array>();
+    auto dK = info[1].As<Napi::Float32Array>();
+    auto dV = info[2].As<Napi::Float32Array>();
+    auto dMhaOutput = info[3].As<Napi::Float32Array>();
+    auto mhaOutput = info[4].As<Napi::Float32Array>();
+    auto activationOutputs = info[5].As<Napi::Float32Array>();
+    auto weightGrads = info[6].As<Napi::Float32Array>();
+    int embedDim = info[7].As<Napi::Number>().Int32Value();
+    int seqLen = info[8].As<Napi::Number>().Int32Value();
+
+    auto& gpu = GpuContext::instance();
+    cl_context context = gpu.context();
+    cl_command_queue queue = gpu.queue();
+    cl_kernel kernel = gpu.kernel("accumulate_attention_weight_grads");
+
+    size_t tensorBytes = sizeof(float) * static_cast<size_t>(seqLen) * embedDim;
+    size_t gradientBytes = sizeof(float) * weightGrads.ElementLength();
+
+    cl_mem input = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, tensorBytes, activationOutputs.Data(), nullptr);
+    cl_mem mha = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, tensorBytes, mhaOutput.Data(), nullptr);
+    cl_mem q = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, tensorBytes, dQ.Data(), nullptr);
+    cl_mem k = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, tensorBytes, dK.Data(), nullptr);
+    cl_mem v = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, tensorBytes, dV.Data(), nullptr);
+    cl_mem o = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, tensorBytes, dMhaOutput.Data(), nullptr);
+    cl_mem grads = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, gradientBytes, weightGrads.Data(), nullptr);
+
+    cl_mem args[] = {input, mha, q, k, v, o, grads};
+
+    for (int i = 0; i < 7; i++) {
+        clSetKernelArg(kernel, i, sizeof(cl_mem), &args[i])
+    };
+
+    clSetKernelArg(kernel, 7, sizeof(int), &embedDim);
+    clSetKernelArg(kernel, 8, sizeof(int), &seqLen);
+
+    size_t global[3] = {4, static_cast<size_t>(embedDim), static_cast<size_t>(embedDim)};
+
+    clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, global, nullptr, 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, grads, CL_TRUE, 0, gradientBytes, weightGrads.Data(), 0, nullptr, nullptr);
+
+    for (cl_mem buffer : args) {
+        clReleaseMemObject(buffer)
+    };
+
+    return weightGrads;
+}
+
+Napi::Value AccumulateAttentionBiasGrads_CPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    auto dQ = info[0].As<Napi::Float32Array>();
+    auto dK = info[1].As<Napi::Float32Array>();
+    auto dV = info[2].As<Napi::Float32Array>();
+    auto dMhaOutput = info[3].As<Napi::Float32Array>();
+    auto biasGrads = info[4].As<Napi::Float32Array>();
+    int embedDim = info[5].As<Napi::Number>().Int32Value();
+    int seqLen = info[6].As<Napi::Number>().Int32Value();
+
+    const float* deltas[] = {dQ.Data(), dK.Data(), dV.Data(), dMhaOutput.Data()};
+    float* output = biasGrads.Data();
+    
+    for (int block = 0; block < 4; block++) {
+        for (int j = 0; j < embedDim; j++) {
+
+            int t = 0;
+            for (; t + 3 < seqLen; t += 4) {
+                output[block * embedDim + j] += deltas[block][t * embedDim + j];
+                output[block * embedDim + j] += deltas[block][(t + 1) * embedDim + j];
+                output[block * embedDim + j] += deltas[block][(t + 2) * embedDim + j];
+                output[block * embedDim + j] += deltas[block][(t + 3) * embedDim + j];
+            }
+            for (; t < seqLen; t++) {
+                output[block * embedDim + j] += deltas[block][t * embedDim + j];
+            }
+        }
+    }
+
+    return biasGrads;
+}
+
+Napi::Value AccumulateAttentionBiasGrads_GPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    auto dQ = info[0].As<Napi::Float32Array>();
+    auto dK = info[1].As<Napi::Float32Array>();
+    auto dV = info[2].As<Napi::Float32Array>();
+    auto dMhaOutput = info[3].As<Napi::Float32Array>();
+    auto biasGrads = info[4].As<Napi::Float32Array>();
+    int embedDim = info[5].As<Napi::Number>().Int32Value();
+    int seqLen = info[6].As<Napi::Number>().Int32Value();
+
+    auto& gpu = GpuContext::instance();
+    cl_context context = gpu.context();
+    cl_command_queue queue = gpu.queue();
+    cl_kernel kernel = gpu.kernel("accumulate_attention_bias_grads");
+
+    size_t tensorBytes = sizeof(float) * static_cast<size_t>(seqLen) * embedDim;
+    size_t gradientBytes = sizeof(float) * biasGrads.ElementLength();
+
+    cl_mem q = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, tensorBytes, dQ.Data(), nullptr);
+    cl_mem k = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, tensorBytes, dK.Data(), nullptr);
+    cl_mem v = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, tensorBytes, dV.Data(), nullptr);
+    cl_mem o = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, tensorBytes, dMhaOutput.Data(), nullptr);
+    cl_mem grads = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, gradientBytes, biasGrads.Data(), nullptr);
+
+    cl_mem args[] = {q, k, v, o, grads};
+    for (int i = 0; i < 5; i++) {
+        clSetKernelArg(kernel, i, sizeof(cl_mem), &args[i])
+    };
+    clSetKernelArg(kernel, 5, sizeof(int), &embedDim);
+    clSetKernelArg(kernel, 6, sizeof(int), &seqLen);
+
+    size_t global[2] = {4, static_cast<size_t>(embedDim)};
+
+    clEnqueueNDRangeKernel(queue, kernel, 2, nullptr, global, nullptr, 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, grads, CL_TRUE, 0, gradientBytes, biasGrads.Data(), 0, nullptr, nullptr);
+
+    for (cl_mem buffer : args) {
+        clReleaseMemObject(buffer)
+    };
+    
+    return biasGrads;
+}
+
+
+// =================== wrappers ===================== //
 
 Napi::Value computeBiasGradsForConnected_LayerWrapper(const Napi::CallbackInfo& info) {
     // if (get_Global_Boolean_On_GPU()) {
@@ -619,6 +785,16 @@ Napi::Value accumulateKernelGradsForTransConvWrapper(const Napi::CallbackInfo& i
     return accumulateKernelGradsForTransConv_CPU(info);
 }
 
+Napi::Value AccumulateAttentionWeightsGradients_Wrapper(const Napi::CallbackInfo& info) {
+    // if (get_Global_Boolean_On_GPU()) return AccumulateAttentionWeightsGradients_GPU(info);
+    return AccumulateAttentionWeightsGradients_CPU(info);
+}
+
+Napi::Value AccumulateAttentionBiasGrads_Wrapper(const Napi::CallbackInfo& info) {
+    // if (get_Global_Boolean_On_GPU()) return AccumulateAttentionBiasGrads_GPU(info);
+    return AccumulateAttentionBiasGrads_CPU(info);
+}
+
 
 /* ================ module exports ===================*/
 void GradientCalculationRegister(Napi::Env env, Napi::Object exports) {
@@ -629,4 +805,6 @@ void GradientCalculationRegister(Napi::Env env, Napi::Object exports) {
     exports.Set("recurrentWeightGradsAccumulation", Napi::Function::New(env, recurrentWeightGradsAccumulationWrapper));
     exports.Set("recurrentBiasGradsAccumulation", Napi::Function::New(env, recurrentBiasGradsAccumulationWrapper));
     exports.Set("accumulateKernelGradsForTransConv", Napi::Function::New(env, accumulateKernelGradsForTransConvWrapper));
+    exports.Set("accumulateAttentionWeightsGradients", Napi::Function::New(env, AccumulateAttentionWeightsGradients_Wrapper));
+    exports.Set("accumulateAttentionBiasGrads", Napi::Function::New(env, AccumulateAttentionBiasGrads_Wrapper));
 }
