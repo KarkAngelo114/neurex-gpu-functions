@@ -641,7 +641,7 @@ Napi::Value AccumulateAttentionWeightsGradients_GPU(const Napi::CallbackInfo& in
     cl_mem args[] = {input, mha, q, k, v, o, grads};
 
     for (int i = 0; i < 7; i++) {
-        clSetKernelArg(kernel, i, sizeof(cl_mem), &args[i])
+        clSetKernelArg(kernel, i, sizeof(cl_mem), &args[i]);
     };
 
     clSetKernelArg(kernel, 7, sizeof(int), &embedDim);
@@ -653,7 +653,7 @@ Napi::Value AccumulateAttentionWeightsGradients_GPU(const Napi::CallbackInfo& in
     clEnqueueReadBuffer(queue, grads, CL_TRUE, 0, gradientBytes, weightGrads.Data(), 0, nullptr, nullptr);
 
     for (cl_mem buffer : args) {
-        clReleaseMemObject(buffer)
+        clReleaseMemObject(buffer);
     };
 
     return weightGrads;
@@ -716,9 +716,11 @@ Napi::Value AccumulateAttentionBiasGrads_GPU(const Napi::CallbackInfo& info) {
     cl_mem grads = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, gradientBytes, biasGrads.Data(), nullptr);
 
     cl_mem args[] = {q, k, v, o, grads};
+    
     for (int i = 0; i < 5; i++) {
-        clSetKernelArg(kernel, i, sizeof(cl_mem), &args[i])
+        clSetKernelArg(kernel, i, sizeof(cl_mem), &args[i]);
     };
+
     clSetKernelArg(kernel, 5, sizeof(int), &embedDim);
     clSetKernelArg(kernel, 6, sizeof(int), &seqLen);
 
@@ -728,7 +730,7 @@ Napi::Value AccumulateAttentionBiasGrads_GPU(const Napi::CallbackInfo& info) {
     clEnqueueReadBuffer(queue, grads, CL_TRUE, 0, gradientBytes, biasGrads.Data(), 0, nullptr, nullptr);
 
     for (cl_mem buffer : args) {
-        clReleaseMemObject(buffer)
+        clReleaseMemObject(buffer);
     };
     
     return biasGrads;
