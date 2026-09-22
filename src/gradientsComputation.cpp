@@ -51,7 +51,6 @@ Napi::Value ComputeGradientForDenseWeights_GPU(const Napi::CallbackInfo& info) {
 
     clEnqueueReadBuffer(queue, weight_grads, CL_TRUE, 0, sizeof(float) * weightGrads.ElementLength(), weightGrads.Data(), 0, nullptr, nullptr);
 
-    clFinish(queue);
 
     clReleaseMemObject(activations);
     clReleaseMemObject(deltaInput);

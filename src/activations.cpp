@@ -29,130 +29,155 @@
 /* ========================= Callable functions ============================*/
 
 Napi::Value Relu_GPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
     int input_size = input.ElementLength();
+    Napi::Float32Array outputArray = Napi::Float32Array::New(env, input_size);
 
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("relu");
 
-    cl_mem inputData = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* input_size, input.Data(), nullptr);
+    cl_mem inputData = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* input_size, input.Data(), nullptr);
+    cl_mem output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float)* input_size, nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputData);
-    clSetKernelArg(kernel, 1, sizeof(int), &input_size);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), &output);
+    clSetKernelArg(kernel, 2, sizeof(int), &input_size);
 
 
     size_t globalSize = (size_t)input_size;
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
-    clEnqueueReadBuffer(queue, inputData, CL_TRUE, 0, sizeof(float)* input_size, input.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float)* input_size, outputArray.Data(), 0, nullptr, nullptr);
+
     clReleaseMemObject(inputData);
-    return input;
+    clReleaseMemObject(output);
+
+    return outputArray;
 
 }
 
 Napi::Value Relu_CPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
-    float* data = input.Data();
     int input_size = input.ElementLength();
+    Napi::Float32Array outputArray = Napi::Float32Array::New(env, input_size);
+
+    float* data = input.Data();
+    float* output = outputArray.Data();
 
     #pragma omp parallel for
     #pragma omp unroll partial(4)
     for (int i = 0; i < input_size; i++) {
-        data[i] = data[i] > 0.0f ? data[i] : 0.0f;
+        output[i] = data[i] > 0.0f ? data[i] : 0.0f;
     }
-    return input;
+    return outputArray;
 }
 
 Napi::Value Sigmoid_GPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
     int input_size = input.ElementLength();
+    Napi::Float32Array outputArray = Napi::Float32Array::New(env, input_size);
 
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("sigmoid");
 
-    cl_mem inputData = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* input_size, input.Data(), nullptr);
+    cl_mem inputData = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* input_size, input.Data(), nullptr);
+    cl_mem output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float)* input_size, nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputData);
-    clSetKernelArg(kernel, 1, sizeof(int), &input_size);
-
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), &output);
+    clSetKernelArg(kernel, 2, sizeof(int), &input_size);
 
     size_t globalSize = (size_t)input_size;
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
-    clEnqueueReadBuffer(queue, inputData, CL_TRUE, 0, sizeof(float)* input_size, input.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float)* input_size, outputArray.Data(), 0, nullptr, nullptr);
 
     clReleaseMemObject(inputData);
+    clReleaseMemObject(output);
 
-    return input;
+    return outputArray;
 }
 
 Napi::Value Sigmoid_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
+    int input_size = input.ElementLength();
+    Napi::Float32Array outputArray = Napi::Float32Array::New(env, input_size);
 
     float* data = input.Data();
-    int input_size = input.ElementLength();
+    float* output = outputArray.Data();
 
     #pragma omp parallel for
     #pragma omp unroll partial(4)
     for (int i = 0; i < input_size; i++) {
-        data[i] = 1.0f / (1.0f + exp(-data[i]));
+        output[i] = 1.0f / (1.0f + exp(-data[i]));
     }
 
-    return input;
+    return outputArray;
 }
 
 Napi::Value Tanh_GPU(const Napi::CallbackInfo& info) { 
-    
+    Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
     int input_size = input.ElementLength();
+    Napi::Float32Array outputArray = Napi::Float32Array::New(env, input_size);
 
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("Tanh");
 
-    cl_mem inputData = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* input_size, input.Data(), nullptr);
+    cl_mem inputData = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* input_size, input.Data(), nullptr);
+    cl_mem outputData = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float)* input_size, nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputData);
-    clSetKernelArg(kernel, 1, sizeof(int), &input_size);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), &outputData);
+    clSetKernelArg(kernel, 2, sizeof(int), &input_size);
 
 
     size_t globalSize = (size_t)input_size;
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
-    clEnqueueReadBuffer(queue, inputData, CL_TRUE, 0, sizeof(float)* input_size, input.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, outputData, CL_TRUE, 0, sizeof(float)* input_size, outputArray.Data(), 0, nullptr, nullptr);
 
+    clReleaseMemObject(outputData);
     clReleaseMemObject(inputData);
 
-    return input;
+    return outputArray;
 }
 
 Napi::Value Tanh_CPU(const Napi::CallbackInfo& info) { 
-
+    Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
 
     float* data = input.Data();
     int input_size = input.ElementLength();
+    Napi::Float32Array outputArray = Napi::Float32Array::New(env, input_size);
+    float* output = outputArray.Data();
 
     #pragma omp parallel for
     #pragma omp unroll partial(4)
     for (int i = 0; i < input_size; i++) {
-        data[i] = tanh(data[i]);
+           output[i] = tanh(data[i]);
     }
 
-   return input;
+       return outputArray;
 }
 
 Napi::Value Softmax_GPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
 
     float* data = input.Data();
     int inputSize = input.ElementLength();
+    Napi::Float32Array outputArray = Napi::Float32Array::New(env, inputSize);
 
     float max_val = data[0];
     for (int i = 0; i < inputSize; i++) max_val = std::max(max_val, data[i]);
@@ -166,28 +191,34 @@ Napi::Value Softmax_GPU(const Napi::CallbackInfo& info) {
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("softmax");
 
-    cl_mem buffer = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputSize, data, nullptr);
+    cl_mem inputBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputSize, data, nullptr);
+    cl_mem buffer = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * inputSize, nullptr, nullptr);
 
-    clSetKernelArg(kernel, 0, sizeof(cl_mem), &buffer);
-    clSetKernelArg(kernel, 1, sizeof(float), &max_val);
-    clSetKernelArg(kernel, 2, sizeof(float), &sum);
-    clSetKernelArg(kernel, 3, sizeof(int), &inputSize);
+    clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputBuffer);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), &buffer);
+    clSetKernelArg(kernel, 2, sizeof(float), &max_val);
+    clSetKernelArg(kernel, 3, sizeof(float), &sum);
+    clSetKernelArg(kernel, 4, sizeof(int), &inputSize);
 
     size_t globalSize = (size_t)inputSize;
 
     clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
 
-    clEnqueueReadBuffer(queue, buffer, CL_TRUE, 0, sizeof(float) * inputSize, data, 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, buffer, CL_TRUE, 0, sizeof(float) * inputSize, outputArray.Data(), 0, nullptr, nullptr);
 
     clReleaseMemObject(buffer);
+    clReleaseMemObject(inputBuffer);
 
-    return input;
+    return outputArray;
 }
 
 Napi::Value Softmax_CPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
     float* data = input.Data();
     size_t input_size = input.ElementLength();
+    Napi::Float32Array outputArray = Napi::Float32Array::New(env, input_size);
+    float* output = outputArray.Data();
 
     float max_val = data[0];
     #pragma omp unroll partial(4)
@@ -198,16 +229,16 @@ Napi::Value Softmax_CPU(const Napi::CallbackInfo& info) {
     float sum = 0.0f;
     #pragma omp unroll partial(4)
     for (size_t i = 0; i < input_size; i++) {
-        data[i] = std::exp(data[i] - max_val);
-        sum += data[i];
+        output[i] = std::exp(data[i] - max_val);
+        sum += output[i];
     }
 
     #pragma omp unroll partial(4)
     for (size_t i = 0; i < input_size; i++) {
-        data[i] /= sum;
+        output[i] /= sum;
     }
 
-    return input;
+    return outputArray;
 }
 
 /* ========================= Derivatives ============================*/
@@ -222,18 +253,21 @@ Napi::Value DReLu_GPU(const Napi::CallbackInfo& info) {
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("drelu");
 
-    cl_mem inputData = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* input_size, input.Data(), nullptr);
+    cl_mem inputData = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* input_size, input.Data(), nullptr);
+    cl_mem outputData = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float)* input_size, nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputData);
-    clSetKernelArg(kernel, 1, sizeof(int), &input_size);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), &outputData);
+    clSetKernelArg(kernel, 2, sizeof(int), &input_size);
 
 
     size_t globalSize = (size_t)input_size;
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
     Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
-    clEnqueueReadBuffer(queue, inputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, outputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
 
+    clReleaseMemObject(outputData);
     clReleaseMemObject(inputData);
 
     return output;
@@ -266,18 +300,21 @@ Napi::Value DSigmoid_GPU(const Napi::CallbackInfo& info) {
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("dsigmoid");
 
-    cl_mem inputData = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* input_size, input.Data(), nullptr);
+    cl_mem inputData = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* input_size, input.Data(), nullptr);
+    cl_mem outputData = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float)* input_size, nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputData);
-    clSetKernelArg(kernel, 1, sizeof(int), &input_size);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), &outputData);
+    clSetKernelArg(kernel, 2, sizeof(int), &input_size);
 
 
     size_t globalSize = (size_t)input_size;
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
     Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
-    clEnqueueReadBuffer(queue, inputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, outputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
 
+    clReleaseMemObject(outputData);
     clReleaseMemObject(inputData);
 
     return output;
@@ -311,18 +348,21 @@ Napi::Value DTanh_GPU(const Napi::CallbackInfo& info) {
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("dtanh");
 
-    cl_mem inputData = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* input_size, input.Data(), nullptr);
+    cl_mem inputData = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* input_size, input.Data(), nullptr);
+    cl_mem outputData = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float)* input_size, nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputData);
-    clSetKernelArg(kernel, 1, sizeof(int), &input_size);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), &outputData);
+    clSetKernelArg(kernel, 2, sizeof(int), &input_size);
 
 
     size_t globalSize = (size_t)input_size;
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
     Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
-    clEnqueueReadBuffer(queue, inputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, outputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
 
+    clReleaseMemObject(outputData);
     clReleaseMemObject(inputData);
     
     return output;
@@ -378,7 +418,12 @@ Napi::Value SoftmaxWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value LinearWrapper(const Napi::CallbackInfo& info) {
-    return info[0];
+    Napi::Env env = info.Env();
+    Napi::Float32Array input = info[0].As<Napi::Float32Array>();
+    int input_size = input.ElementLength();
+    Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
+    std::copy(input.Data(), input.Data() + input_size, output.Data());
+    return output;
 }
 
 Napi::Value DReLuWrapper(const Napi::CallbackInfo& info) {
