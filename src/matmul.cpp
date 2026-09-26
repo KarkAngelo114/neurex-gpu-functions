@@ -18,39 +18,41 @@ Napi::Value MatMul_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
     int inputSize = info[1].As<Napi::Number>().Int32Value();
     int outputSize = info[2].As<Napi::Number>().Int32Value();
-    Napi::Float32Array weights = info[3].As<Napi::Float32Array>();
-    Napi::Float32Array biases = info[4].As<Napi::Float32Array>();
+
+    // No need for these weights and biases since we use the cached parameters from the global parameter store
+    // Napi::Float32Array weights = info[3].As<Napi::Float32Array>();
+    // Napi::Float32Array biases = info[4].As<Napi::Float32Array>();
+
     int pointer = info[5].As<Napi::Number>().Int32Value();
     std::string modelID = info[6].As<Napi::String>().Utf8Value();
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
     cl_context context = gpu.context();
-    cl_mem dIn  = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputSize, input.Data(), nullptr);
-    cl_mem dW   = gpu.getWeights(modelID, pointer);
-    cl_mem dB   = gpu.getBiases(modelID, pointer);
-    cl_mem dOut = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * outputSize, nullptr, nullptr);
+    cl_mem inputTensor  = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputSize, input.Data(), nullptr);
+    cl_mem weights = gpu.getWeights(modelID, pointer);
+    cl_mem biases = gpu.getBiases(modelID, pointer);
+    cl_mem output = gpu.getOrCreate_Z(modelID, pointer, static_cast<size_t>(outputSize)); // this is the output, instead of allocatiing another buffer, we call `getOrCreate_Z()` to cache the pre-activated output to be use by an activation function.
 
     cl_kernel k = gpu.kernel("matmul");
 
-    clSetKernelArg(k, 0, sizeof(cl_mem), &dIn);
-    clSetKernelArg(k, 1, sizeof(cl_mem), &dW);
-    clSetKernelArg(k, 2, sizeof(cl_mem), &dB);
-    clSetKernelArg(k, 3, sizeof(cl_mem), &dOut);
+    clSetKernelArg(k, 0, sizeof(cl_mem), &inputTensor);
+    clSetKernelArg(k, 1, sizeof(cl_mem), &weights);
+    clSetKernelArg(k, 2, sizeof(cl_mem), &biases);
+    clSetKernelArg(k, 3, sizeof(cl_mem), &output);
     clSetKernelArg(k, 4, sizeof(int), &inputSize);
     clSetKernelArg(k, 5, sizeof(int), &outputSize);
 
-    size_t global = outputSize;
+    size_t global = size_t(outputSize);
     clEnqueueNDRangeKernel(queue, k, 1, nullptr, &global, nullptr, 0, nullptr, nullptr);
 
     // read result
-    Napi::Float32Array output = Napi::Float32Array::New(env, outputSize);
-    clEnqueueReadBuffer(queue, dOut, CL_TRUE, 0, sizeof(float) * outputSize, output.Data(), 0, nullptr, nullptr);
+    Napi::Float32Array outputTensor = Napi::Float32Array::New(env, outputSize);
+    clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float) * outputSize, outputTensor.Data(), 0, nullptr, nullptr);
 
-    clReleaseMemObject(dIn);
-    clReleaseMemObject(dOut);
+    clReleaseMemObject(inputTensor);
 
-    return output;
+    return outputTensor;
 }
 
 Napi::Value MatMul_CPU(const Napi::CallbackInfo& info) {

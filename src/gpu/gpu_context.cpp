@@ -56,6 +56,7 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"loss.cl", "bce"},
     {"normalizers.cl", "gradientClipping"},
     {"normalizers.cl", "layer_norm_standard_size"},
+    {"normalizers.cl", "layer_norm_backward_one"},
     {"transConv.cl", "transConv"},
     {"transConv.cl", "transConvBackward"},
     {"computeKernelGradients.cl", "accumulateTransConvKernelGrads"},
@@ -67,6 +68,7 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"attention.cl", "multi_head_attention_backward_dx"},
     {"attention.cl", "accumulate_attention_weight_grads"},
     {"attention.cl", "accumulate_attention_bias_grads"},
+    {"gamma_and_beta_grads.cl", "accumulate_gamma_beta_grads"},
 };
 
 
@@ -283,16 +285,30 @@ void GpuContext::clearParams(const std::string& modelID) {
     //     would reset them to zero and the whole point of caching them is lost.
     //   - ReleaseParams() (JS-facing): the model is actually being torn down.
     //     That call site explicitly calls clearOptimizerStates() itself; see globals.cpp.
+    //
+    // The forward/backward activation caches (z/activation_output/dAct/delta) are
+    // ALSO intentionally not cleared here, for a different reason: they're overwritten
+    // every single feedforward/backprop pass by design (see getOrCreateCacheBuffer),
+    // so leaving stale data behind after a mid-training uploadParams() is harmless —
+    // it'll be overwritten before anything ever reads it again. Freeing and
+    // reallocating them here would just be wasted churn since layer shapes (and thus
+    // buffer sizes) don't change between re-syncs. Like optimizer states, they're only
+    // released on full teardown; see clearActivationCaches().
 }
 
+/** 
+ * this function is full tear-down of the GPU lifecycle.
+ * if a `neurex` instance calls `shutdown()`, other instances will also be affected.
+ */
 void GpuContext::clearAllParams() {
-    for (auto& entry : weightsByModel_)
-        for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
-    for (auto& entry : biasesByModel_)
-        for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
-    weightsByModel_.clear();
-    biasesByModel_.clear();
-
+    for (auto& entry : weightsByModel_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
+    for (auto& entry : biasesByModel_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
+    for (auto& entry : zByModel_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
+    for (auto& entry : activationOutputsByModel_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
+    for (auto& entry : dActByModel_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
+    for (auto& entry : deltasByModel_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
+    for (auto& entry: dBetaByModel_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
+    for (auto& entry: dGammaByModel_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
     for (auto& entry : mStatesWeights_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
     for (auto& entry : mStatesBiases_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
     for (auto& entry : vStatesWeights_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
@@ -301,6 +317,15 @@ void GpuContext::clearAllParams() {
     for (auto& entry : velocityBiases_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
     for (auto& entry : sqAvgWeights_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
     for (auto& entry : sqAvgBiases_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
+    
+    weightsByModel_.clear();
+    biasesByModel_.clear();
+    zByModel_.clear();
+    activationOutputsByModel_.clear();
+    dActByModel_.clear();
+    deltasByModel_.clear();
+    dBetaByModel_.clear();
+    dGammaByModel_.clear();
     mStatesWeights_.clear(); mStatesBiases_.clear();
     vStatesWeights_.clear(); vStatesBiases_.clear();
     velocityWeights_.clear(); velocityBiases_.clear();
@@ -332,6 +357,26 @@ cl_mem GpuContext::getOrCreateStateBuffer(std::unordered_map<std::string, CL_MEM
     return layerBuffers[idx];
 }
 
+// Same lazy-alloc-by-(modelID, pointer) pattern as getOrCreateStateBuffer above, but
+// with no initialData: these slots are never meant to hold meaningful zeros, they're
+// overwritten by a kernel write the moment they're created, so seeding would just be
+// wasted work.
+cl_mem GpuContext::getOrCreateCacheBuffer(std::unordered_map<std::string, CL_MEM_ARRAY>& store, const std::string& modelID, int pointer, size_t length) {
+    auto& layerBuffers = store[modelID];
+
+    size_t idx = static_cast<size_t>(pointer);
+    if (idx >= layerBuffers.size()) {
+        layerBuffers.resize(idx + 1, nullptr);
+    }
+
+    if (layerBuffers[idx] == nullptr) {
+        cl_int err;
+        layerBuffers[idx] = clCreateBuffer(context_, CL_MEM_READ_WRITE, sizeof(float) * length, nullptr, &err);
+    }
+
+    return layerBuffers[idx];
+}
+
 cl_mem GpuContext::getOrCreate_M(const std::string& modelID, int pointer, bool isWeights, size_t length, const float* initialData) {
     return getOrCreateStateBuffer(isWeights ? mStatesWeights_ : mStatesBiases_, modelID, pointer, length, initialData);
 }
@@ -356,6 +401,32 @@ static void releaseAndClearModelEntry(std::unordered_map<std::string, CL_MEM_ARR
     }
 }
 
+// ===================== Forward/backward activation caching =====================
+
+cl_mem GpuContext::getOrCreate_Z(const std::string& modelID, int pointer, size_t length) {
+    return getOrCreateCacheBuffer(zByModel_, modelID, pointer, length);
+}
+
+cl_mem GpuContext::getOrCreate_ActivationOutput(const std::string& modelID, int pointer, size_t length) {
+    return getOrCreateCacheBuffer(activationOutputsByModel_, modelID, pointer, length);
+}
+
+cl_mem GpuContext::getOrCreate_DAct(const std::string& modelID, int pointer, size_t length) {
+    return getOrCreateCacheBuffer(dActByModel_, modelID, pointer, length);
+}
+
+cl_mem GpuContext::getOrCreate_Delta(const std::string& modelID, int pointer, size_t length) {
+    return getOrCreateCacheBuffer(deltasByModel_, modelID, pointer, length);
+}
+
+cl_mem GpuContext::getOrCreate_dBeta(const std::string& modelID, int pointer, size_t length) {
+    return getOrCreateCacheBuffer(dBetaByModel_, modelID, pointer, length);
+}
+
+cl_mem GpuContext::getOrCreate_dGamma(const std::string& modelID, int pointer, size_t length) {
+    return getOrCreateCacheBuffer(dGammaByModel_, modelID, pointer, length);
+}
+
 void GpuContext::clearOptimizerStates(const std::string& modelID) {
     releaseAndClearModelEntry(mStatesWeights_, modelID);
     releaseAndClearModelEntry(mStatesBiases_, modelID);
@@ -365,4 +436,20 @@ void GpuContext::clearOptimizerStates(const std::string& modelID) {
     releaseAndClearModelEntry(velocityBiases_, modelID);
     releaseAndClearModelEntry(sqAvgWeights_, modelID);
     releaseAndClearModelEntry(sqAvgBiases_, modelID);
+}
+
+// Releases this model's cached z/activation_output/dAct/delta buffers. Like
+// clearOptimizerStates(), this is for full model teardown — call this alongside
+// clearOptimizerStates() from the same JS-facing ReleaseParams() call site, NOT from
+// clearParams()/uploadParams(); see the note in clearParams() for why.
+void GpuContext::clearActivationCaches(const std::string& modelID) {
+    releaseAndClearModelEntry(zByModel_, modelID);
+    releaseAndClearModelEntry(activationOutputsByModel_, modelID);
+    releaseAndClearModelEntry(dActByModel_, modelID);
+    releaseAndClearModelEntry(deltasByModel_, modelID);
+}
+
+void GpuContext::clear_dBeta_And_dGamma_By_Model(const std::string& modelID) {
+    releaseAndClearModelEntry(dBetaByModel_, modelID);
+    releaseAndClearModelEntry(dGammaByModel_, modelID);
 }

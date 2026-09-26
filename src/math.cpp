@@ -7,22 +7,23 @@
 
 Napi::Value element_wise_mul_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-
-    Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
-    Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>();
-    int arr_length = arr1.ElementLength();
+    // Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>(); // delta — the only genuinely new value each call, so this is the one upload we can't avoid
+    int arr_length = arr2.ElementLength();
+    int pointer = info[2].As<Napi::Number>().Int32Value();
+    std::string modelID = info[3].As<Napi::String>().Utf8Value();
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
     cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("element_wise_mul");
 
-    cl_mem input_arr1 = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * arr_length, arr1.Data(), nullptr);
-    cl_mem input_arr2 = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * arr_length, arr2.Data(), nullptr);
-    cl_mem output_arr = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * arr_length, nullptr, nullptr);
+    cl_mem dActBuffer = gpu.getDAct(modelID, pointer); // cached raw derivative — no upload
+    cl_mem deltaBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * arr_length, arr2.Data(), nullptr); // incoming delta — fresh upload, unavoidable
+    cl_mem output_arr = gpu.getOrCreate_Delta(modelID, pointer, static_cast<size_t>(arr_length)); // final delta, cached for gradient accumulation to consume next
 
-    clSetKernelArg(kernel, 0, sizeof(cl_mem), &input_arr1);
-    clSetKernelArg(kernel, 1, sizeof(cl_mem), &input_arr2);
+    clSetKernelArg(kernel, 0, sizeof(cl_mem), &dActBuffer);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), &deltaBuffer);
     clSetKernelArg(kernel, 2, sizeof(cl_mem), &output_arr);
     clSetKernelArg(kernel, 3, sizeof(int), &arr_length);
 
@@ -33,11 +34,8 @@ Napi::Value element_wise_mul_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array output = Napi::Float32Array::New(env, arr_length);
     clEnqueueReadBuffer(queue, output_arr, CL_TRUE, 0, sizeof(float) * arr_length, output.Data(), 0, nullptr, nullptr);
 
-    clFinish(queue);
-    clReleaseMemObject(input_arr1);
-    clReleaseMemObject(input_arr2);
-    clReleaseMemObject(output_arr);
-    
+    clReleaseMemObject(deltaBuffer);
+
     return output;
 }
 
@@ -46,6 +44,9 @@ Napi::Value element_wise_mul_CPU(const Napi::CallbackInfo& info) {
     
     Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
     Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>();
+    // info[2] (pointer) and info[3] (modelID) are accepted by the JS call site for
+    // GPU-mode's benefit but intentionally unused here — CPU mode has no GPU cache
+    // to look anything up in, so it just multiplies the two arrays it was given.
     int arr_length = arr1.ElementLength();
     Napi::Float32Array output = Napi::Float32Array::New(env, arr_length);
 
@@ -236,19 +237,23 @@ Napi::Value Scale_CPU(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value accumulate_element_wise_mul_GPU(const Napi::CallbackInfo& info) {
-    Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
-    Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>();
-    Napi::Float32Array arr3 = info[2].As<Napi::Float32Array>();
-    int size = arr1.ElementLength();
+    // arr1 (activation output / a_prev) and arr2 (delta) are accepted for signature
+    // consistency with the CPU path, but their DATA is not used — the real cached
+    // buffers are looked up by (modelID, pointer) instead of being re-uploaded.
+    Napi::Float32Array arr3 = info[2].As<Napi::Float32Array>(); // the gradient accumulator, e.g. gammaGrads — genuinely fresh each call
+    int pointer = info[3].As<Napi::Number>().Int32Value();
+    std::string modelID = info[4].As<Napi::String>().Utf8Value();
+
+    int size = arr3.ElementLength();
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
     cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("accumulate_element_wise_mul");
 
-    cl_mem input_arr1 = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * size, arr1.Data(), nullptr);
-    cl_mem input_arr2 = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * size, arr2.Data(), nullptr);
-    cl_mem input_arr3 = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * size, arr3.Data(), nullptr);
+    cl_mem input_arr1 = gpu.getActivationOutput(modelID, pointer); // cached a_prev — no upload
+    cl_mem input_arr2 = gpu.getDelta(modelID, pointer);            // cached delta — no upload
+    cl_mem input_arr3 = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * size, arr3.Data(), nullptr); // accumulator — fresh every call
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &input_arr1);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &input_arr2);
@@ -260,8 +265,6 @@ Napi::Value accumulate_element_wise_mul_GPU(const Napi::CallbackInfo& info) {
 
     clEnqueueReadBuffer(queue, input_arr3, CL_TRUE, 0, sizeof(float) * size, arr3.Data(), 0, nullptr, nullptr);
 
-    clReleaseMemObject(input_arr1);
-    clReleaseMemObject(input_arr2);
     clReleaseMemObject(input_arr3);
 
     return arr3;
@@ -271,6 +274,9 @@ Napi::Value accumulate_element_wise_mul_CPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array inputArray1 = info[0].As<Napi::Float32Array>();
     Napi::Float32Array inputArray2 = info[1].As<Napi::Float32Array>();
     Napi::Float32Array inputArray3 = info[2].As<Napi::Float32Array>();
+    // info[3] (pointer) and info[4] (modelID), once threaded through from JS, will be
+    // accepted here for signature consistency with GPU mode but intentionally unused —
+    // CPU mode has no GPU cache to look anything up in.
     int size = inputArray1.ElementLength();
 
     float* arr1 = inputArray1.Data();
@@ -311,9 +317,9 @@ Napi::Value element_wise_add_CPU(const Napi::CallbackInfo& info) {
 // ====== wrappers ================
 
 Napi::Value element_wise_mul_wrapper(const Napi::CallbackInfo& info) {
-    // if (get_Global_Boolean_On_GPU()) {
-    //     return element_wise_mul_GPU(info);
-    // }
+    if (get_Global_Boolean_On_GPU()) {
+        return element_wise_mul_GPU(info);
+    }
 
     return element_wise_mul_CPU(info);
 }
@@ -346,9 +352,9 @@ Napi::Value ScalerWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value accumulate_element_wise_mul_wrapper(const Napi::CallbackInfo& info) {
-    // if (get_Global_Boolean_On_GPU()) {
-    //     return accumulate_element_wise_mul_GPU(info);
-    // }
+    if (get_Global_Boolean_On_GPU()) {
+        return accumulate_element_wise_mul_GPU(info);
+    }
     return accumulate_element_wise_mul_CPU(info);
 }
 
