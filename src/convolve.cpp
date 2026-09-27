@@ -201,7 +201,7 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array kernelsArray = info[4].As<Napi::Float32Array>(); // this won't be used here for buffer creation
     int stride = info[5].As<Napi::Number>().Int32Value();
     int pointer = info[6].As<Napi::Number>().Int32Value();
-    std::String modelID = info[7].As<Napi::String>().Utf8Value();
+    std::string modelID = info[7].As<Napi::String>().Utf8Value();
 
     int Hp = deltaShape[0];
     int Wp = deltaShape[1];
