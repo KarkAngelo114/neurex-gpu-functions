@@ -797,7 +797,7 @@ Napi::Value AccumulateGammaGrads_CPU(const Napi::CallbackInfo& info) {
 
     float* g = grads.Data();
     float* d = deltas.Data();
-    size_t length = biasgrads.ElementLength();
+    size_t length = grads.ElementLength();
 
     #pragma omp unroll partial(4)
     for (int i = 0; i < length; i++) {
@@ -813,7 +813,7 @@ Napi::Value AccumulateBetaGrads_CPU(const Napi::CallbackInfo& info) {
 
     float* g = grads.Data();
     float* d = deltas.Data();
-    size_t length = biasgrads.ElementLength();
+    size_t length = grads.ElementLength();
 
     #pragma omp unroll partial(4)
     for (int i = 0; i < length; i++) {
