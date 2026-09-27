@@ -791,7 +791,7 @@ Napi::Value AccumulateBetaGrads_GPU(const Napi::CallbackInfo& info) {
     return grads;
 }
 
-Napi::Value AccumulateGammaGrads_CPU(onst Napi::CallbackInfo& info) {
+Napi::Value AccumulateGammaGrads_CPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array grads = info[0].As<Napi::Float32Array>();
     Napi::Float32Array deltas = info[1].As<Napi::Float32Array>();
 
@@ -807,7 +807,7 @@ Napi::Value AccumulateGammaGrads_CPU(onst Napi::CallbackInfo& info) {
     return grads;
 }
 
-Napi::Value AccumulateBetaGrads_CPU(onst Napi::CallbackInfo& info) {
+Napi::Value AccumulateBetaGrads_CPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array grads = info[0].As<Napi::Float32Array>();
     Napi::Float32Array deltas = info[1].As<Napi::Float32Array>();
 
