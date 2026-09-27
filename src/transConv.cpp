@@ -44,7 +44,7 @@ Napi::Value transConv_GPU(const Napi::CallbackInfo& info) {
     int kw = weightShape[2];
     int d = weightShape[3];
 
-    size_t outputSize = (size_t)oH * (size_t)oW * (size_t)f;
+    size_t outputSize = oH * oW * f;
     Napi::Float32Array outputTensor = Napi::Float32Array::New(env, outputSize);
 
     int padH = std::max(0, (iH - 1) * strides + kh - oH);
@@ -60,7 +60,7 @@ Napi::Value transConv_GPU(const Napi::CallbackInfo& info) {
     cl_mem input = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputTensor.ElementLength(), inputTensor.Data(), nullptr);
     cl_mem weights = gpu.getWeights(modelID, pointer);
     cl_mem biases = gpu.getBiases(modelID, pointer);
-    cl_mem output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * outputSize, nullptr, nullptr);
+    cl_mem output = gpu.getOrCreate_Z(modelID, pointer, outputSize);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &input);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &weights);
@@ -89,7 +89,6 @@ Napi::Value transConv_GPU(const Napi::CallbackInfo& info) {
     clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float) * outputSize, outputTensor.Data(), 0, nullptr, nullptr);
 
     clReleaseMemObject(input);
-    clReleaseMemObject(output);
 
     return outputTensor;
 }

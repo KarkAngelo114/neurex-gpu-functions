@@ -27,6 +27,44 @@
 
 
 /* ========================= Callable functions ============================*/
+Napi::Value Linear_GPU(const Napi::CallbackInfo& info) {
+    // even though linear is a pass through, it is still needs to contribute to the chain
+    Napi::Env env = info.Env();
+    Napi::Float32Array input = info[0].As<Napi::Float32Array>(); // this won't be use in this branch for buffer creation, but only for size referencing
+    int pointer = info[1].As<Napi::Number>().Int32Value();
+    std::string modelID = info[2].As<Napi::String>().Utf8Value();
+
+    int input_size = input.ElementLength();
+
+    auto& gpu = GpuContext::instance();
+    cl_context context = gpu.context();
+    cl_command_queue queue = gpu.queue();
+    cl_kernel kernel = gpu.kernel("linear");
+
+    cl_mem inputData = gpu.getZ(modelID, pointer);
+    cl_mem output = gpu.getOrCreate_ActivationOutput(modelID, pointer, static_cast<size_t>(input_size));
+
+    clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputData);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), &output);
+    clSetKernelArg(kernel, 2, sizeof(int), &input_size);
+
+
+    size_t globalSize = static_cast<size_t>(input_size);
+    clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
+
+    Napi::Float32Array outputArray = Napi::Float32Array::New(env, input_size);
+    clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float)* input_size, outputArray.Data(), 0, nullptr, nullptr);
+
+    return outputArray;
+}
+
+
+Napi::Value Linear_CPU(const Napi::CallbackInfo& info) {
+    // Linear is a pure pass through, return input as output
+
+    return info[0].As<Napi::Float32Array>();
+    
+}
 
 Napi::Value Relu_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
@@ -241,7 +279,45 @@ Napi::Value Softmax_CPU(const Napi::CallbackInfo& info) {
     return outputArray;
 }
 
-/* ========================= Derivatives ============================*/
+// ===================== derivatives ==========================
+Napi::Value DLinear_GPU(const Napi::CallbackInfo& info) {
+    // even though linear is a pass through, it is still needs to contribute to the chain
+    Napi::Env env = info.Env();
+    Napi::Float32Array input = info[0].As<Napi::Float32Array>(); // this won't be use in this branch for buffer creation, but only for size referencing
+    int pointer = info[1].As<Napi::Number>().Int32Value();
+    std::string modelID = info[2].As<Napi::String>().Utf8Value();
+
+    int input_size = input.ElementLength();
+
+    auto& gpu = GpuContext::instance();
+    cl_context context = gpu.context();
+    cl_command_queue queue = gpu.queue();
+    cl_kernel kernel = gpu.kernel("linear"); // shares teh same kernel source code since it's a no-op
+
+    cl_mem inputData = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* input_size, input.Data(), nullptr);
+    cl_mem outputData = gpu.getOrCreate_DAct(modelID, pointer, input_size);
+
+    clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputData);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), &outputData);
+    clSetKernelArg(kernel, 2, sizeof(int), &input_size);
+
+    size_t globalSize = (size_t)input_size;
+    clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
+
+    Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
+    clEnqueueReadBuffer(queue, outputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
+
+    clReleaseMemObject(inputData);
+
+    return output;
+}
+
+Napi::Value DLinear_CPU(const Napi::CallbackInfo& info) {
+    // same as Linear, return input as output
+
+    return info[0].As<Napi::Float32Array>();
+    
+}
 
 Napi::Value DReLu_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
@@ -423,12 +499,11 @@ Napi::Value SoftmaxWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value LinearWrapper(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-    Napi::Float32Array input = info[0].As<Napi::Float32Array>();
-    int input_size = input.ElementLength();
-    Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
-    std::copy(input.Data(), input.Data() + input_size, output.Data());
-    return output;
+    if (get_Global_Boolean_On_GPU()) {
+        return Linear_GPU(info);
+    }
+
+    return Linear_CPU(info);
 }
 
 Napi::Value DReLuWrapper(const Napi::CallbackInfo& info) {
@@ -475,14 +550,11 @@ Napi::Value DSoftmaxWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value DLinearWrapper(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-    Napi::Float32Array input = info[0].As<Napi::Float32Array>();
-    size_t arr_size = input.ElementLength();
-    Napi::Float32Array output = Napi::Float32Array::New(env, arr_size);
+    if (get_Global_Boolean_On_GPU()) {
+        return DLinear_GPU(info);
+    }
 
-    std::fill(output.Data(), output.Data() + arr_size, 1.0f);
-
-    return output;
+    return DLinear_CPU(info);
 }
 
 Napi::Value DTanhWrapper(const Napi::CallbackInfo& info) {

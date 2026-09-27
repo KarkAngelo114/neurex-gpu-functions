@@ -78,12 +78,13 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
     cl_context context = gpu.context();
+    cl_kernel kernel = gpu.kernel("convolve");
+
     cl_mem inputTensor = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputH * inputW * depth, input.Data(), nullptr);
     cl_mem weights = gpu.getWeights(modelID, pointer);
     cl_mem biases = gpu.getBiases(modelID, pointer);
-    cl_mem output_tensor = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float)* outputH * outputW * numFilters, nullptr, nullptr);
+    cl_mem output_tensor = gpu.getOrCreate_Z(modelID, pointer, static_cast<size_t>(outputSize));
 
-    cl_kernel kernel = gpu.kernel("convolve");
 
     // Set args
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputTensor);
@@ -110,10 +111,10 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
 
     Napi::Float32Array output = Napi::Float32Array::New(env, outputSize);
 
-    clEnqueueReadBuffer( queue, output_tensor, CL_TRUE, 0, sizeof(float) * outputSize, output.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, output_tensor, CL_TRUE, 0, sizeof(float) * outputSize, output.Data(), 0, nullptr, nullptr);
 
     clReleaseMemObject(inputTensor);
-    clReleaseMemObject(output_tensor);
+
     return output;
 }
 
@@ -192,12 +193,15 @@ Napi::Value Convolve_CPU(const Napi::CallbackInfo& info) {
 
 Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
+    
     Napi::Float32Array inputTensor = info[0].As<Napi::Float32Array>();
     IntArray deltaShape = Vectorize(info[1].As<Napi::Array>());
     IntArray kernelShape = Vectorize(info[2].As<Napi::Array>());
     IntArray outputShape = Vectorize(info[3].As<Napi::Array>());
-    Napi::Float32Array kernelsArray = info[4].As<Napi::Float32Array>();
+    Napi::Float32Array kernelsArray = info[4].As<Napi::Float32Array>(); // this won't be used here for buffer creation
     int stride = info[5].As<Napi::Number>().Int32Value();
+    int pointer = info[6].As<Napi::Number>().Int32Value();
+    std::String modelID = info[7].As<Napi::String>().Utf8Value();
 
     int Hp = deltaShape[0];
     int Wp = deltaShape[1];
@@ -219,7 +223,7 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     cl_kernel kernel = gpu.kernel("delta_convolve");
 
     cl_mem delta = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * Hp * Wp * C_in, inputTensor.Data(), nullptr);
-    cl_mem weights = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * kernelsArray.ElementLength(), kernelsArray.Data(), nullptr);
+    cl_mem weights = gpu.getWeights(modelID, pointer);
     cl_mem outputBuf = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * outputSize, nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &delta);
@@ -247,7 +251,6 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     clEnqueueReadBuffer(queue, outputBuf, CL_TRUE, 0, sizeof(float) * outputSize, output.Data(), 0, nullptr, nullptr);
 
     clReleaseMemObject(delta);
-    clReleaseMemObject(weights);
     clReleaseMemObject(outputBuf);
 
     return output;

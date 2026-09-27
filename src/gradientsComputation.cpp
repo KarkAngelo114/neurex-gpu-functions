@@ -139,6 +139,8 @@ Napi::Value computeKernelGradients_GPU(const Napi::CallbackInfo& info) {
     IntArray outputShape = Vectorize(info[4].As<Napi::Array>());
     IntArray kernelSize = Vectorize(info[5].As<Napi::Array>());
     int stride = info[6].As<Napi::Number>().Int32Value();
+    int pointer = info[7].As<Napi::Number>().Int32Value();
+    std::string modelID = info[8].As<Napi::String>().Utf8Value();
 
     int inputH = inputShape[0];
     int inputW = inputShape[1];
@@ -160,25 +162,21 @@ Napi::Value computeKernelGradients_GPU(const Napi::CallbackInfo& info) {
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("computeKernelGradients");
 
-    cl_mem activations = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputTensor.ElementLength(), inputTensor.Data(), nullptr);
-    cl_mem delta_input = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * deltaTensor.ElementLength(), deltaTensor.Data(), nullptr);
+    cl_mem activations = gpu.getActivationOutput(modelID, pointer);
+    cl_mem delta_input = gpu.getDelta(modelID, pointer);
     cl_mem gradsArr = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * weightGradsTensor.ElementLength(), weightGradsTensor.Data(), nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &activations);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &delta_input);
     clSetKernelArg(kernel, 2, sizeof(cl_mem), &gradsArr);
-
     clSetKernelArg(kernel, 3, sizeof(int), &inputH);
     clSetKernelArg(kernel, 4, sizeof(int), &inputW);
     clSetKernelArg(kernel, 5, sizeof(int), &Cin);
-
     clSetKernelArg(kernel, 6, sizeof(int), &H);
     clSetKernelArg(kernel, 7, sizeof(int), &W);
     clSetKernelArg(kernel, 8, sizeof(int), &Cout);
-
     clSetKernelArg(kernel, 9, sizeof(int), &Kh);
     clSetKernelArg(kernel, 10, sizeof(int), &Kw);
-
     clSetKernelArg(kernel, 11, sizeof(int), &padH);
     clSetKernelArg(kernel, 12, sizeof(int), &padW);
     clSetKernelArg(kernel, 13, sizeof(int), &stride);
@@ -193,10 +191,9 @@ Napi::Value computeKernelGradients_GPU(const Napi::CallbackInfo& info) {
     };
 
     clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, globalSize, nullptr, 0, nullptr, nullptr);
+
     clEnqueueReadBuffer(queue, gradsArr, CL_TRUE, 0, sizeof(float) * weightGradsTensor.ElementLength(), weightGradsTensor.Data(), 0, nullptr, nullptr);
  
-    clReleaseMemObject(activations);
-    clReleaseMemObject(delta_input);
     clReleaseMemObject(gradsArr);
 
     return weightGradsTensor;
@@ -295,6 +292,8 @@ Napi::Value computeBiasGradsForConv_GPU(const Napi::CallbackInfo& info) {
     int outH = info[2].As<Napi::Number>().Int32Value();
     int outW = info[3].As<Napi::Number>().Int32Value();
     int numFilters = info[4].As<Napi::Number>().Int32Value();
+    int pointer = info[7].As<Napi::Number>().Int32Value();
+    std::string modelID = info[8].As<Napi::String>().Utf8Value();
 
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
@@ -302,7 +301,7 @@ Napi::Value computeBiasGradsForConv_GPU(const Napi::CallbackInfo& info) {
     cl_kernel kernel = gpu.kernel("computeBiasGradsForConv");
     
     cl_mem grads = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * biasGrads.ElementLength(), biasGrads.Data(), nullptr);
-    cl_mem delta = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * deltas.ElementLength(), deltas.Data(), nullptr);
+    cl_mem delta = gpu.getDelta(modelID, pointer);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &grads);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &delta);
@@ -317,7 +316,6 @@ Napi::Value computeBiasGradsForConv_GPU(const Napi::CallbackInfo& info) {
     clEnqueueReadBuffer(queue, grads, CL_TRUE, 0, sizeof(float) * biasGrads.ElementLength(), biasGrads.Data(), 0, nullptr, nullptr);
 
     clReleaseMemObject(grads);
-    clReleaseMemObject(delta);
 
     return biasGrads;
 
@@ -438,6 +436,8 @@ Napi::Value accumulateKernelGradsForTransConv_GPU(const Napi::CallbackInfo& info
     IntArray inputShape = Vectorize(info[5].As<Napi::Array>());
     IntArray outputShape = Vectorize(info[6].As<Napi::Array>());
     IntArray weightShape = Vectorize(info[7].As<Napi::Array>());
+    int pointer = info[8].As<Napi::Number>();
+    std::string modelID = info[9].As<Napi::String>().Utf8Value();
 
     int iH = inputShape[0];
     int iW = inputShape[1];
@@ -463,8 +463,8 @@ Napi::Value accumulateKernelGradsForTransConv_GPU(const Napi::CallbackInfo& info
     cl_kernel kernel = gpu.kernel("accumulateTransConvKernelGrads");
 
     // Create GPU memory buffers
-    cl_mem activations = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * activation_outputs.ElementLength(), activation_outputs.Data(), nullptr);
-    cl_mem delta_input = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * deltas.ElementLength(), deltas.Data(), nullptr);
+    cl_mem activations = gpu.getActivationOutput(modelID, pointer);
+    cl_mem delta_input = gpu.getDAct(modelID, pointer);
     cl_mem grads = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * weightGrads.ElementLength(), weightGrads.Data(), nullptr);
 
     // Set kernel arguments
@@ -495,8 +495,6 @@ Napi::Value accumulateKernelGradsForTransConv_GPU(const Napi::CallbackInfo& info
 
     clEnqueueReadBuffer(queue, grads, CL_TRUE, 0, sizeof(float) * weightGrads.ElementLength(), weightGrads.Data(), 0, nullptr, nullptr);
 
-    clReleaseMemObject(activations);
-    clReleaseMemObject(delta_input);
     clReleaseMemObject(grads);
 
     return weightGrads;
@@ -759,6 +757,7 @@ Napi::Value AccumulateGammaGrads_GPU(const Napi::CallbackInfo& info) {
 
     clEnqueueReadBuffer(queue, inputgrads, CL_TRUE, 0, sizeof(float) * size, grads.Data(), 0, nullptr, nullptr);
     clReleaseMemObject(inputGrads);
+
     return grads;
 }
 

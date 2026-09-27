@@ -1,11 +1,15 @@
-
-// sigmoid
-__kernel void sigmoid(__global const float* input, __global float* output, const int inputSize) {
+// linear
+__kernel void linear(
+    __global const float* input,
+    __global float* output,
+    const int inputSize
+) {
     int i = get_global_id(0);
 
     if (i >= inputSize) return;
 
-    output[i] = 1.0f / (1.0f + exp(-input[i]));
+    // write to output buffer
+    output[i] = input[i];
 }
 
 // relu
@@ -19,6 +23,16 @@ __kernel void relu(
     if (i >= inputSize) return;
 
     output[i] = input[i] > 0.0f ? input[i] : 0.0f;
+}
+
+
+// sigmoid
+__kernel void sigmoid(__global const float* input, __global float* output, const int inputSize) {
+    int i = get_global_id(0);
+
+    if (i >= inputSize) return;
+
+    output[i] = 1.0f / (1.0f + exp(-input[i]));
 }
 
 // tanh

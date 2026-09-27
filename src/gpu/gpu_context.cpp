@@ -31,6 +31,7 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"computeKernelGradients.cl", "computeKernelGradients"},
     {"computeBiasGradsForConv.cl", "computeBiasGradsForConv"},
     {"activations.cl", "sigmoid"},
+    {"activations.cl", "linear"},
     {"activations.cl", "relu"},
     {"activations.cl", "Tanh"},
     {"activations.cl", "softmax"},

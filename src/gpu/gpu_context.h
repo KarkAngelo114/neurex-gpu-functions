@@ -94,7 +94,7 @@ class GpuContext {
         // ===================== Forward/backward activation caching =====================
 
         /**
-         * fetches (or lazily creates) the cached buffer for this layer's z (matmul output),
+         * fetches (or lazily creates) the cached buffer for this layer's z output),
          * writable by the producer and readable by consumers (activation
          * kernels, delta derivative kernels).
          * @param modelID model this value belongs to
