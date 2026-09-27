@@ -756,7 +756,8 @@ Napi::Value AccumulateGammaGrads_GPU(const Napi::CallbackInfo& info) {
     clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
 
     clEnqueueReadBuffer(queue, inputgrads, CL_TRUE, 0, sizeof(float) * size, grads.Data(), 0, nullptr, nullptr);
-    clReleaseMemObject(inputGrads);
+    
+    clReleaseMemObject(inputgrads);
 
     return grads;
 }
@@ -786,7 +787,7 @@ Napi::Value AccumulateBetaGrads_GPU(const Napi::CallbackInfo& info) {
 
     clEnqueueReadBuffer(queue, inputgrads, CL_TRUE, 0, sizeof(float) * size, grads.Data(), 0, nullptr, nullptr);
 
-    clReleaseMemObject(inputGrads);
+    clReleaseMemObject(inputgrads);
 
     return grads;
 }
