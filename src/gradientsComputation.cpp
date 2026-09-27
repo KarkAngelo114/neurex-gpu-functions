@@ -748,7 +748,7 @@ Napi::Value AccumulateGammaGrads_GPU(const Napi::CallbackInfo& info) {
     cl_mem dGamma = gpu.get_dGamma(modelID, pointer);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &dGamma);
-    clSetKernelArg(kernel, 1, sizeof(cl_mem), &inputGrads);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), &inputgrads);
     clSetKernelArg(kernel, 2, sizeof(int), &size);
 
     size_t globalSize = (size_t)size;
@@ -777,7 +777,7 @@ Napi::Value AccumulateBetaGrads_GPU(const Napi::CallbackInfo& info) {
     cl_mem dBeta = gpu.get_dBeta(modelID, pointer);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &dBeta);
-    clSetKernelArg(kernel, 1, sizeof(cl_mem), &inputGrads);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), &inputgrads);
     clSetKernelArg(kernel, 2, sizeof(int), &size);
 
     size_t globalSize = (size_t)size;
