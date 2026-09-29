@@ -199,8 +199,9 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array x = info[1].As<Napi::Float32Array>();
     Napi::Float32Array gamma = info[2].As<Napi::Float32Array>(); // this will not be used here
     int size = info[3].As<Napi::Number>().Int32Value();
-    int pointer = info[4].As<Napi::Number>().Int32Value();
-    std::string modelID = info[5].As<Napi::String>().Utf8Value();
+    float eps = info[4].As<Napi::Number>().FloatValue();
+    int pointer = info[5].As<Napi::Number>().Int32Value();
+    std::string modelID = info[6].As<Napi::String>().Utf8Value();
 
     if (size <= 0 ||dy.ElementLength() < static_cast<size_t>(size) || x.ElementLength() < static_cast<size_t>(size)) {
         Napi::TypeError::New(env,"Invalid layer normalization input size").ThrowAsJavaScriptException();
@@ -303,12 +304,14 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
 
 Napi::Value LayerNormBackward_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
+
     Napi::Float32Array dy = info[0].As<Napi::Float32Array>();
     Napi::Float32Array x = info[1].As<Napi::Float32Array>();
     Napi::Float32Array Gamma = info[2].As<Napi::Float32Array>();
     int size = info[3].As<Napi::Number>().Int32Value();
-    int pointer = info[4].As<Napi::Number>().Int32Value();
-    std::string modelID = info[5].As<Napi::String>().Utf8Value();
+    float eps = info[4].As<Napi::Number>().FloatValue();
+    int pointer = info[5].As<Napi::Number>().Int32Value();
+    std::string modelID = info[6].As<Napi::String>().Utf8Value();
 
     Napi::Float32Array dx = Napi::Float32Array::New(env, size);
     Napi::Float32Array dgamma = Napi::Float32Array::New(env, size);
