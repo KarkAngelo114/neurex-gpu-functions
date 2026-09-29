@@ -314,12 +314,22 @@ Napi::Value DLinear_GPU(const Napi::CallbackInfo& info) {
 Napi::Value DLinear_CPU(const Napi::CallbackInfo& info) {
     // mutate in place and transform all inputs to 1s
     Napi::Float32Array inputArray = info[0].As<Napi::Float32Array>();
-
+    const size_t size = inputArray.ElementLength();
     float* input = inputArray.Data();
 
-    for (size_t i = 0; i < input.ElementLength(); ++i) {
+    size_t i = 0;
+
+    for (; i + 4 <= size; i += 4) {
+        input[i] = 1.0f;
+        input[i + 1] = 1.0f;
+        input[i + 2] = 1.0f;
+        input[i + 3] = 1.0f;
+    }
+
+    for (; i < size; ++i) {
         input[i] = 1.0f;
     }
+
     return inputArray;
 }
 
