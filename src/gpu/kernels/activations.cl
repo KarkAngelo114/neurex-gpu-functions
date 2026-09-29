@@ -82,3 +82,16 @@ __kernel void dtanh(__global const float* input, __global float* output, const i
 
     output[i] = 1.0f - (tanhOutput * tanhOutput);
 }
+
+__kernel void dlinear(
+    __global const float* input,
+    __global float* output,
+    const int inputSize
+) {
+    int i = get_global_id(0);
+
+    if (i >= inputSize) return;
+
+    // write to output buffer
+    output[i] = 1.0f;
+}

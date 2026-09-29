@@ -58,7 +58,6 @@ Napi::Value Linear_GPU(const Napi::CallbackInfo& info) {
     return outputArray;
 }
 
-
 Napi::Value Linear_CPU(const Napi::CallbackInfo& info) {
     // Linear is a pure pass through, return input as output
 
@@ -292,7 +291,7 @@ Napi::Value DLinear_GPU(const Napi::CallbackInfo& info) {
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
     cl_command_queue queue = gpu.queue();
-    cl_kernel kernel = gpu.kernel("linear"); // shares teh same kernel source code since it's a no-op
+    cl_kernel kernel = gpu.kernel("dlinear");
 
     cl_mem inputData = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* input_size, input.Data(), nullptr);
     cl_mem outputData = gpu.getOrCreate_DAct(modelID, pointer, input_size);
@@ -313,10 +312,15 @@ Napi::Value DLinear_GPU(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value DLinear_CPU(const Napi::CallbackInfo& info) {
-    // same as Linear, return input as output
+    // mutate in place and transform all inputs to 1s
+    Napi::Float32Array inputArray = info[0].As<Napi::Float32Array>();
 
-    return info[0].As<Napi::Float32Array>();
-    
+    float* input = inputArray.Data();
+
+    for (size_t i = 0; i < input.ElementLength(); ++i) {
+        input[i] = 1.0f;
+    }
+    return inputArray;
 }
 
 Napi::Value DReLu_GPU(const Napi::CallbackInfo& info) {

@@ -38,6 +38,7 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"activations.cl", "drelu"},
     {"activations.cl", "dsigmoid"},
     {"activations.cl", "dtanh"},
+    {"activations.cl", "dlinear"},
     {"optimizers.cl", "sgd"},
     {"optimizers.cl", "adam"},
     {"optimizers.cl", "rmsprop"},
