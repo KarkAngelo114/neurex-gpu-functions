@@ -342,7 +342,6 @@ Napi::Value LayerNormBackward_CPU(const Napi::CallbackInfo& info) {
 
     variance /= size;
 
-    const float eps = 1.0e-5f;
     const float stdInv = 1.0f / std::sqrt(variance + eps);
 
     // 2. Compute normalized values (xHat) and intermediate parameter gradients
