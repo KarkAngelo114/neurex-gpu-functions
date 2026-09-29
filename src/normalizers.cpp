@@ -221,8 +221,6 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
     cl_mem dgammaBuffer = gpu.getOrCreate_dGamma(modelID, pointer, static_cast<size_t>(size)); // create cacheable dGamma
     cl_mem dbetaBuffer = gpu.getOrCreate_dBeta(modelID, pointer, static_cast<size_t>(size)); // create cacheable dBeta
 
-    const float eps = 1.0e-5f;
-
     // Find the device and a legal power-of-two workgroup size.
     cl_device_id device = nullptr;
 
