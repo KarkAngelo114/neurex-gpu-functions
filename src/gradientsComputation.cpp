@@ -292,8 +292,8 @@ Napi::Value computeBiasGradsForConv_GPU(const Napi::CallbackInfo& info) {
     int outH = info[2].As<Napi::Number>().Int32Value();
     int outW = info[3].As<Napi::Number>().Int32Value();
     int numFilters = info[4].As<Napi::Number>().Int32Value();
-    int pointer = info[7].As<Napi::Number>().Int32Value();
-    std::string modelID = info[8].As<Napi::String>().Utf8Value();
+    int pointer = info[5].As<Napi::Number>().Int32Value();
+    std::string modelID = info[6].As<Napi::String>().Utf8Value();
 
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
