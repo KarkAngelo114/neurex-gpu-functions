@@ -3,9 +3,28 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <stdexcept>
 using FloatArray = std::vector<float>;
 using Matrix = std::vector<FloatArray>;
 using CL_MEM_ARRAY = std::vector<cl_mem>;
+
+// Looks up store.at(modelID).at(pointer) but throws a message naming which cache,
+// modelID, and pointer were being looked up — a bare std::out_of_range from .at()
+// gives no indication of WHICH of the many caches (z/activationOutput/dAct/delta/
+// weights/biases/etc.) actually failed, which makes production crashes very hard to
+// trace back to a specific call site. This wraps that lookup once so every getter
+// below reports clearly instead of throwing a bare "vector::_M_range_check".
+inline cl_mem lookupCachedBuffer(const std::unordered_map<std::string, CL_MEM_ARRAY>& store, const std::string& cacheName, const std::string& modelID, int pointer) {
+    auto modelIt = store.find(modelID);
+    if (modelIt == store.end()) {
+        throw std::out_of_range("GpuContext: no '" + cacheName + "' cache entries at all for modelID='" + modelID + "' (pointer=" + std::to_string(pointer) + ") — nothing has been cached for this model yet.");
+    }
+    size_t idx = static_cast<size_t>(pointer);
+    if (idx >= modelIt->second.size()) {
+        throw std::out_of_range("GpuContext: '" + cacheName + "' cache for modelID='" + modelID + "' has " + std::to_string(modelIt->second.size()) + " entries, but pointer=" + std::to_string(pointer) + " was requested — likely a call-ordering bug (the producer for this pointer hasn't run yet) or a pointer assigned beyond this model's parametric layer count.");
+    }
+    return modelIt->second[idx];
+}
 
 
 class GpuContext {
@@ -37,7 +56,7 @@ class GpuContext {
          * @return a clBuffer
          */
         cl_mem getWeights(const std::string& modelID, int pointer) const {
-            return weightsByModel_.at(modelID).at(static_cast<size_t>(pointer));
+            return lookupCachedBuffer(weightsByModel_, "weightsByModel_", modelID, pointer);
         }
 
         /**
@@ -47,7 +66,7 @@ class GpuContext {
          * @return a clBuffer
          */
         cl_mem getBiases(const std::string& modelID, int pointer) const {
-            return biasesByModel_.at(modelID).at(static_cast<size_t>(pointer));
+            return lookupCachedBuffer(biasesByModel_, "biasesByModel_", modelID, pointer);
         }
 
         // ===================== Optimizer state caching =====================
@@ -136,7 +155,7 @@ class GpuContext {
          * @param pointer layer pointer within the model
          */
         cl_mem getZ(const std::string& modelID, int pointer) const {
-            return zByModel_.at(modelID).at(static_cast<size_t>(pointer));
+            return lookupCachedBuffer(zByModel_, "zByModel_", modelID, pointer);
         }
 
         /**
@@ -145,7 +164,7 @@ class GpuContext {
          * @param pointer layer pointer within the model
          */
         cl_mem getActivationOutput(const std::string& modelID, int pointer) const {
-            return activationOutputsByModel_.at(modelID).at(static_cast<size_t>(pointer));
+            return lookupCachedBuffer(activationOutputsByModel_, "activationOutputsByModel_", modelID, pointer);
         }
 
         /**
@@ -154,7 +173,7 @@ class GpuContext {
          * @param pointer layer pointer within the model
          */
         cl_mem getDAct(const std::string& modelID, int pointer) const {
-            return dActByModel_.at(modelID).at(static_cast<size_t>(pointer));
+            return lookupCachedBuffer(dActByModel_, "dActByModel_", modelID, pointer);
         }
 
         /**
@@ -163,7 +182,7 @@ class GpuContext {
          * @param pointer layer pointer within the model
          */
         cl_mem getDelta(const std::string& modelID, int pointer) const {
-            return deltasByModel_.at(modelID).at(static_cast<size_t>(pointer));
+            return lookupCachedBuffer(deltasByModel_, "deltasByModel_", modelID, pointer);
         }
 
         /**
@@ -188,7 +207,7 @@ class GpuContext {
          * @param pointer layer pointer within the model
          */
         cl_mem get_dGamma(const std::string& modelID, int pointer) const {
-            return dGammaByModel_.at(modelID).at(static_cast<size_t>(pointer));
+            return lookupCachedBuffer(dGammaByModel_, "dGammaByModel_", modelID, pointer);
         }
 
         /**
@@ -197,7 +216,7 @@ class GpuContext {
          * @param pointer layer pointer within the model
          */
         cl_mem get_dBeta(const std::string& modelID, int pointer) const {
-            return dBetaByModel_.at(modelID).at(static_cast<size_t>(pointer));
+            return lookupCachedBuffer(dBetaByModel_, "dBetaByModel_", modelID, pointer);
         }
 
         cl_context context() { 
