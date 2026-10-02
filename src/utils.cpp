@@ -110,7 +110,6 @@ Napi::Value cacheOutputLayerDelta(const Napi::CallbackInfo& info) {
     int size = hostOutputDeltaBuffer.ElementLength();
 
     auto& gpu = GpuContext::instance();
-    cl_context context = gpu.context();
     cl_command_queue queue = gpu.queue();
     cl_mem outputDeltaBuffer = gpu.getOrCreate_Delta(modelID, pointer, static_cast<size_t>(size));
 
@@ -132,7 +131,11 @@ Napi::Value DilateInputWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value cacheOutputLayerDeltaWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) cacheOutputLayerDelta(info);
+    if (get_Global_Boolean_On_GPU()) {
+        return cacheOutputLayerDelta(info);
+    }
+    // CPU mode: nothing to cache, there's no GPU context to write into.
+    return info.Env().Undefined();
 }
 
 void utils(Napi::Env env, Napi::Object exports) {
