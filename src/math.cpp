@@ -343,9 +343,9 @@ Napi::Value scaleDiffWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value ScalerWrapper(const Napi::CallbackInfo& info) {
-    // if (get_Global_Boolean_On_GPU()) {
-    //     return Scale_GPU(info);
-    // }
+    if (get_Global_Boolean_On_GPU()) {
+        return Scale_GPU(info);
+    }
 
     return Scale_CPU(info);
     
