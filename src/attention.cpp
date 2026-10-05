@@ -734,9 +734,11 @@ Napi::Value CoreMultiHeadAttentionBackward_GPU(const Napi::CallbackInfo& info) {
     bool causal = info[11].As<Napi::Boolean>().Value();
     int pointer = info[12].As<Napi::Number>().Int32Value();
     std::string modelID = info[13].As<Napi::String>().Utf8Value();
+
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
     cl_command_queue queue = gpu.queue();
+
     cl_mem packedW = gpu.getWeights(modelID, pointer);
     size_t matrixBytes = sizeof(float) * embedDim * embedDim;
     cl_mem qW = _attention_subBuffer(context, packedW, 0, matrixBytes);
@@ -754,6 +756,7 @@ Napi::Value CoreMultiHeadAttentionBackward_GPU(const Napi::CallbackInfo& info) {
     cl_mem dV = clCreateBuffer(context, CL_MEM_READ_WRITE, tensorBytes, nullptr, nullptr);
     cl_mem dMha = clCreateBuffer(context, CL_MEM_READ_WRITE, tensorBytes, nullptr, nullptr);
     cl_mem dX = clCreateBuffer(context, CL_MEM_WRITE_ONLY, tensorBytes, nullptr, nullptr);
+    
     cl_kernel kernel = gpu.kernel("multi_head_attention_backward");
     cl_mem args[] = {inputBuffer, qW, kW, vW, oW, qW, kW, vW, qBuffer, kBuffer, vBuffer, sBuffer, dQ, dK, dV, dMha, dX};
     for (int i = 0; i < 17; ++i) clSetKernelArg(kernel, i, sizeof(cl_mem), &args[i]);

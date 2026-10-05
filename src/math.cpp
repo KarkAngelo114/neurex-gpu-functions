@@ -317,9 +317,9 @@ Napi::Value element_wise_add_CPU(const Napi::CallbackInfo& info) {
 // ====== wrappers ================
 
 Napi::Value element_wise_mul_wrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return element_wise_mul_GPU(info);
-    }
+    // if (get_Global_Boolean_On_GPU()) {
+    //     return element_wise_mul_GPU(info);
+    // }
 
     return element_wise_mul_CPU(info);
 }
@@ -343,9 +343,9 @@ Napi::Value scaleDiffWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value ScalerWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return Scale_GPU(info);
-    }
+    // if (get_Global_Boolean_On_GPU()) {
+    //     return Scale_GPU(info);
+    // }
 
     return Scale_CPU(info);
     
