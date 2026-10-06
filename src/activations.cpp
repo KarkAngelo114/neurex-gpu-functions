@@ -164,7 +164,6 @@ Napi::Value Sigmoid_CPU(const Napi::CallbackInfo& info) {
 Napi::Value Tanh_GPU(const Napi::CallbackInfo& info) { 
     Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
-    int pointer = info[1].As<Napi::Number>().Int32Value();
     std::string modelID = info[1].As<Napi::String>().Utf8Value();
     std::string layerID = info[2].As<Napi::String>().Utf8Value();
     int input_size = input.ElementLength();
@@ -212,7 +211,6 @@ Napi::Value Tanh_CPU(const Napi::CallbackInfo& info) {
 Napi::Value Softmax_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
-    int pointer = info[1].As<Napi::Number>().Int32Value();
     std::string modelID = info[1].As<Napi::String>().Utf8Value();
     std::string layerID = info[2].As<Napi::String>().Utf8Value();
     int inputSize = input.ElementLength();
