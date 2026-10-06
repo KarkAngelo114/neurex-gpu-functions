@@ -150,6 +150,13 @@ class GpuContext {
          * @param layerID an identicator for a layer output
          * @param length element count, used only the first time the buffer is created
          */
+        cl_mem getOrCreate_Input(const std::string& modelID, const std::string& layerID, size_t length);
+
+        /**
+         * @param modelID model this value belongs to
+         * @param layerID an identicator for a layer output
+         * @param length element count, used only the first time the buffer is created
+         */
         cl_mem getOrCreate_Z(const std::string& modelID, const std::string& layerID, size_t length);
 
         /**
@@ -203,6 +210,14 @@ class GpuContext {
          */
         cl_mem getDelta(const std::string& modelID, const std::string& layerID) const {
             return lookupCachedBuffer(deltasByModel_, "deltasByModel_", modelID, BufferKey{layerID});
+        }
+        
+        /** Read-only lookups
+         * @param modelID model this value belongs to
+         * @param layerID an identicator for a layer output
+         */
+        cl_mem getInput(const std::string& modelID, const std::string& layerID) const {
+            return lookupCachedBuffer(inputsByModel_, "inputsByModel_", modelID, BufferKey{layerID});
         }
 
         /**
@@ -292,6 +307,7 @@ class GpuContext {
         BufferCache deltasByModel_;
         BufferCache dGammaByModel_;
         BufferCache dBetaByModel_;
+        BufferCache inputsByModel_;
 
         // shared helper: fetch-or-create a cached buffer inside one of the maps above
         cl_mem getOrCreateStateBuffer(std::unordered_map<std::string, CL_MEM_ARRAY>& store, const std::string& modelID, int pointer, size_t length, const float* initialData);

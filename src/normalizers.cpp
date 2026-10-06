@@ -273,8 +273,6 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
         clReleaseMemObject(xBuffer);
         clReleaseMemObject(dyBuffer);
         clReleaseMemObject(dxBuffer);
-        clReleaseMemObject(dgammaBuffer);
-        clReleaseMemObject(dbetaBuffer);
 
         Napi::Error::New(env, "Failed to enqueue layer norm backward kernel").ThrowAsJavaScriptException();
 

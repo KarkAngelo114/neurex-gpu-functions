@@ -316,6 +316,7 @@ void GpuContext::clearAllParams() {
     releaseCache(deltasByModel_);
     releaseCache(dBetaByModel_);
     releaseCache(dGammaByModel_);
+    releaseCache(inputsByModel_); 
     for (auto& entry : mStatesWeights_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
     for (auto& entry : mStatesBiases_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
     for (auto& entry : vStatesWeights_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
@@ -328,15 +329,20 @@ void GpuContext::clearAllParams() {
     weightsByModel_.clear();
     biasesByModel_.clear();
     zByModel_.clear();
+    inputsByModel_.clear();
     activationOutputsByModel_.clear();
     dActByModel_.clear();
     deltasByModel_.clear();
     dBetaByModel_.clear();
     dGammaByModel_.clear();
-    mStatesWeights_.clear(); mStatesBiases_.clear();
-    vStatesWeights_.clear(); vStatesBiases_.clear();
-    velocityWeights_.clear(); velocityBiases_.clear();
-    sqAvgWeights_.clear(); sqAvgBiases_.clear();
+    mStatesWeights_.clear(); 
+    mStatesBiases_.clear();
+    vStatesWeights_.clear(); 
+    vStatesBiases_.clear();
+    velocityWeights_.clear(); 
+    velocityBiases_.clear();
+    sqAvgWeights_.clear(); 
+    sqAvgBiases_.clear();
 }
 
 cl_kernel GpuContext::kernel(const std::string& name) const {
@@ -445,6 +451,10 @@ cl_mem GpuContext::getOrCreate_dGamma(const std::string& modelID, const std::str
     return getOrCreateCacheBuffer(dGammaByModel_, modelID, BufferKey{layerID}, length);
 }
 
+cl_mem GpuContext::getOrCreate_Input(const std::string& modelID, const std::string& layerID, size_t length) {
+    return getOrCreateCacheBuffer(inputsByModel_, modelID, BufferKey{layerID}, length);
+}
+
 void GpuContext::clearOptimizerStates(const std::string& modelID) {
     releaseAndClearModelEntry(mStatesWeights_, modelID);
     releaseAndClearModelEntry(mStatesBiases_, modelID);
@@ -465,6 +475,7 @@ void GpuContext::clearActivationCaches(const std::string& modelID) {
     releaseAndClearModelEntry(activationOutputsByModel_, modelID);
     releaseAndClearModelEntry(dActByModel_, modelID);
     releaseAndClearModelEntry(deltasByModel_, modelID);
+    releaseAndClearModelEntry(inputsByModel_, modelID);
 }
 
 void GpuContext::clear_dBeta_And_dGamma_By_Model(const std::string& modelID) {

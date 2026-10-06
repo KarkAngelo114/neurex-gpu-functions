@@ -34,7 +34,7 @@ Napi::Value ComputeGradientForDenseWeights_GPU(const Napi::CallbackInfo& info) {
     cl_context context = gpu.context();
     cl_command_queue queue = gpu.queue();
 
-    cl_mem activations = gpu.getActivationOutput(modelID, layerID);
+    cl_mem activations = gpu.getInput(modelID, layerID);
     cl_mem deltaInput = gpu.getDelta(modelID, layerID);
     cl_mem weight_grads = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * weightGrads.ElementLength(), weightGrads.Data(), nullptr); // the accumulator — genuinely fresh every call, this is the only buffer this function still creates
 
@@ -165,7 +165,7 @@ Napi::Value computeKernelGradients_GPU(const Napi::CallbackInfo& info) {
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("computeKernelGradients");
 
-    cl_mem activations = gpu.getActivationOutput(modelID, layerID);
+    cl_mem activations = gpu.getInput(modelID, layerID);
     cl_mem delta_input = gpu.getDelta(modelID, layerID);
     cl_mem gradsArr = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * weightGradsTensor.ElementLength(), weightGradsTensor.Data(), nullptr);
 

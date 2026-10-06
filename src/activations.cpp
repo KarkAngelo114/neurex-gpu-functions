@@ -78,8 +78,8 @@ Napi::Value Relu_GPU(const Napi::CallbackInfo& info) {
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("relu");
 
-    cl_mem inputData = gpu.getZ(modelID, layerID); // we get the pre-activated outputs cached by index and modelID
-    cl_mem output = gpu.getOrCreate_ActivationOutput(modelID, layerID, static_cast<size_t>(input_size)); // the final activated output, will be cached by pointer and modelID. This must be cached because it will be use by gradient accumulator operators.
+    cl_mem inputData = gpu.getZ(modelID, layerID); // we get the pre-activated outputs cached by layerID and modelID
+    cl_mem output = gpu.getOrCreate_ActivationOutput(modelID, layerID, static_cast<size_t>(input_size)); // the final activated output, will be cached by layerID and modelID. This must be cached because it will be use by gradient accumulator operators.
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputData);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &output);

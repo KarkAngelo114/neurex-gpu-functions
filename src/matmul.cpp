@@ -27,7 +27,9 @@ Napi::Value MatMul_GPU(const Napi::CallbackInfo& info) {
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
     cl_context context = gpu.context();
-    cl_mem inputTensor  = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputSize, input.Data(), nullptr);
+
+    cl_mem inputTensor = gpu.getOrCreate_Input(modelID, layerID, static_cast<size_t>(inputSize));
+    clEnqueueWriteBuffer(queue, inputTensor, CL_TRUE, 0, sizeof(float) * inputSize, input.Data(), 0, nullptr, nullptr);
     cl_mem weights = gpu.getWeights(modelID, pointer);
     cl_mem biases = gpu.getBiases(modelID, pointer);
     cl_mem output = gpu.getOrCreate_Z(modelID, layerID, static_cast<size_t>(outputSize)); // this is the output, instead of allocatiing another buffer, we call `getOrCreate_Z()` to cache the pre-activated output to be use by an activation function which will be called by getZ()
@@ -47,8 +49,6 @@ Napi::Value MatMul_GPU(const Napi::CallbackInfo& info) {
     // read result
     Napi::Float32Array outputTensor = Napi::Float32Array::New(env, outputSize);
     clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float) * outputSize, outputTensor.Data(), 0, nullptr, nullptr);
-
-    clReleaseMemObject(inputTensor);
 
     return outputTensor;
 }
