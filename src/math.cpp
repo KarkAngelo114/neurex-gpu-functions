@@ -235,40 +235,6 @@ Napi::Value Scale_CPU(const Napi::CallbackInfo& info) {
     return inputArray;
 }
 
-Napi::Value accumulate_element_wise_mul_GPU(const Napi::CallbackInfo& info) {
-    // arr1 (activation output / a_prev) and arr2 (delta) are accepted for signature
-    // consistency with the CPU path, but their DATA is not used — the real cached
-    // buffers are looked up by (modelID, pointer) instead of being re-uploaded.
-    Napi::Float32Array arr3 = info[2].As<Napi::Float32Array>(); // the gradient accumulator, e.g. gammaGrads — genuinely fresh each call
-    int pointer = info[3].As<Napi::Number>().Int32Value();
-    std::string modelID = info[4].As<Napi::String>().Utf8Value();
-
-    int size = arr3.ElementLength();
-
-    auto& gpu = GpuContext::instance();
-    cl_command_queue queue = gpu.queue();
-    cl_context context = gpu.context();
-    cl_kernel kernel = gpu.kernel("accumulate_element_wise_mul");
-
-    cl_mem input_arr1 = gpu.getActivationOutput(modelID, pointer); // cached a_prev — no upload
-    cl_mem input_arr2 = gpu.getDelta(modelID, pointer);            // cached delta — no upload
-    cl_mem input_arr3 = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * size, arr3.Data(), nullptr); // accumulator — fresh every call
-
-    clSetKernelArg(kernel, 0, sizeof(cl_mem), &input_arr1);
-    clSetKernelArg(kernel, 1, sizeof(cl_mem), &input_arr2);
-    clSetKernelArg(kernel, 2, sizeof(cl_mem), &input_arr3);
-    clSetKernelArg(kernel, 3, sizeof(int), &size);
-    
-    size_t globalSize = (size_t)size;
-    clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
-
-    clEnqueueReadBuffer(queue, input_arr3, CL_TRUE, 0, sizeof(float) * size, arr3.Data(), 0, nullptr, nullptr);
-
-    clReleaseMemObject(input_arr3);
-
-    return arr3;
-}
-
 Napi::Value accumulate_element_wise_mul_CPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array inputArray1 = info[0].As<Napi::Float32Array>();
     Napi::Float32Array inputArray2 = info[1].As<Napi::Float32Array>();
@@ -342,18 +308,15 @@ Napi::Value scaleDiffWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value ScalerWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return Scale_GPU(info);
-    }
+    // if (get_Global_Boolean_On_GPU()) {
+    //     return Scale_GPU(info);
+    // }
 
     return Scale_CPU(info);
     
 }
 
 Napi::Value accumulate_element_wise_mul_wrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
-        return accumulate_element_wise_mul_GPU(info);
-    }
     return accumulate_element_wise_mul_CPU(info);
 }
 
