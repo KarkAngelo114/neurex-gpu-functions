@@ -18,8 +18,8 @@ Napi::Value MatMul_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
     int inputSize = info[1].As<Napi::Number>().Int32Value();
     int outputSize = info[2].As<Napi::Number>().Int32Value();
-    Napi::Float32Array weights = info[3].As<Napi::Float32Array>();
-    Napi::Float32Array biases = info[4].As<Napi::Float32Array>();
+    Napi::Float32Array weightsBuffer = info[3].As<Napi::Float32Array>();
+    Napi::Float32Array biasesBuffer = info[4].As<Napi::Float32Array>();
     int pointer = info[5].As<Napi::Number>().Int32Value();
     std::string modelID = info[6].As<Napi::String>().Utf8Value();
     std::string layerID = info[7].As<Napi::String>().Utf8Value();
