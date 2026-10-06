@@ -105,13 +105,13 @@ Napi::Value ApplyPadding_CPU(const Napi::CallbackInfo& info) {
 Napi::Value cacheOutputLayerDelta(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array hostOutputDeltaBuffer = info[0].As<Napi::Float32Array>();
-    int pointer = info[1].As<Napi::Number>().Int32Value();
-    std::string modelID = info[2].As<Napi::String>().Utf8Value();
+    std::string modelID = info[1].As<Napi::String>().Utf8Value();
+    std::string layerID = info[2].As<Napi::String>().Utf8Value();
     int size = hostOutputDeltaBuffer.ElementLength();
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
-    cl_mem outputDeltaBuffer = gpu.getOrCreate_Delta(modelID, pointer, static_cast<size_t>(size));
+    cl_mem outputDeltaBuffer = gpu.getOrCreate_Delta(modelID, layerID, static_cast<size_t>(size));
 
     clEnqueueWriteBuffer(queue, outputDeltaBuffer, CL_TRUE, 0, sizeof(float)* size, hostOutputDeltaBuffer.Data(), 0, nullptr, nullptr);
 
