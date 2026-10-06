@@ -3,27 +3,60 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <map>
 #include <stdexcept>
+#include <variant>
 using FloatArray = std::vector<float>;
 using Matrix = std::vector<FloatArray>;
 using CL_MEM_ARRAY = std::vector<cl_mem>;
+using BufferKey = std::variant<std::string, int>;
+using BufferCache = std::unordered_map<std::string, std::map<BufferKey, cl_mem>>;
 
-// Looks up store.at(modelID).at(pointer) but throws a message naming which cache,
-// modelID, and pointer were being looked up — a bare std::out_of_range from .at()
-// gives no indication of WHICH of the many caches (z/activationOutput/dAct/delta/
-// weights/biases/etc.) actually failed, which makes production crashes very hard to
-// trace back to a specific call site. This wraps that lookup once so every getter
-// below reports clearly instead of throwing a bare "vector::_M_range_check".
-inline cl_mem lookupCachedBuffer(const std::unordered_map<std::string, CL_MEM_ARRAY>& store, const std::string& cacheName, const std::string& modelID, int pointer) {
+inline std::string describeBufferKey(const BufferKey& key) {
+    if (const auto* layerID = std::get_if<std::string>(&key)) {
+        return "layerID='" + *layerID + "'";
+    }
+    return "pointer=" + std::to_string(std::get<int>(key));
+}
+
+inline void validateBufferKey(const BufferKey& key) {
+    if (const auto* layerID = std::get_if<std::string>(&key)) {
+        if (layerID->empty()) {
+            throw std::invalid_argument("GpuContext: layerID must not be empty.");
+        }
+    } else if (std::get<int>(key) < 0) {
+        throw std::invalid_argument("GpuContext: cache pointer must not be negative.");
+    }
+}
+
+// Looks up a keyed cache entry and reports its cache, model, and key on failure.
+inline cl_mem lookupCachedBuffer(const BufferCache& store, const std::string& cacheName, const std::string& modelID, const BufferKey& key) {
+    validateBufferKey(key);
     auto modelIt = store.find(modelID);
     if (modelIt == store.end()) {
-        throw std::out_of_range("GpuContext: no '" + cacheName + "' cache entries at all for modelID='" + modelID + "' (pointer=" + std::to_string(pointer) + ") — nothing has been cached for this model yet.");
+        throw std::out_of_range("GpuContext: no '" + cacheName + "' cache entries for modelID='" + modelID + "' (" + describeBufferKey(key) + ").");
     }
-    size_t idx = static_cast<size_t>(pointer);
-    if (idx >= modelIt->second.size()) {
-        throw std::out_of_range("GpuContext: '" + cacheName + "' cache for modelID='" + modelID + "' has " + std::to_string(modelIt->second.size()) + " entries, but pointer=" + std::to_string(pointer) + " was requested — likely a call-ordering bug (the producer for this pointer hasn't run yet) or a pointer assigned beyond this model's parametric layer count.");
+    auto bufferIt = modelIt->second.find(key);
+    if (bufferIt == modelIt->second.end()) {
+        throw std::out_of_range("GpuContext: '" + cacheName + "' has no buffer for modelID='" + modelID + "' (" + describeBufferKey(key) + ").");
     }
-    return modelIt->second[idx];
+    return bufferIt->second;
+}
+
+inline cl_mem lookupCachedBuffer(const std::unordered_map<std::string, CL_MEM_ARRAY>& store, const std::string& cacheName, const std::string& modelID, int pointer) {
+    if (pointer < 0) {
+        throw std::invalid_argument("GpuContext: " + cacheName + " pointer must not be negative.");
+    }
+    auto modelIt = store.find(modelID);
+    if (modelIt == store.end()) {
+        throw std::out_of_range("GpuContext: no '" + cacheName + "' cache entries for modelID='" + modelID + "'.");
+    }
+    const size_t index = static_cast<size_t>(pointer);
+    if (index >= modelIt->second.size()) {
+        throw std::out_of_range("GpuContext: '" + cacheName + "' has " + std::to_string(modelIt->second.size()) +
+            " entries for modelID='" + modelID + "', but pointer=" + std::to_string(pointer) + " was requested.");
+    }
+    return modelIt->second[index];
 }
 
 
@@ -113,76 +146,63 @@ class GpuContext {
         // ===================== Forward/backward activation caching =====================
 
         /**
-         * fetches (or lazily creates) the cached buffer for this layer's z output),
-         * writable by the producer and readable by consumers (activation
-         * kernels, delta derivative kernels).
          * @param modelID model this value belongs to
-         * @param pointer layer pointer within the model
+         * @param layerID an identicator for a layer output
          * @param length element count, used only the first time the buffer is created
          */
-        cl_mem getOrCreate_Z(const std::string& modelID, int pointer, size_t length);
+        cl_mem getOrCreate_Z(const std::string& modelID, const std::string& layerID, size_t length);
 
         /**
-         * creates layer's final activation output (post-activation) cached for gradient accumulation
          * @param modelID model this value belongs to
-         * @param pointer layer pointer within the model
+         * @param layerID an identicator for a layer output
          * @param length element count, used only the first time the buffer is created
          */
-        cl_mem getOrCreate_ActivationOutput(const std::string& modelID, int pointer, size_t length);
+        cl_mem getOrCreate_ActivationOutput(const std::string& modelID, const std::string& layerID, size_t length);
 
         /**
-         * creates layer's derivative activation output cached for getting the final delta of a layer. (example: dAct * incoming delta via element-wise-multiplication)
          * @param modelID model this value belongs to
-         * @param pointer layer pointer within the model
+         * @param layerID an identicator for a layer output
          * @param length element count, used only the first time the buffer is created
          */
-        cl_mem getOrCreate_DAct(const std::string& modelID, int pointer, size_t length);
-
+        cl_mem getOrCreate_DAct(const std::string& modelID, const std::string& layerID, size_t length);
 
         /**
-         * Used to create buffer for final delta for this layer. Often used by layers that has operator after derivative activation. (example: dAct * incoming delta via element-wise-multiplication)
-         * Once this function is called, `getDelta` can be use to look it up using a pointer and modelID, usually used for gradient accumulation step. Note: you can only use this buffer allocator for one final output delta per layer.
-         * Attempting to use this to another final output delta per layer on the same pointer will get overwritten (like the case of layer norm where its deltas to be use for accumulation needs 2 buffes to cache).
          * @param modelID model this value belongs to
-         * @param pointer layer pointer within the model
-         * @param length element count, used only the first time the buffer is created 
+         * @param layerID an identicator for a layer output
+         * @param length element count, used only the first time the buffer is created
          */
-        cl_mem getOrCreate_Delta(const std::string& modelID, int pointer, size_t length);
+        cl_mem getOrCreate_Delta(const std::string& modelID, const std::string& layerID, size_t length);
 
-        /** Read-only lookups for consumers that expect the value to already be cached.
-         * Throws (via .at()) if nothing was cached yet for this (modelID, pointer) — that means something ran out of order, which should fail loudly, not silently.
+        /** Read-only lookups
          * @param modelID model this value belongs to
-         * @param pointer layer pointer within the model
+         * @param layerID an identicator for a layer output
          */
-        cl_mem getZ(const std::string& modelID, int pointer) const {
-            return lookupCachedBuffer(zByModel_, "zByModel_", modelID, pointer);
+        cl_mem getZ(const std::string& modelID, const std::string& layerID) const {
+            return lookupCachedBuffer(zByModel_, "zByModel_", modelID, BufferKey{layerID});
         }
 
-        /**
-         * used in any operator that requires cached post-activated output (usually created by `getOrCreate_ActivationOutput`)
+        /** Read-only lookups
          * @param modelID model this value belongs to
-         * @param pointer layer pointer within the model
+         * @param layerID an identicator for a layer output
          */
-        cl_mem getActivationOutput(const std::string& modelID, int pointer) const {
-            return lookupCachedBuffer(activationOutputsByModel_, "activationOutputsByModel_", modelID, pointer);
+        cl_mem getActivationOutput(const std::string& modelID, const std::string& layerID) const {
+            return lookupCachedBuffer(activationOutputsByModel_, "activationOutputsByModel_", modelID, BufferKey{layerID});
         }
 
-        /**
-         * used in any operator that requires cached derivative activation output (usually created by `getOrCreate_DAct`)
+        /** Read-only lookups
          * @param modelID model this value belongs to
-         * @param pointer layer pointer within the model
+         * @param layerID an identicator for a layer output
          */
-        cl_mem getDAct(const std::string& modelID, int pointer) const {
-            return lookupCachedBuffer(dActByModel_, "dActByModel_", modelID, pointer);
+        cl_mem getDAct(const std::string& modelID, const std::string& layerID) const {
+            return lookupCachedBuffer(dActByModel_, "dActByModel_", modelID, BufferKey{layerID});
         }
 
-        /**
-         * used in any operator that requires cached final delta output per layer (usually created by `getOrCreate_Delta`)
+        /** Read-only lookups
          * @param modelID model this value belongs to
-         * @param pointer layer pointer within the model
+         * @param layerID an identicator for a layer output
          */
-        cl_mem getDelta(const std::string& modelID, int pointer) const {
-            return lookupCachedBuffer(deltasByModel_, "deltasByModel_", modelID, pointer);
+        cl_mem getDelta(const std::string& modelID, const std::string& layerID) const {
+            return lookupCachedBuffer(deltasByModel_, "deltasByModel_", modelID, BufferKey{layerID});
         }
 
         /**
@@ -207,7 +227,7 @@ class GpuContext {
          * @param pointer layer pointer within the model
          */
         cl_mem get_dGamma(const std::string& modelID, int pointer) const {
-            return lookupCachedBuffer(dGammaByModel_, "dGammaByModel_", modelID, pointer);
+            return lookupCachedBuffer(dGammaByModel_, "dGammaByModel_", modelID, BufferKey{pointer});
         }
 
         /**
@@ -216,7 +236,7 @@ class GpuContext {
          * @param pointer layer pointer within the model
          */
         cl_mem get_dBeta(const std::string& modelID, int pointer) const {
-            return lookupCachedBuffer(dBetaByModel_, "dBetaByModel_", modelID, pointer);
+            return lookupCachedBuffer(dBetaByModel_, "dBetaByModel_", modelID, BufferKey{pointer});
         }
 
         cl_context context() { 
@@ -263,21 +283,20 @@ class GpuContext {
         // per-layer values produced during feedforward/backprop: z (matmul output),
         // activation_output (post-activation), dAct (raw activation derivative), and
         // delta (dAct * incoming delta). Caching these on the GPU means gradient
-        // accumulation can look them up by (modelID, pointer) instead of re-uploading
+        // accumulation can look them up by (modelID, layerID) instead of re-uploading
         // them from JS every call — they never leave the GPU between the layer op that
         // produces them and the gradient accumulation call that consumes them.
-        std::unordered_map<std::string, CL_MEM_ARRAY> zByModel_;
-        std::unordered_map<std::string, CL_MEM_ARRAY> activationOutputsByModel_;
-        std::unordered_map<std::string, CL_MEM_ARRAY> dActByModel_;
-        std::unordered_map<std::string, CL_MEM_ARRAY> deltasByModel_;
-        std::unordered_map<std::string, CL_MEM_ARRAY> dGammaByModel_;
-        std::unordered_map<std::string, CL_MEM_ARRAY> dBetaByModel_;
+        BufferCache zByModel_;
+        BufferCache activationOutputsByModel_;
+        BufferCache dActByModel_;
+        BufferCache deltasByModel_;
+        BufferCache dGammaByModel_;
+        BufferCache dBetaByModel_;
 
         // shared helper: fetch-or-create a cached buffer inside one of the maps above
         cl_mem getOrCreateStateBuffer(std::unordered_map<std::string, CL_MEM_ARRAY>& store, const std::string& modelID, int pointer, size_t length, const float* initialData);
 
-        // shared helper for the forward/backward caches above: same lazy-alloc idea,
-        // but with no seed data — the first write to a slot is always a kernel
-        // computing the real value, so there's nothing worth zero-initializing.
-        cl_mem getOrCreateCacheBuffer(std::unordered_map<std::string, CL_MEM_ARRAY>& store, const std::string& modelID, int pointer, size_t length);
+        // Shared lazy allocator for caches keyed by either layerID or integer key.
+        // These buffers are written by kernels, so they do not need seed data.
+        cl_mem getOrCreateCacheBuffer(BufferCache& store, const std::string& modelID, const BufferKey& key, size_t length);
 };

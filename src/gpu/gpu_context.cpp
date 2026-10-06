@@ -303,12 +303,19 @@ void GpuContext::clearParams(const std::string& modelID) {
 void GpuContext::clearAllParams() {
     for (auto& entry : weightsByModel_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
     for (auto& entry : biasesByModel_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
-    for (auto& entry : zByModel_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
-    for (auto& entry : activationOutputsByModel_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
-    for (auto& entry : dActByModel_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
-    for (auto& entry : deltasByModel_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
-    for (auto& entry: dBetaByModel_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
-    for (auto& entry: dGammaByModel_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
+    auto releaseCache = [](const BufferCache& cache) {
+        for (const auto& modelEntry : cache) {
+            for (const auto& bufferEntry : modelEntry.second) {
+                if (bufferEntry.second) clReleaseMemObject(bufferEntry.second);
+            }
+        }
+    };
+    releaseCache(zByModel_);
+    releaseCache(activationOutputsByModel_);
+    releaseCache(dActByModel_);
+    releaseCache(deltasByModel_);
+    releaseCache(dBetaByModel_);
+    releaseCache(dGammaByModel_);
     for (auto& entry : mStatesWeights_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
     for (auto& entry : mStatesBiases_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
     for (auto& entry : vStatesWeights_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
@@ -357,24 +364,25 @@ cl_mem GpuContext::getOrCreateStateBuffer(std::unordered_map<std::string, CL_MEM
     return layerBuffers[idx];
 }
 
-// Same lazy-alloc-by-(modelID, pointer) pattern as getOrCreateStateBuffer above, but
-// with no initialData: these slots are never meant to hold meaningful zeros, they're
-// overwritten by a kernel write the moment they're created, so seeding would just be
-// wasted work.
-cl_mem GpuContext::getOrCreateCacheBuffer(std::unordered_map<std::string, CL_MEM_ARRAY>& store, const std::string& modelID, int pointer, size_t length) {
+// Shared lazy allocation for string layer IDs and integer helper keys.
+cl_mem GpuContext::getOrCreateCacheBuffer(BufferCache& store, const std::string& modelID, const BufferKey& key, size_t length) {
+    validateBufferKey(key);
+
     auto& layerBuffers = store[modelID];
-
-    size_t idx = static_cast<size_t>(pointer);
-    if (idx >= layerBuffers.size()) {
-        layerBuffers.resize(idx + 1, nullptr);
+    auto bufferIt = layerBuffers.find(key);
+    if (bufferIt != layerBuffers.end()) {
+        return bufferIt->second;
     }
 
-    if (layerBuffers[idx] == nullptr) {
-        cl_int err;
-        layerBuffers[idx] = clCreateBuffer(context_, CL_MEM_READ_WRITE, sizeof(float) * length, nullptr, &err);
+    cl_int err = CL_SUCCESS;
+    cl_mem buffer = clCreateBuffer(context_, CL_MEM_READ_WRITE, sizeof(float) * length, nullptr, &err);
+    if (err != CL_SUCCESS || buffer == nullptr) {
+        if (buffer) clReleaseMemObject(buffer);
+        throw std::runtime_error("GpuContext: failed to allocate cached buffer for modelID='" + modelID + "' (" + describeBufferKey(key) + ").");
     }
 
-    return layerBuffers[idx];
+    layerBuffers.emplace(key, buffer);
+    return buffer;
 }
 
 cl_mem GpuContext::getOrCreate_M(const std::string& modelID, int pointer, bool isWeights, size_t length, const float* initialData) {
@@ -401,30 +409,40 @@ static void releaseAndClearModelEntry(std::unordered_map<std::string, CL_MEM_ARR
     }
 }
 
+static void releaseAndClearModelEntry(BufferCache& store, const std::string& modelID) {
+    auto it = store.find(modelID);
+    if (it != store.end()) {
+        for (const auto& entry : it->second) {
+            if (entry.second) clReleaseMemObject(entry.second);
+        }
+        store.erase(it);
+    }
+}
+
 // ===================== Forward/backward activation caching =====================
 
-cl_mem GpuContext::getOrCreate_Z(const std::string& modelID, int pointer, size_t length) {
-    return getOrCreateCacheBuffer(zByModel_, modelID, pointer, length);
+cl_mem GpuContext::getOrCreate_Z(const std::string& modelID, const std::string& layerID, size_t length) {
+    return getOrCreateCacheBuffer(zByModel_, modelID, BufferKey{layerID}, length);
 }
 
-cl_mem GpuContext::getOrCreate_ActivationOutput(const std::string& modelID, int pointer, size_t length) {
-    return getOrCreateCacheBuffer(activationOutputsByModel_, modelID, pointer, length);
+cl_mem GpuContext::getOrCreate_ActivationOutput(const std::string& modelID, const std::string& layerID, size_t length) {
+    return getOrCreateCacheBuffer(activationOutputsByModel_, modelID, BufferKey{layerID}, length);
 }
 
-cl_mem GpuContext::getOrCreate_DAct(const std::string& modelID, int pointer, size_t length) {
-    return getOrCreateCacheBuffer(dActByModel_, modelID, pointer, length);
+cl_mem GpuContext::getOrCreate_DAct(const std::string& modelID, const std::string& layerID, size_t length) {
+    return getOrCreateCacheBuffer(dActByModel_, modelID, BufferKey{layerID}, length);
 }
 
-cl_mem GpuContext::getOrCreate_Delta(const std::string& modelID, int pointer, size_t length) {
-    return getOrCreateCacheBuffer(deltasByModel_, modelID, pointer, length);
+cl_mem GpuContext::getOrCreate_Delta(const std::string& modelID, const std::string& layerID, size_t length) {
+    return getOrCreateCacheBuffer(deltasByModel_, modelID, BufferKey{layerID}, length);
 }
 
 cl_mem GpuContext::getOrCreate_dBeta(const std::string& modelID, int pointer, size_t length) {
-    return getOrCreateCacheBuffer(dBetaByModel_, modelID, pointer, length);
+    return getOrCreateCacheBuffer(dBetaByModel_, modelID, BufferKey{pointer}, length);
 }
 
 cl_mem GpuContext::getOrCreate_dGamma(const std::string& modelID, int pointer, size_t length) {
-    return getOrCreateCacheBuffer(dGammaByModel_, modelID, pointer, length);
+    return getOrCreateCacheBuffer(dGammaByModel_, modelID, BufferKey{pointer}, length);
 }
 
 void GpuContext::clearOptimizerStates(const std::string& modelID) {

@@ -7,11 +7,11 @@
 
 Napi::Value element_wise_mul_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    // Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
     Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>(); // delta — the only genuinely new value each call, so this is the one upload we can't avoid
     int arr_length = arr2.ElementLength();
-    int pointer = info[2].As<Napi::Number>().Int32Value();
-    std::string modelID = info[3].As<Napi::String>().Utf8Value();
+    std::string modelID = info[2].As<Napi::String>().Utf8Value();
+    std::string layerID = info[3].As<Napi::String>().Utf8Value();
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
@@ -44,9 +44,7 @@ Napi::Value element_wise_mul_CPU(const Napi::CallbackInfo& info) {
     
     Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
     Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>();
-    // info[2] (pointer) and info[3] (modelID) are accepted by the JS call site for
-    // GPU-mode's benefit but intentionally unused here — CPU mode has no GPU cache
-    // to look anything up in, so it just multiplies the two arrays it was given.
+
     int arr_length = arr1.ElementLength();
     Napi::Float32Array output = Napi::Float32Array::New(env, arr_length);
 
@@ -182,6 +180,7 @@ Napi::Value scaleDiff_CPU(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value Scale_GPU(const Napi::CallbackInfo& info) {
+    // TODO: improve this function to use the same pattern of caching and getting accumulated gradients.
     Napi::Env env = info.Env(); // 1. Define env
     Napi::Float32Array inputArray = info[0].As<Napi::Float32Array>();
     int size = inputArray.ElementLength();
@@ -317,35 +316,35 @@ Napi::Value element_wise_add_CPU(const Napi::CallbackInfo& info) {
 // ====== wrappers ================
 
 Napi::Value element_wise_mul_wrapper(const Napi::CallbackInfo& info) {
-    // if (get_Global_Boolean_On_GPU()) {
-    //     return element_wise_mul_GPU(info);
-    // }
+    if (get_Global_Boolean_On_GPU()) {
+        return element_wise_mul_GPU(info);
+    }
 
     return element_wise_mul_CPU(info);
 }
 
 Napi::Value element_wise_sub_wrapper(const Napi::CallbackInfo& info) {
-    // if (get_Global_Boolean_On_GPU()) {
-    //     return element_wise_sub_GPU(info);
-    // }
+    if (get_Global_Boolean_On_GPU()) {
+        return element_wise_sub_GPU(info);
+    }
 
     return element_wise_sub_CPU(info);
 
 }
 
 Napi::Value scaleDiffWrapper(const Napi::CallbackInfo& info) {
-    // if (get_Global_Boolean_On_GPU()) {
-    //     return scaleDiff_GPU(info);
-    // }
+    if (get_Global_Boolean_On_GPU()) {
+        return scaleDiff_GPU(info);
+    }
 
     return scaleDiff_CPU(info);
 
 }
 
 Napi::Value ScalerWrapper(const Napi::CallbackInfo& info) {
-    // if (get_Global_Boolean_On_GPU()) {
-    //     return Scale_GPU(info);
-    // }
+    if (get_Global_Boolean_On_GPU()) {
+        return Scale_GPU(info);
+    }
 
     return Scale_CPU(info);
     

@@ -18,7 +18,6 @@ static IntArray Vectorize(const Napi::Array& arr) {
     return VectorArray;
 }
 
-
 Napi::Value ComputeGradientForDenseWeights_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array activation_output = info[0].As<Napi::Float32Array>();
@@ -28,14 +27,15 @@ Napi::Value ComputeGradientForDenseWeights_GPU(const Napi::CallbackInfo& info) {
     int outputSize = info[4].As<Napi::Number>().Int32Value();
     int pointer = info[5].As<Napi::Number>().Int32Value();
     std::string modelID = info[6].As<Napi::String>().Utf8Value();
+    std::string layerID = info[7].As<Napi::String>().Utf8Value();
 
     auto& gpu = GpuContext::instance();
     cl_kernel kernel = gpu.kernel("computeWeightGradsForConnected_Layer");
     cl_context context = gpu.context();
     cl_command_queue queue = gpu.queue();
 
-    cl_mem activations = gpu.getActivationOutput(modelID, pointer);
-    cl_mem deltaInput = gpu.getDelta(modelID, pointer);
+    cl_mem activations = gpu.getActivationOutput(modelID, layerID);
+    cl_mem deltaInput = gpu.getDelta(modelID, layerID);
     cl_mem weight_grads = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * weightGrads.ElementLength(), weightGrads.Data(), nullptr); // the accumulator — genuinely fresh every call, this is the only buffer this function still creates
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &activations);
@@ -89,6 +89,8 @@ Napi::Value computeBiasGradsForConnected_Layer_GPU(const Napi::CallbackInfo& inf
     Napi::Float32Array deltas = info[1].As<Napi::Float32Array>(); // use the cached delta
     int pointer = info[2].As<Napi::Number>().Int32Value();
     std::string modelID = info[3].As<Napi::String>().Utf8Value();
+    std::string layerID = info[4].As<Napi::String>().Utf8Value();
+
     int biasGradsSize = biasgrads.ElementLength();
 
     auto& gpu = GpuContext::instance();
@@ -97,7 +99,7 @@ Napi::Value computeBiasGradsForConnected_Layer_GPU(const Napi::CallbackInfo& inf
     cl_command_queue queue = gpu.queue();
 
     cl_mem gradsInput = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * biasGradsSize, biasgrads.Data(), nullptr);
-    cl_mem deltaInput = gpu.getDelta(modelID, pointer);
+    cl_mem deltaInput = gpu.getDelta(modelID, layerID);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &deltaInput);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &gradsInput);
@@ -827,17 +829,17 @@ Napi::Value AccumulateBetaGrads_CPU(const Napi::CallbackInfo& info) {
 // =================== wrappers ===================== //
 
 Napi::Value computeBiasGradsForConnected_LayerWrapper(const Napi::CallbackInfo& info) {
-    // if (get_Global_Boolean_On_GPU()) {
-    //     return computeBiasGradsForConnected_Layer_GPU(info);
-    // }
+    if (get_Global_Boolean_On_GPU()) {
+        return computeBiasGradsForConnected_Layer_GPU(info);
+    }
 
     return computeBiasGradsForConnected_Layer_CPU(info);
 }
 
 Napi::Value ComputeGradientForDenseWeightsWrapper(const Napi::CallbackInfo& info) {
-    // if (get_Global_Boolean_On_GPU()) {
-    //     return ComputeGradientForDenseWeights_GPU(info);
-    // }
+    if (get_Global_Boolean_On_GPU()) {
+        return ComputeGradientForDenseWeights_GPU(info);
+    }
 
     return ComputeGradientForDenseWeights_CPU(info);
 }
