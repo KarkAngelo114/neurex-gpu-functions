@@ -30,6 +30,7 @@ Napi::Value transConv_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array biasesArray = info[7].As<Napi::Float32Array>();
     int pointer = info[8].As<Napi::Number>().Int32Value();
     std::string modelID = info[9].As<Napi::String>().Utf8Value();
+    std::string layerID = info[10].As<Napi::String>().Utf8Value();
 
     int iH = inputShape[0];
     int iW = inputShape[1];
@@ -60,7 +61,7 @@ Napi::Value transConv_GPU(const Napi::CallbackInfo& info) {
     cl_mem input = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputTensor.ElementLength(), inputTensor.Data(), nullptr);
     cl_mem weights = gpu.getWeights(modelID, pointer);
     cl_mem biases = gpu.getBiases(modelID, pointer);
-    cl_mem output = gpu.getOrCreate_Z(modelID, pointer, outputSize);
+    cl_mem output = gpu.getOrCreate_Z(modelID, layerID, static_cast<size_t>(outputSize));
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &input);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &weights);

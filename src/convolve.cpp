@@ -62,6 +62,7 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array biasesArray = info[6].As<Napi::Float32Array>();
     int pointer = info[7].As<Napi::Number>().Int32Value();
     std::string modelID = info[8].As<Napi::String>().Utf8Value();
+    std::string layerID = info[9].As<Napi::String>().Utf8Value();
 
     int numFilters = kernelShape[0];
     int kernelH = kernelShape[1];
@@ -83,7 +84,7 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     cl_mem inputTensor = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputH * inputW * depth, input.Data(), nullptr);
     cl_mem weights = gpu.getWeights(modelID, pointer);
     cl_mem biases = gpu.getBiases(modelID, pointer);
-    cl_mem output_tensor = gpu.getOrCreate_Z(modelID, pointer, static_cast<size_t>(outputSize));
+    cl_mem output_tensor = gpu.getOrCreate_Z(modelID, layerID, static_cast<size_t>(outputSize));
 
 
     // Set args

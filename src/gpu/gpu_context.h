@@ -208,35 +208,35 @@ class GpuContext {
         /**
          * used to create buffer for dGamma
          * @param modelID model this value belongs to
-         * @param pointer layer pointer within the model
+         * @param layerID an identicator for a layer output
          * @param length element count, used only the first time the buffer is created 
          */
-        cl_mem getOrCreate_dGamma(const std::string& modelID, int pointer, size_t length);
+        cl_mem getOrCreate_dGamma(const std::string& modelID, const std::string& layerID, size_t length);
 
         /**
          * used to create buffer for dBeta
          * @param modelID model this value belongs to
-         * @param pointer layer pointer within the model
+         * @param layerID an identicator for a layer output
          * @param length element count, used only the first time the buffer is created 
          */
-        cl_mem getOrCreate_dBeta(const std::string& modelID, int pointer, size_t length);
+        cl_mem getOrCreate_dBeta(const std::string& modelID, const std::string& layerID, size_t length);
 
         /**
          * exclusive only for layer norm's operation for gradient accumulation for gamma gradients
          * @param modelID model this value belongs to
-         * @param pointer layer pointer within the model
+         * @param layerID an identicator for a layer output
          */
-        cl_mem get_dGamma(const std::string& modelID, int pointer) const {
-            return lookupCachedBuffer(dGammaByModel_, "dGammaByModel_", modelID, BufferKey{pointer});
+        cl_mem get_dGamma(const std::string& modelID, const std::string& layerID) const {
+            return lookupCachedBuffer(dGammaByModel_, "dGammaByModel_", modelID, BufferKey{layerID});
         }
 
         /**
          * exclusive only for layer norm's operation for gradient accumulation for beta gradients
          * @param modelID model this value belongs to
-         * @param pointer layer pointer within the model
+         * @param layerID an identicator for a layer output
          */
-        cl_mem get_dBeta(const std::string& modelID, int pointer) const {
-            return lookupCachedBuffer(dBetaByModel_, "dBetaByModel_", modelID, BufferKey{pointer});
+        cl_mem get_dBeta(const std::string& modelID, const std::string& layerID) const {
+            return lookupCachedBuffer(dBetaByModel_, "dBetaByModel_", modelID, BufferKey{layerID});
         }
 
         cl_context context() { 

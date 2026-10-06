@@ -90,6 +90,7 @@ Napi::Value LayerNorm_GPU(const Napi::CallbackInfo& info) {
     float eps = info[4].As<Napi::Number>().FloatValue();
     int pointer = info[5].As<Napi::Number>().Int32Value();
     std::string modelID = info[6].As<Napi::String>().Utf8Value();
+    std::string layerID = info[7].As<Napi::String>().Utf8Value();
 
     float* input = inputTensor.Data();
 
@@ -125,7 +126,7 @@ Napi::Value LayerNorm_GPU(const Napi::CallbackInfo& info) {
     cl_mem _input = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* size, inputTensor.Data(), nullptr);
     cl_mem _gamma = gpu.getWeights(modelID, pointer);
     cl_mem _beta = gpu.getBiases(modelID, pointer);
-    cl_mem output = gpu.getOrCreate_ActivationOutput(modelID, pointer, static_cast<size_t>(size)); // since there's no activation function in a layer norm, we cached the final output and treat it as an activation_output to be used by the gradient accumulation function
+    cl_mem output = gpu.getOrCreate_ActivationOutput(modelID, layerID, static_cast<size_t>(size)); // since there's no activation function in a layer norm, we cached the final output and treat it as an activation_output to be used by the gradient accumulation function
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &_input);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &_gamma);
@@ -197,11 +198,12 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
 
     Napi::Float32Array dy = info[0].As<Napi::Float32Array>();
     Napi::Float32Array x = info[1].As<Napi::Float32Array>();
-    Napi::Float32Array gamma = info[2].As<Napi::Float32Array>(); // this will not be used here
+    Napi::Float32Array gamma = info[2].As<Napi::Float32Array>();
     int size = info[3].As<Napi::Number>().Int32Value();
     float eps = info[4].As<Napi::Number>().FloatValue();
     int pointer = info[5].As<Napi::Number>().Int32Value();
     std::string modelID = info[6].As<Napi::String>().Utf8Value();
+    std::string layerID = info[7].As<Napi::String>().Utf8Value();
 
     if (size <= 0 ||dy.ElementLength() < static_cast<size_t>(size) || x.ElementLength() < static_cast<size_t>(size)) {
         Napi::TypeError::New(env,"Invalid layer normalization input size").ThrowAsJavaScriptException();
@@ -218,8 +220,8 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
     cl_mem dyBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * size, dy.Data(), nullptr);
     cl_mem gammaBuffer = gpu.getWeights(modelID, pointer);
     cl_mem dxBuffer = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * size, nullptr, nullptr);
-    cl_mem dgammaBuffer = gpu.getOrCreate_dGamma(modelID, pointer, static_cast<size_t>(size)); // create cacheable dGamma
-    cl_mem dbetaBuffer = gpu.getOrCreate_dBeta(modelID, pointer, static_cast<size_t>(size)); // create cacheable dBeta
+    cl_mem dgammaBuffer = gpu.getOrCreate_dGamma(modelID, layerID, static_cast<size_t>(size)); // create cacheable dGamma
+    cl_mem dbetaBuffer = gpu.getOrCreate_dBeta(modelID, layerID, static_cast<size_t>(size)); // create cacheable dBeta
 
     // Find the device and a legal power-of-two workgroup size.
     cl_device_id device = nullptr;

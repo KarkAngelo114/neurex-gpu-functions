@@ -437,12 +437,12 @@ cl_mem GpuContext::getOrCreate_Delta(const std::string& modelID, const std::stri
     return getOrCreateCacheBuffer(deltasByModel_, modelID, BufferKey{layerID}, length);
 }
 
-cl_mem GpuContext::getOrCreate_dBeta(const std::string& modelID, int pointer, size_t length) {
-    return getOrCreateCacheBuffer(dBetaByModel_, modelID, BufferKey{pointer}, length);
+cl_mem GpuContext::getOrCreate_dBeta(const std::string& modelID, const std::string& layerID, size_t length) {
+    return getOrCreateCacheBuffer(dBetaByModel_, modelID, BufferKey{layerID}, length);
 }
 
-cl_mem GpuContext::getOrCreate_dGamma(const std::string& modelID, int pointer, size_t length) {
-    return getOrCreateCacheBuffer(dGammaByModel_, modelID, BufferKey{pointer}, length);
+cl_mem GpuContext::getOrCreate_dGamma(const std::string& modelID, const std::string& layerID, size_t length) {
+    return getOrCreateCacheBuffer(dGammaByModel_, modelID, BufferKey{layerID}, length);
 }
 
 void GpuContext::clearOptimizerStates(const std::string& modelID) {
