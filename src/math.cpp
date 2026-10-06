@@ -18,9 +18,9 @@ Napi::Value element_wise_mul_GPU(const Napi::CallbackInfo& info) {
     cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("element_wise_mul");
 
-    cl_mem dActBuffer = gpu.getDAct(modelID, pointer); // cached raw derivative — no upload
+    cl_mem dActBuffer = gpu.getDAct(modelID, layerID); // cached raw derivative — no upload
     cl_mem deltaBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * arr_length, arr2.Data(), nullptr); // incoming delta — fresh upload, unavoidable
-    cl_mem output_arr = gpu.getOrCreate_Delta(modelID, pointer, static_cast<size_t>(arr_length)); // final delta, cached for gradient accumulation to consume next
+    cl_mem output_arr = gpu.getOrCreate_Delta(modelID, layerID, static_cast<size_t>(arr_length)); // final delta, cached for gradient accumulation to consume next
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &dActBuffer);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &deltaBuffer);
