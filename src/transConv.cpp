@@ -58,7 +58,8 @@ Napi::Value transConv_GPU(const Napi::CallbackInfo& info) {
     cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("transConv");
 
-    cl_mem input = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputTensor.ElementLength(), inputTensor.Data(), nullptr);
+    cl_mem input = gpu.getOrCreate_Input(modelID, layerID, static_cast<size_t>(inputSize));
+    clEnqueueWriteBuffer(queue, inputTensor, CL_TRUE, 0, sizeof(float) * inputSize, inputTensor.Data(), 0, nullptr, nullptr);
     cl_mem weights = gpu.getWeights(modelID, pointer);
     cl_mem biases = gpu.getBiases(modelID, pointer);
     cl_mem output = gpu.getOrCreate_Z(modelID, layerID, static_cast<size_t>(outputSize));
@@ -88,8 +89,6 @@ Napi::Value transConv_GPU(const Napi::CallbackInfo& info) {
 
     clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, globalSize, nullptr, 0, nullptr, nullptr);
     clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float) * outputSize, outputTensor.Data(), 0, nullptr, nullptr);
-
-    clReleaseMemObject(input);
 
     return outputTensor;
 }
@@ -349,14 +348,14 @@ Napi::Value transConvBackward_CPU(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value transConvWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return transConv_GPU(info);
     }
     return transConv_CPU(info);
 }
 
 Napi::Value transConvBackwardWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return transConvBackward_GPU(info);
     }
     return transConvBackward_CPU(info);

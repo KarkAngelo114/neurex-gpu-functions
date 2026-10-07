@@ -801,12 +801,12 @@ Napi::Value CoreAttentionBackward_Wrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value CoreMultiHead_wrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) return CoreMultiHeadAttention_GPU(info);
+    if (getComputeBackendType() == "opencl") return CoreMultiHeadAttention_GPU(info);
     return CoreMultiHeadAttention_CPU(info);
 }
 
 Napi::Value CoreMultiHeadBackward_wrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) return CoreMultiHeadAttentionBackward_GPU(info);
+    if (getComputeBackendType() == "opencl") return CoreMultiHeadAttentionBackward_GPU(info);
     return CoreMultiHeadAttentionBackward_CPU(info);
 }
 

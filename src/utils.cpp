@@ -131,7 +131,7 @@ Napi::Value DilateInputWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value cacheOutputLayerDeltaWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return cacheOutputLayerDelta(info);
     }
     // CPU mode: nothing to cache, there's no GPU context to write into.

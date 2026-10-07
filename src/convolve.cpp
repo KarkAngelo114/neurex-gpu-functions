@@ -323,7 +323,7 @@ Napi::Value ConvolveDelta_CPU(const Napi::CallbackInfo& info) {
 
 /* ==================== Wrappers ======================== */
 Napi::Value ConvolveWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return Convolve_GPU(info);
     }
 
@@ -331,7 +331,7 @@ Napi::Value ConvolveWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value ConvolveDeltaWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return ConvolveDelta_GPU(info);
     }
 

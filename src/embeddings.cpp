@@ -156,14 +156,14 @@ Napi::Value ReturnEmbeddings_CPU(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value GetEmbeddingsWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return GetEmbeddings_GPU(info);
     }
     return GetEmbeddings_CPU(info);
 }
 
 Napi::Value ReturnEmbeddingsWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return ReturnEmbeddings_GPU(info);
     }
     return ReturnEmbeddings_CPU(info);

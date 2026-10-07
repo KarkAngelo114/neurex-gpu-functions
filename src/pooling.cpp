@@ -252,7 +252,7 @@ Napi::Value MaxPoolDelta_CPU(const Napi::CallbackInfo& info) {
 
 Napi::Value MaxPoolingWrapper(const Napi::CallbackInfo& info) {
 
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return MaxPooling_GPU(info);
     }
 
@@ -260,7 +260,7 @@ Napi::Value MaxPoolingWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value MaxPoolDelta_Wrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return MaxPoolDelta_GPU(info);
     }
 

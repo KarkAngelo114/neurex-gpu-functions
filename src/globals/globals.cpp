@@ -5,15 +5,15 @@
 #include "globals.h"
 #include <iostream>
 
-static bool global_boolean_On_GPU_state;
+static std::string compute_backend_string;
 
-bool get_Global_Boolean_On_GPU() {
-    return global_boolean_On_GPU_state;
+std::string getComputeBackendType() {
+    return compute_backend_string;
 }
 
-Napi::Value setOnGPU_Boolean_State(const Napi::CallbackInfo& info) {
+Napi::Value setComputeBackendType(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    global_boolean_On_GPU_state = info[0].As<Napi::Boolean>().Value();
+    compute_backend_string = info[0].As<Napi::String>().Utf8Value();
     return env.Undefined();
 }
 
@@ -28,6 +28,7 @@ Napi::Value UploadParamsFromJS(const Napi::CallbackInfo& info) {
     std::string modelID = info[0].As<Napi::String>().Utf8Value();
     Napi::Array jsWeights = info[1].As<Napi::Array>();
     Napi::Array jsBiases = info[2].As<Napi::Array>();
+    std::string computeBackend = info[3].As<Napi::String>().Utf8Value();
 
     Matrix weightMatrix(jsWeights.Length());
     Matrix biasMatrix(jsBiases.Length());
@@ -42,16 +43,21 @@ Napi::Value UploadParamsFromJS(const Napi::CallbackInfo& info) {
         biasMatrix[i].assign(b.Data(), b.Data() + b.ElementLength());
     }
 
-    auto& openCL = GpuContext::instance();
 
-    std::string err;
-    bool success = openCL.uploadParams(modelID, weightMatrix, biasMatrix, err);
+    // if "opencl", upload params to OpenCL
+    if (computeBackend == "opencl") {
+         auto& openCL = GpuContext::instance();
 
-    if (!success) {
-        Napi::Error::New(env, err).ThrowAsJavaScriptException();
+        std::string err;
+        bool success = openCL.uploadParams(modelID, weightMatrix, biasMatrix, err);
+
+        if (!success) {
+            Napi::Error::New(env, err).ThrowAsJavaScriptException();
+        }
+
+        return env.Undefined();
     }
-
-    return env.Undefined();
+   
 }
 
 Napi::Value ReleaseParams(const Napi::CallbackInfo& info) {
@@ -63,37 +69,47 @@ Napi::Value ReleaseParams(const Napi::CallbackInfo& info) {
     }
 
     std::string modelID = info[0].As<Napi::String>().Utf8Value();
-    auto& gpu = GpuContext::instance();
-    gpu.clearParams(modelID);
-    // clearParams() only releases weights/biases now (see gpu_context.cpp for why).
-    // ReleaseParams is JS's explicit "I'm done with this model" signal, so it's the
-    // right place to also drop the model's cached optimizer states and activation buffers.
-    gpu.clearOptimizerStates(modelID);
-    gpu.clearActivationCaches(modelID);
-    gpu.clear_dBeta_And_dGamma_By_Model(modelID);
 
-    std::cout << "> CLbuffers has been cleared." << std::endl;
+    if (compute_backend_string === "opencl") {
+        auto& gpu = GpuContext::instance();
+        gpu.clearParams(modelID);
+        // clearParams() only releases weights/biases now (see gpu_context.cpp for why).
+        // ReleaseParams is JS's explicit "I'm done with this model" signal, so it's the
+        // right place to also drop the model's cached optimizer states and activation buffers.
+        gpu.clearOptimizerStates(modelID);
+        gpu.clearActivationCaches(modelID);
+        gpu.clear_dBeta_And_dGamma_By_Model(modelID);
 
-    return env.Undefined();
+        std::cout << "> CLbuffers has been cleared." << std::endl;
+        return env.Undefined();
+    }
+
+    
+
+    
 }
 
 Napi::Value shutdownGPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    auto& OpenCL = GpuContext::instance();
-    bool res = OpenCL.shutdown();
 
-    if (res) {
-        std::cout << "> clBuffers cleared. \n> kernel source cleared. \n> Memory released." << std::endl;
-    }
-    else {
-        Napi::Error::New(env, "Failed to shutdown. \nIf this error occurred, please open an issue to: https://github.com/KarkAngelo114/Neurex/issues").ThrowAsJavaScriptException();
-    }
+    if (compute_backend_string === "opencl") {
+        auto& OpenCL = GpuContext::instance();
+        bool res = OpenCL.shutdown();
 
-    return env.Undefined();
+        if (res) {
+            std::cout << "> clBuffers cleared. \n> kernel source cleared. \n> Memory released." << std::endl;
+        }
+        else {
+            Napi::Error::New(env, "Failed to shutdown. \nIf this error occurred, please open an issue to: https://github.com/KarkAngelo114/Neurex/issues").ThrowAsJavaScriptException();
+        }
+
+        return env.Undefined();
+    }
+    
 }
 
 void _globals(Napi::Env env, Napi::Object exports) {
-    exports.Set("setOnGPU", Napi::Function::New(env, setOnGPU_Boolean_State));
+    exports.Set("setComputeBackendType", Napi::Function::New(env, setComputeBackendType));
     exports.Set("UploadParams", Napi::Function::New(env, UploadParamsFromJS));
     exports.Set("ReleaseParams", Napi::Function::New(env, ReleaseParams));
     exports.Set("shutdown", Napi::Function::New(env, shutdownGPU));

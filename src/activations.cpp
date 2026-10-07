@@ -497,21 +497,21 @@ Napi::Value DTanh_CPU(const Napi::CallbackInfo& info) {
 
 // =============== wrappers ====================
 Napi::Value ReluWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return Relu_GPU(info);
     }
     return Relu_CPU(info);
 }
 
 Napi::Value SigmoidWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return Sigmoid_GPU(info);
     }
     return Sigmoid_CPU(info);
 }
 
 Napi::Value TanhWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return Tanh_GPU(info);
     }
 
@@ -519,7 +519,7 @@ Napi::Value TanhWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value SoftmaxWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return Softmax_GPU(info);
     }
 
@@ -527,7 +527,7 @@ Napi::Value SoftmaxWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value LinearWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return Linear_GPU(info);
     }
 
@@ -535,7 +535,7 @@ Napi::Value LinearWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value DReLuWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return DReLu_GPU(info);
     }
 
@@ -543,7 +543,7 @@ Napi::Value DReLuWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value DSigmoidWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return DSigmoid_GPU(info);
     }
 
@@ -579,7 +579,7 @@ Napi::Value DSoftmaxWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value DLinearWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return DLinear_GPU(info);
     }
 
@@ -587,7 +587,7 @@ Napi::Value DLinearWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value DTanhWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return DTanh_GPU(info);
     }
 

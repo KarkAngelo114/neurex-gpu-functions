@@ -153,8 +153,7 @@ Napi::Value DeltaMatMul_CPU(const Napi::CallbackInfo& info) {
 
 // ================== Wrappers ====================== //
 Napi::Value MatMulWrapper(const Napi::CallbackInfo& info) {
-
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return MatMul_GPU(info);
     }
 
@@ -162,7 +161,7 @@ Napi::Value MatMulWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value DeltaMatMulWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return DeltaMatMul_GPU(info);
     }
     return DeltaMatMul_CPU(info);

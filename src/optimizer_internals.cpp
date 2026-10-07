@@ -253,7 +253,7 @@ Napi::Value RMSProp_CPU(const Napi::CallbackInfo& info) {
 // =============== wrappers ===============
 
 Napi::Value SGD_wrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return SGD_GPU(info);
     }
 
@@ -261,7 +261,7 @@ Napi::Value SGD_wrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value Adam_wrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return Adam_GPU(info);
     }
 
@@ -269,7 +269,7 @@ Napi::Value Adam_wrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value RMSProp_wrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return RMSProp_GPU(info);
     }
     return RMSProp_CPU(info);

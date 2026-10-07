@@ -385,7 +385,7 @@ Napi::Value gradientClippingWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value LayerNormWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return LayerNorm_GPU(info);
     }
 
@@ -393,7 +393,7 @@ Napi::Value LayerNormWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value LayerNorBackwardmWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return LayerNormBackward_GPU(info);
     }
     return LayerNormBackward_CPU(info);

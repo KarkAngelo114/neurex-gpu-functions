@@ -467,8 +467,7 @@ Napi::Value accumulateKernelGradsForTransConv_GPU(const Napi::CallbackInfo& info
     cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("accumulateTransConvKernelGrads");
 
-    // Create GPU memory buffers
-    cl_mem activations = gpu.getActivationOutput(modelID, layerID);
+    cl_mem activations = gpu.getInput(modelID, layerID);
     cl_mem delta_input = gpu.getDAct(modelID, layerID);
     cl_mem grads = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * weightGrads.ElementLength(), weightGrads.Data(), nullptr);
 
@@ -835,7 +834,7 @@ Napi::Value AccumulateBetaGrads_CPU(const Napi::CallbackInfo& info) {
 // =================== wrappers ===================== //
 
 Napi::Value computeBiasGradsForConnected_LayerWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return computeBiasGradsForConnected_Layer_GPU(info);
     }
 
@@ -843,7 +842,7 @@ Napi::Value computeBiasGradsForConnected_LayerWrapper(const Napi::CallbackInfo& 
 }
 
 Napi::Value ComputeGradientForDenseWeightsWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return ComputeGradientForDenseWeights_GPU(info);
     }
 
@@ -851,7 +850,7 @@ Napi::Value ComputeGradientForDenseWeightsWrapper(const Napi::CallbackInfo& info
 }
 
 Napi::Value computeKernelGradientsWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return computeKernelGradients_GPU(info);
     }
 
@@ -859,7 +858,7 @@ Napi::Value computeKernelGradientsWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value computeBiasGradsForConvWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return computeBiasGradsForConv_GPU(info);
     }
 
@@ -875,7 +874,7 @@ Napi::Value recurrentBiasGradsAccumulationWrapper(const Napi::CallbackInfo& info
 }
 
 Napi::Value accumulateKernelGradsForTransConvWrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return accumulateKernelGradsForTransConv_GPU(info);
     }
     
@@ -888,19 +887,19 @@ Napi::Value AccumulateAttentionWeightsGradients_Wrapper(const Napi::CallbackInfo
 }
 
 Napi::Value AccumulateAttentionBiasGrads_Wrapper(const Napi::CallbackInfo& info) {
-    // if (get_Global_Boolean_On_GPU()) return AccumulateAttentionBiasGrads_GPU(info);
+    // if (getComputeBackendType() == "opencl") return AccumulateAttentionBiasGrads_GPU(info);
     return AccumulateAttentionBiasGrads_CPU(info);
 }
 
 Napi::Value AccumulateGammaGrads_Wrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return AccumulateGammaGrads_GPU(info);
     }
     return AccumulateGammaGrads_CPU(info);
 }
 
 Napi::Value AccumulateBetaGrads_wrapper(const Napi::CallbackInfo& info) {
-    if (get_Global_Boolean_On_GPU()) {
+    if (getComputeBackendType() == "opencl") {
         return AccumulateBetaGrads_GPU(info);
     }
     return AccumulateBetaGrads_CPU(info);
