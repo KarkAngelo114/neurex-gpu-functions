@@ -60,7 +60,7 @@ Napi::Value transConv_GPU(const Napi::CallbackInfo& info) {
     cl_kernel kernel = gpu.kernel("transConv");
 
     cl_mem input = gpu.getOrCreate_Input(modelID, layerID, static_cast<size_t>(inputSize));
-    clEnqueueWriteBuffer(queue, inputTensor, CL_TRUE, 0, sizeof(float) * inputSize, inputTensor.Data(), 0, nullptr, nullptr);
+    clEnqueueWriteBuffer(queue, input, CL_TRUE, 0, sizeof(float) * inputSize, inputTensor.Data(), 0, nullptr, nullptr);
     cl_mem weights = gpu.getWeights(modelID, pointer);
     cl_mem biases = gpu.getBiases(modelID, pointer);
     cl_mem output = gpu.getOrCreate_Z(modelID, layerID, static_cast<size_t>(outputSize));
