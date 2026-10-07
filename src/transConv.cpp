@@ -44,6 +44,7 @@ Napi::Value transConv_GPU(const Napi::CallbackInfo& info) {
     int kh = weightShape[1];
     int kw = weightShape[2];
     int d = weightShape[3];
+    int inputSize = inputTensor.ElementLength();
 
     size_t outputSize = oH * oW * f;
     Napi::Float32Array outputTensor = Napi::Float32Array::New(env, outputSize);
