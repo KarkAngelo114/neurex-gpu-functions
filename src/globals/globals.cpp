@@ -70,7 +70,7 @@ Napi::Value ReleaseParams(const Napi::CallbackInfo& info) {
 
     std::string modelID = info[0].As<Napi::String>().Utf8Value();
 
-    if (compute_backend_string === "opencl") {
+    if (compute_backend_string == "opencl") {
         auto& gpu = GpuContext::instance();
         gpu.clearParams(modelID);
         // clearParams() only releases weights/biases now (see gpu_context.cpp for why).
@@ -92,7 +92,7 @@ Napi::Value ReleaseParams(const Napi::CallbackInfo& info) {
 Napi::Value shutdownGPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
-    if (compute_backend_string === "opencl") {
+    if (compute_backend_string == "opencl") {
         auto& OpenCL = GpuContext::instance();
         bool res = OpenCL.shutdown();
 
