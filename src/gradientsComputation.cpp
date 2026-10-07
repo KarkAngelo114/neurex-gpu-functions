@@ -468,7 +468,7 @@ Napi::Value accumulateKernelGradsForTransConv_GPU(const Napi::CallbackInfo& info
     cl_kernel kernel = gpu.kernel("accumulateTransConvKernelGrads");
 
     cl_mem activations = gpu.getInput(modelID, layerID);
-    cl_mem delta_input = gpu.getDAct(modelID, layerID);
+    cl_mem delta_input = gpu.getDelta(modelID, layerID);
     cl_mem grads = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * weightGrads.ElementLength(), weightGrads.Data(), nullptr);
 
     // Set kernel arguments
