@@ -55,9 +55,10 @@ Napi::Value UploadParamsFromJS(const Napi::CallbackInfo& info) {
             Napi::Error::New(env, err).ThrowAsJavaScriptException();
         }
 
-        return env.Undefined();
+        
     }
-   
+
+    return env.Undefined();
 }
 
 Napi::Value ReleaseParams(const Napi::CallbackInfo& info) {
@@ -81,11 +82,11 @@ Napi::Value ReleaseParams(const Napi::CallbackInfo& info) {
         gpu.clear_dBeta_And_dGamma_By_Model(modelID);
 
         std::cout << "> CLbuffers has been cleared." << std::endl;
-        return env.Undefined();
+        
     }
 
     
-
+    return env.Undefined();
     
 }
 
@@ -103,8 +104,10 @@ Napi::Value shutdownGPU(const Napi::CallbackInfo& info) {
             Napi::Error::New(env, "Failed to shutdown. \nIf this error occurred, please open an issue to: https://github.com/KarkAngelo114/Neurex/issues").ThrowAsJavaScriptException();
         }
 
-        return env.Undefined();
+        
     }
+
+    return env.Undefined();
     
 }
 
