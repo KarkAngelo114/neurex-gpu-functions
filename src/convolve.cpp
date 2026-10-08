@@ -76,6 +76,7 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     int outputW = outputShape[1];
     int outputSize = outputH * outputW * numFilters;
     int kernelSize = kernelH * kernelW * depth;
+    Napi::Float32Array output = Napi::Float32Array::New(env, outputSize);
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
@@ -83,7 +84,7 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     cl_kernel kernel = gpu.kernel("convolve");
 
     cl_mem inputTensor = gpu.getOrCreate_Input(modelID, layerID, static_cast<size_t>(inputSize));
-    clEnqueueWriteBuffer(queue, inputTensor, CL_TRUE, 0, sizeof(float) * inputSize, input.Data(), 0, nullptr, nullptr);
+    clEnqueueWriteBuffer(queue, inputTensor, CL_FALSE, 0, sizeof(float) * inputSize, input.Data(), 0, nullptr, nullptr);
     cl_mem weights = gpu.getWeights(modelID, pointer);
     cl_mem biases = gpu.getBiases(modelID, pointer);
     cl_mem output_tensor = gpu.getOrCreate_Z(modelID, layerID, static_cast<size_t>(outputSize));
@@ -111,8 +112,6 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     };
 
     clEnqueueNDRangeKernel(queue,kernel,3,nullptr,global,nullptr,0,nullptr,nullptr);
-
-    Napi::Float32Array output = Napi::Float32Array::New(env, outputSize);
 
     clEnqueueReadBuffer(queue, output_tensor, CL_TRUE, 0, sizeof(float) * outputSize, output.Data(), 0, nullptr, nullptr);
 
@@ -203,6 +202,7 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     int stride = info[5].As<Napi::Number>().Int32Value();
     int pointer = info[6].As<Napi::Number>().Int32Value();
     std::string modelID = info[7].As<Napi::String>().Utf8Value();
+    std::string layerID = info[8].As<Napi::String>().Utf8Value();
 
     int Hp = deltaShape[0];
     int Wp = deltaShape[1];
@@ -217,15 +217,18 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     int oW = outputShape[1];
 
     int outputSize = oH * oW * C_k;
+    int deltaSize = inputTensor.ElementLength();
+    Napi::Float32Array output = Napi::Float32Array::New(env, outputSize);
     
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
     cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("delta_convolve");
 
-    cl_mem delta = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * Hp * Wp * C_in, inputTensor.Data(), nullptr);
     cl_mem weights = gpu.getWeights(modelID, pointer);
-    cl_mem outputBuf = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * outputSize, nullptr, nullptr);
+    cl_mem delta = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_incoming_delta", static_cast<size_t>(deltaSize));
+    clEnqueueWriteBuffer(queue, delta, CL_FALSE, 0, sizeof(float) * deltaSize, inputTensor.Data(), 0, nullptr, nullptr);
+    cl_mem outputBuf = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_output_conv_backward", static_cast<size_t>(outputSize));
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &delta);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &weights);
@@ -248,11 +251,10 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, global, nullptr, 0, nullptr, nullptr);
 
     // Read result back to host
-    Napi::Float32Array output = Napi::Float32Array::New(env, outputSize);
     clEnqueueReadBuffer(queue, outputBuf, CL_TRUE, 0, sizeof(float) * outputSize, output.Data(), 0, nullptr, nullptr);
 
-    clReleaseMemObject(delta);
-    clReleaseMemObject(outputBuf);
+    // no more manual releasing of buffer here since the context owns buffer and all cached buffers will be cleared if functions that clears clBuffers
+    // are invoked.
 
     return output;
 }

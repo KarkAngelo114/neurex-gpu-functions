@@ -123,10 +123,12 @@ Napi::Value LayerNorm_GPU(const Napi::CallbackInfo& info) {
     // get standardization value by getting the square root of sum of variance and epsilon
     float std = std::sqrt(variance + eps);
 
-    cl_mem _input = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* size, inputTensor.Data(), nullptr);
+    cl_mem _input= gpu.getOrCreate_SomethingToWriteOn(modelID, layerID, static_cast<size_t>(size));
+    clEnqueueWriteBuffer(queue, _input, CL_FALSE, 0, sizeof(float) * deltaSize, inputTensor.Data(), 0, nullptr, nullptr);
+    
     cl_mem _gamma = gpu.getWeights(modelID, pointer);
     cl_mem _beta = gpu.getBiases(modelID, pointer);
-    cl_mem output = gpu.getOrCreate_ActivationOutput(modelID, layerID, static_cast<size_t>(size)); // since there's no activation function in a layer norm, we cached the final output and treat it as an activation_output to be used by the gradient accumulation function
+    cl_mem output = gpu.getOrCreate_ActivationOutput(modelID, layerID, static_cast<size_t>(size));
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &_input);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &_gamma);
@@ -142,8 +144,7 @@ Napi::Value LayerNorm_GPU(const Napi::CallbackInfo& info) {
     clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
     
     clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float)* size, outputTensor.Data(), 0, nullptr, nullptr);
-    
-    clReleaseMemObject(_input);
+
 
     return outputTensor;
 }
@@ -216,10 +217,12 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
     cl_kernel kernel = gpu.kernel("layer_norm_backward_one");
 
 
-    cl_mem xBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * size, x.Data(), nullptr);
-    cl_mem dyBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * size, dy.Data(), nullptr);
+    cl_mem xBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_xBuffer", static_cast<size_t>(size));
+    clEnqueueWriteBuffer(queue, xBuffer, CL_FALSE, 0, sizeof(float) * size, x.Data(), 0, nullptr, nullptr);
+    cl_mem dyBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_dyBuffer", static_cast<size_t>(size));
+    clEnqueueWriteBuffer(queue, dyBuffer, CL_FALSE, 0, sizeof(float) * size, dy.Data(), 0, nullptr, nullptr);
     cl_mem gammaBuffer = gpu.getWeights(modelID, pointer);
-    cl_mem dxBuffer = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * size, nullptr, nullptr);
+    cl_mem dxBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_dxBuffer", static_cast<size_t>(size));
     cl_mem dgammaBuffer = gpu.getOrCreate_dGamma(modelID, layerID, static_cast<size_t>(size)); // create cacheable dGamma
     cl_mem dbetaBuffer = gpu.getOrCreate_dBeta(modelID, layerID, static_cast<size_t>(size)); // create cacheable dBeta
 
@@ -270,10 +273,6 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
     err = clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, &localSize, 0, nullptr, nullptr);
 
     if (err != CL_SUCCESS) {
-        clReleaseMemObject(xBuffer);
-        clReleaseMemObject(dyBuffer);
-        clReleaseMemObject(dxBuffer);
-
         Napi::Error::New(env, "Failed to enqueue layer norm backward kernel").ThrowAsJavaScriptException();
 
         return env.Null();
@@ -288,9 +287,6 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
     clEnqueueReadBuffer(queue, dgammaBuffer, CL_TRUE, 0, sizeof(float) * size, dgamma.Data(), 0, nullptr, nullptr);
     clEnqueueReadBuffer(queue, dbetaBuffer, CL_TRUE, 0, sizeof(float) * size, dbeta.Data(), 0, nullptr, nullptr);
 
-    clReleaseMemObject(xBuffer);
-    clReleaseMemObject(dyBuffer);
-    clReleaseMemObject(dxBuffer);
 
     Napi::Object output = Napi::Object::New(env);
     output.Set("dX", dx);

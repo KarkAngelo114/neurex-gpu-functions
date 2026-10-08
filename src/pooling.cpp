@@ -19,13 +19,13 @@ static IntArray Vectorize(const Napi::Array& arr) {
 
 Napi::Value MaxPooling_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    cl_int err;
-
     Napi::Float32Array input_array = info[0].As<Napi::Float32Array>();
     IntArray pool_size = Vectorize(info[1].As<Napi::Array>());
     IntArray inputShape = Vectorize(info[2].As<Napi::Array>());
     IntArray outputShape = Vectorize(info[3].As<Napi::Array>());
     size_t strides = info[4].As<Napi::Number>().Int32Value();
+    std::string modelID = info[5].As<Napi::String>().Utf8Value();
+    std::string layerID = info[6].As<Napi::String>().Utf8Value();
 
     int poolH = pool_size[0];
     int poolW = pool_size[1];
@@ -41,34 +41,25 @@ Napi::Value MaxPooling_GPU(const Napi::CallbackInfo& info) {
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("maxpool");
+    cl_context context = gpu.context();
 
     size_t inputSize = inputH * inputW * inputD;
     size_t outputSize = outputH * outputW * outputD;
 
     // INPUT BUFFER
-    cl_mem inputTensor = clCreateBuffer(gpu.context(),CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputSize, input_array.Data(),&err);
-
-    if (err != CL_SUCCESS) {
-        Napi::TypeError::New(env, "Failed to create input buffer").ThrowAsJavaScriptException();
-        return env.Null();
-    }
+    // cl_mem inputTensor = clCreateBuffer(context,CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputSize, input_array.Data(),&err);
+    cl_mem inputTensor = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_maxpool_input_buffer", static_cast<size_t>(inputSize));
+    clEnqueueWriteBuffer(queue, inputTensor, CL_FALSE, 0, sizeof(float) * inputSize, input_array.Data(), 0, nullptr, nullptr);
 
     // OUTPUT BUFFER
-    cl_mem outputTensor = clCreateBuffer(gpu.context(), CL_MEM_WRITE_ONLY, sizeof(float) * outputSize, nullptr, &err);
+    cl_mem outputTensor= gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_maxpool_output_buffer", static_cast<size_t>(outputSize));
 
     // MAX INDEX BUFFER
-    cl_mem maxIndexTensor = clCreateBuffer(gpu.context(), CL_MEM_WRITE_ONLY, sizeof(int) * outputSize, nullptr, &err);
+    cl_mem maxIndexTensor = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_maxpool_output_indices", static_cast<size_t>(outputSize));
 
-    if (err != CL_SUCCESS) {
-        Napi::TypeError::New(env, "Failed to create output buffer").ThrowAsJavaScriptException();
-        return env.Null();
-    }
-
-    // SET KERNEL ARGS (FIXED POINTER USAGE)
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputTensor);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &outputTensor);
     clSetKernelArg(kernel, 2, sizeof(cl_mem), &maxIndexTensor);
-
     clSetKernelArg(kernel, 3, sizeof(int), &inputH);
     clSetKernelArg(kernel, 4, sizeof(int), &inputW);
     clSetKernelArg(kernel, 5, sizeof(int), &inputD);
@@ -86,20 +77,13 @@ Napi::Value MaxPooling_GPU(const Napi::CallbackInfo& info) {
     };
 
     clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, globalSize, nullptr, 0, nullptr, nullptr);
-    clFinish(queue);
 
     // READ BACK RESULTS
     std::vector<float> output(outputSize);
     std::vector<int> maxIdx(outputSize);
 
     clEnqueueReadBuffer(queue, outputTensor, CL_TRUE, 0, sizeof(float) * outputSize, output.data(), 0, nullptr, nullptr);
-
     clEnqueueReadBuffer(queue, maxIndexTensor, CL_TRUE, 0, sizeof(int) * outputSize, maxIdx.data(), 0, nullptr, nullptr);
-
-    // CLEANUP
-    clReleaseMemObject(inputTensor);
-    clReleaseMemObject(outputTensor);
-    clReleaseMemObject(maxIndexTensor);
 
     // BUILD JS OUTPUT
     Napi::Float32Array outArray = Napi::Float32Array::New(env, outputSize);
@@ -196,14 +180,19 @@ Napi::Value MaxPoolDelta_GPU(const Napi::CallbackInfo& info) {
 
     Napi::Float32Array output = Napi::Float32Array::New(env, size);
 
+    int inputSize = input_arr.ElementLength();
+    int indices_Size = indicesArray.ElementLength();
+
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
     cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("maxpooldelta");
 
-    cl_mem inputData = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* input_arr.ElementLength(), input_arr.Data(), nullptr);
-    cl_mem indices = clCreateBuffer(context, CL_MEM_READ_ONLY| CL_MEM_COPY_HOST_PTR, sizeof(int)* indicesArray.ElementLength(), indicesArray.Data(), nullptr);
-    cl_mem outputTensor = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* size, output.Data(), nullptr);
+    cl_mem inputData = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_maxpool_delta_input_buffer", static_cast<size_t>(inputSize));
+    clEnqueueWriteBuffer(queue, inputData, CL_FALSE, 0, sizeof(float) * inputSize, input_arr.Data(), 0, nullptr, nullptr);
+    cl_mem indices = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_maxpool_delta_indices_buffer", static_cast<size_t>(indices_Size));
+    clEnqueueWriteBuffer(queue, indices, CL_FALSE, 0, sizeof(float) * indices_Size, indicesArray.Data(), 0, nullptr, nullptr);
+    cl_mem outputTensor = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_maxpool_delta_output_buffer", static_cast<size_t>(size));
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputData);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &indices);
@@ -215,12 +204,6 @@ Napi::Value MaxPoolDelta_GPU(const Napi::CallbackInfo& info) {
     
     // READ BACK RESULTS
     clEnqueueReadBuffer(queue, outputTensor, CL_TRUE, 0, sizeof(float) * size, output.Data(), 0, nullptr, nullptr);
-    clFinish(queue);
-
-    // CLEANUP
-    clReleaseMemObject(inputData);
-    clReleaseMemObject(indices);
-    clReleaseMemObject(outputTensor);
 
     return output;
 }

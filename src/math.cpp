@@ -8,10 +8,10 @@
 Napi::Value element_wise_mul_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
-    Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>(); // delta — the only genuinely new value each call, so this is the one upload we can't avoid
-    int arr_length = arr2.ElementLength();
+    Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>(); 
     std::string modelID = info[2].As<Napi::String>().Utf8Value();
     std::string layerID = info[3].As<Napi::String>().Utf8Value();
+    int arr_length = arr2.ElementLength();
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
@@ -19,8 +19,9 @@ Napi::Value element_wise_mul_GPU(const Napi::CallbackInfo& info) {
     cl_kernel kernel = gpu.kernel("element_wise_mul");
 
     cl_mem dActBuffer = gpu.getDAct(modelID, layerID); // cached raw derivative — no upload
-    cl_mem deltaBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * arr_length, arr2.Data(), nullptr); // incoming delta — fresh upload, unavoidable
     cl_mem output_arr = gpu.getOrCreate_Delta(modelID, layerID, static_cast<size_t>(arr_length)); // final delta, cached for gradient accumulation to consume next
+    cl_mem deltaBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID, static_cast<size_t>(arr_length));
+    clEnqueueWriteBuffer(queue, deltaBuffer, CL_FALSE, 0, sizeof(float) * arr_length, arr2.Data(), 0, nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &dActBuffer);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &deltaBuffer);
@@ -33,8 +34,6 @@ Napi::Value element_wise_mul_GPU(const Napi::CallbackInfo& info) {
     // read result
     Napi::Float32Array output = Napi::Float32Array::New(env, arr_length);
     clEnqueueReadBuffer(queue, output_arr, CL_TRUE, 0, sizeof(float) * arr_length, output.Data(), 0, nullptr, nullptr);
-
-    clReleaseMemObject(deltaBuffer);
 
     return output;
 }
@@ -66,33 +65,34 @@ Napi::Value element_wise_sub_GPU(const Napi::CallbackInfo& info) {
 
     Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
     Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>();
-    int arr_length = arr1.ElementLength();
+    std::string modelID = info[2].As<Napi::String>().Utf8Value();
+    sts::string layerID = info[2].As<Napi::String>().Utf8Value();
+    int size = arr1.ElementLength();
+    Napi::Float32Array output = Napi::Float32Array::New(env, size);
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
     cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("element_wise_sub");
 
-    cl_mem input_arr1 = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * arr_length, arr1.Data(), nullptr);
-    cl_mem input_arr2 = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * arr_length, arr2.Data(), nullptr);
-    cl_mem output_arr = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * arr_length, nullptr, nullptr);
+    cl_mem input_arr1 = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_input_arr1", static_cast<size_t>(size));
+    clEnqueueWriteBuffer(queue, input_arr1, CL_FALSE, 0, sizeof(float) * size, arr1.Data(), 0, nullptr, nullptr);
+
+    cl_mem input_arr2 = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_input_arr2", static_cast<size_t>(size));
+    clEnqueueWriteBuffer(queue, input_arr2, CL_FALSE, 0, sizeof(float) * size, arr2.Data(), 0, nullptr, nullptr);
+
+    cl_mem output_arr = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_element_wise_output_buffer", static_cast<size_t>(size));
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &input_arr1);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &input_arr2);
     clSetKernelArg(kernel, 2, sizeof(cl_mem), &output_arr);
-    clSetKernelArg(kernel, 3, sizeof(int), &arr_length);
+    clSetKernelArg(kernel, 3, sizeof(int), &size);
 
-    size_t globalSize = (size_t)arr_length;
+    size_t globalSize = (size_t)size;
     clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
 
     // read result
-    Napi::Float32Array output = Napi::Float32Array::New(env, arr_length);
-    clEnqueueReadBuffer(queue, output_arr, CL_TRUE, 0, sizeof(float) * arr_length, output.Data(), 0, nullptr, nullptr);
-
-    clFinish(queue);
-    clReleaseMemObject(input_arr1);
-    clReleaseMemObject(input_arr2);
-    clReleaseMemObject(output_arr);
+    clEnqueueReadBuffer(queue, output_arr, CL_TRUE, 0, sizeof(float) * size, output.Data(), 0, nullptr, nullptr);
     
     return output;
 }
@@ -123,35 +123,39 @@ Napi::Value scaleDiff_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
     Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>();
     Napi::Float32Array arr3 = info[2].As<Napi::Float32Array>();
-    int arr_length = arr1.ElementLength();
+    std::string modelID = info[3].As<Napi::String>().Utf8Value();
+    std::string layerID = info[4].As<Napi::String>().Utf8Value();
+    int size = arr1.ElementLength();
+    Napi::Float32Array output = Napi::Float32Array::New(env, size);
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
     cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("scale_diff");
 
-    cl_mem input_arr1 = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * arr_length, arr1.Data(), nullptr);
-    cl_mem input_arr2 = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * arr_length, arr2.Data(), nullptr);
-    cl_mem input_arr3 = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * arr_length, arr3.Data(), nullptr);
-    cl_mem output_arr = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * arr_length, nullptr, nullptr);
+    cl_mem input_arr1 = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"scale_diff_arr1", static_cast<size_t>(size));
+    clEnqueueWriteBuffer(queue, input_arr1, CL_FALSE, 0, sizeof(float) * size, arr1.Data(), 0, nullptr, nullptr);
+
+    cl_mem input_arr2 = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"scale_diff_arr2", static_cast<size_t>(size));
+    clEnqueueWriteBuffer(queue, input_arr2, CL_FALSE, 0, sizeof(float) * size, arr2.Data(), 0, nullptr, nullptr);
+
+    cl_mem input_arr3 = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"scale_diff_arr3", static_cast<size_t>(size));
+    clEnqueueWriteBuffer(queue, input_arr3, CL_FALSE, 0, sizeof(float) * size, arr3.Data(), 0, nullptr, nullptr);
+
+    cl_mem output_arr = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"scale_output_buffer", static_cast<size_t>(size));
+
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &input_arr1);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &input_arr2);
     clSetKernelArg(kernel, 2, sizeof(cl_mem), &input_arr3);
     clSetKernelArg(kernel, 3, sizeof(cl_mem), &output_arr);
-    clSetKernelArg(kernel, 4, sizeof(int), &arr_length);
+    clSetKernelArg(kernel, 4, sizeof(int), &size);
 
-    size_t globalSize = (size_t)arr_length;
+    size_t globalSize = (size_t)size;
     clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
 
     // read result
-    Napi::Float32Array output = Napi::Float32Array::New(env, arr_length);
-    clEnqueueReadBuffer(queue, output_arr, CL_TRUE, 0, sizeof(float) * arr_length, output.Data(), 0, nullptr, nullptr);
-
-    clReleaseMemObject(input_arr1);
-    clReleaseMemObject(input_arr2);
-    clReleaseMemObject(input_arr3);
-    clReleaseMemObject(output_arr);
+    clEnqueueReadBuffer(queue, output_arr, CL_TRUE, 0, sizeof(float) * size, output.Data(), 0, nullptr, nullptr);
     
     return output;
 }
@@ -180,19 +184,20 @@ Napi::Value scaleDiff_CPU(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value Scale_GPU(const Napi::CallbackInfo& info) {
-    // TODO: improve this function to use the same pattern of caching and getting accumulated gradients.
-    Napi::Env env = info.Env(); // 1. Define env
+    Napi::Env env = info.Env();
     Napi::Float32Array inputArray = info[0].As<Napi::Float32Array>();
     int size = inputArray.ElementLength();
     int scalingFactor = info[1].As<Napi::Number>().Int32Value();
+    std::string modelID = info[2].As<Napi::String>().Utf8Value();
+    std::string layerID = info[3].As<Napi::String>().Utf8Value();
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("scale");
     cl_context context = gpu.context();
 
-    // 2. Create buffer
-    cl_mem input = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) *size, inputArray.Data(), nullptr);
+    cl_mem input = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_scale_input_arr", static_cast<size_t>(size));
+    clEnqueueWriteBuffer(queue, input, CL_FALSE, 0, sizeof(float) * size, inputArray.Data(), 0, nullptr, nullptr);
 
     // 3. Set Arguments
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &input);
@@ -203,11 +208,7 @@ Napi::Value Scale_GPU(const Napi::CallbackInfo& info) {
     size_t global = (size_t)size;
     clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &global, nullptr, 0, nullptr, nullptr);
 
-    // 5. Read back into a NEW Float32Array
-    Napi::Float32Array scaledOutput = Napi::Float32Array::New(env, size);
-    clEnqueueReadBuffer(queue, input, CL_TRUE, 0, sizeof(float) * size, scaledOutput.Data(), 0, nullptr, nullptr);
-
-    clReleaseMemObject(input);
+    clEnqueueReadBuffer(queue, input, CL_TRUE, 0, sizeof(float) * size, inputArray.Data(), 0, nullptr, nullptr);
     
     return inputArray;
 }
@@ -308,9 +309,9 @@ Napi::Value scaleDiffWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value ScalerWrapper(const Napi::CallbackInfo& info) {
-    // if (get_Global_Boolean_On_GPU()) {
-    //     return Scale_GPU(info);
-    // }
+    if (getComputeBackendType() == "opencl") {
+        return Scale_GPU(info);
+    }
 
     return Scale_CPU(info);
     

@@ -23,13 +23,14 @@ Napi::Value MatMul_GPU(const Napi::CallbackInfo& info) {
     int pointer = info[5].As<Napi::Number>().Int32Value();
     std::string modelID = info[6].As<Napi::String>().Utf8Value();
     std::string layerID = info[7].As<Napi::String>().Utf8Value();
+    Napi::Float32Array outputTensor = Napi::Float32Array::New(env, outputSize);
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
     cl_context context = gpu.context();
 
     cl_mem inputTensor = gpu.getOrCreate_Input(modelID, layerID, static_cast<size_t>(inputSize));
-    clEnqueueWriteBuffer(queue, inputTensor, CL_TRUE, 0, sizeof(float) * inputSize, input.Data(), 0, nullptr, nullptr);
+    clEnqueueWriteBuffer(queue, inputTensor, CL_FALSE, 0, sizeof(float) * inputSize, input.Data(), 0, nullptr, nullptr);
     cl_mem weights = gpu.getWeights(modelID, pointer);
     cl_mem biases = gpu.getBiases(modelID, pointer);
     cl_mem output = gpu.getOrCreate_Z(modelID, layerID, static_cast<size_t>(outputSize)); // this is the output, instead of allocatiing another buffer, we call `getOrCreate_Z()` to cache the pre-activated output to be use by an activation function which will be called by getZ()
@@ -47,7 +48,6 @@ Napi::Value MatMul_GPU(const Napi::CallbackInfo& info) {
     clEnqueueNDRangeKernel(queue, k, 1, nullptr, &global, nullptr, 0, nullptr, nullptr);
 
     // read result
-    Napi::Float32Array outputTensor = Napi::Float32Array::New(env, outputSize);
     clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float) * outputSize, outputTensor.Data(), 0, nullptr, nullptr);
 
     return outputTensor;
@@ -97,14 +97,20 @@ Napi::Value DeltaMatMul_GPU(const Napi::CallbackInfo& info) {
     int pointer = info[4].As<Napi::Number>().Int32Value();
     std::string modelID = info[5].As<Napi::String>().Utf8Value();
 
+    Napi::Float32Array output = Napi::Float32Array::New(env, inputSize);
+
     auto& gpu = GpuContext::instance();
     cl_context ctx = gpu.context();
     cl_command_queue queue = gpu.queue();
     cl_kernel k = gpu.kernel("delta_matmul");
 
     cl_int err;
-    cl_mem dDelta = clCreateBuffer(ctx, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)*outputSize, delta.Data(), &err);
-    cl_mem dOut = clCreateBuffer(ctx, CL_MEM_WRITE_ONLY, sizeof(float)*inputSize, nullptr, &err);
+
+    cl_mem dDelta = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_incoming_delta", static_cast<size_t>(outputSize));
+    clEnqueueWriteBuffer(queue, dDelta, CL_FALSE, 0, sizeof(float) * deltaSize, delta.Data(), 0, nullptr, nullptr);
+
+    cl_mem dOut = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_output_delta_matmul", static_cast<size_t>(inputSize));
+
     cl_mem dW = gpu.getWeights(modelID, pointer);
 
     clSetKernelArg(k, 0, sizeof(cl_mem), &dDelta);
@@ -116,11 +122,8 @@ Napi::Value DeltaMatMul_GPU(const Napi::CallbackInfo& info) {
     size_t global = (size_t)inputSize;
     clEnqueueNDRangeKernel(queue, k, 1, nullptr, &global, nullptr, 0, nullptr, nullptr);
 
-    Napi::Float32Array output = Napi::Float32Array::New(env, inputSize);
     clEnqueueReadBuffer(queue, dOut, CL_TRUE, 0, sizeof(float)*inputSize, output.Data(), 0, nullptr, nullptr);
 
-    clReleaseMemObject(dDelta);
-    clReleaseMemObject(dOut);
 
     return output;
 }

@@ -60,7 +60,7 @@ Napi::Value transConv_GPU(const Napi::CallbackInfo& info) {
     cl_kernel kernel = gpu.kernel("transConv");
 
     cl_mem input = gpu.getOrCreate_Input(modelID, layerID, static_cast<size_t>(inputSize));
-    clEnqueueWriteBuffer(queue, input, CL_TRUE, 0, sizeof(float) * inputSize, inputTensor.Data(), 0, nullptr, nullptr);
+    clEnqueueWriteBuffer(queue, input, CL_FALSE, 0, sizeof(float) * inputSize, inputTensor.Data(), 0, nullptr, nullptr);
     cl_mem weights = gpu.getWeights(modelID, pointer);
     cl_mem biases = gpu.getBiases(modelID, pointer);
     cl_mem output = gpu.getOrCreate_Z(modelID, layerID, static_cast<size_t>(outputSize));
@@ -231,17 +231,21 @@ Napi::Value transConvBackward_GPU(const Napi::CallbackInfo& info) {
     int padW = std::max(0, (iW - 1) * strides + kw - oW);
     int padTop = std::floor(padH / 2);
     int padLeft = std::floor(padW / 2);
-
     Napi::Float32Array outputTensor = Napi::Float32Array::New(env, iH * iW * iD);
+
+    int deltaSize = deltaTensor.ElementLength();
+    int outputSize = outputTensor.ElementLength();
+    
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
     cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("transConvBackward");
 
-    cl_mem delta = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * deltaTensor.ElementLength(), deltaTensor.Data(), nullptr);
+    cl_mem delta = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_incoming_delta", static_cast<size_t>(deltaSize));
+    clEnqueueWriteBuffer(queue, delta, CL_FALSE, 0, sizeof(float) * deltaSize, deltaTensor.Data(), 0, nullptr, nullptr);
+    cl_mem output = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_trans_conv_backward_output", static_cast<size_t>(outputSize));
     cl_mem weights = gpu.getWeights(modelID, pointer);
-    cl_mem output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * outputTensor.ElementLength(), nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &delta);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &weights);
@@ -268,9 +272,6 @@ Napi::Value transConvBackward_GPU(const Napi::CallbackInfo& info) {
 
     clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, globalSize, nullptr, 0, nullptr, nullptr);
     clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float) * outputTensor.ElementLength(), outputTensor.Data(), 0, nullptr, nullptr);
-
-    clReleaseMemObject(delta);
-    clReleaseMemObject(output);
 
     return outputTensor;
 }

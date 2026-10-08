@@ -237,6 +237,14 @@ class GpuContext {
         cl_mem getOrCreate_dBeta(const std::string& modelID, const std::string& layerID, size_t length);
 
         /**
+         * used to create buffer for dBeta
+         * @param globalReferenceID global reference ID
+         * @param localReferenceID local reference ID
+         * @param length element count, used only the first time the buffer is created 
+         */
+        cl_mem getOrCreate_SomethingToWriteOn(const std::string& globalReferenceID, const std::string& localReferenceID, size_t length);
+
+        /**
          * exclusive only for layer norm's operation for gradient accumulation for gamma gradients
          * @param modelID model this value belongs to
          * @param layerID an identicator for a layer output
@@ -308,6 +316,7 @@ class GpuContext {
         BufferCache dGammaByModel_;
         BufferCache dBetaByModel_;
         BufferCache inputsByModel_;
+        BufferCache somethingToWriteOn_;
 
         // shared helper: fetch-or-create a cached buffer inside one of the maps above
         cl_mem getOrCreateStateBuffer(std::unordered_map<std::string, CL_MEM_ARRAY>& store, const std::string& modelID, int pointer, size_t length, const float* initialData);

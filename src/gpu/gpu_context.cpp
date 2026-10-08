@@ -370,7 +370,6 @@ cl_mem GpuContext::getOrCreateStateBuffer(std::unordered_map<std::string, CL_MEM
     return layerBuffers[idx];
 }
 
-// Shared lazy allocation for string layer IDs and integer helper keys.
 cl_mem GpuContext::getOrCreateCacheBuffer(BufferCache& store, const std::string& modelID, const BufferKey& key, size_t length) {
     validateBufferKey(key);
 
@@ -455,6 +454,10 @@ cl_mem GpuContext::getOrCreate_Input(const std::string& modelID, const std::stri
     return getOrCreateCacheBuffer(inputsByModel_, modelID, BufferKey{layerID}, length);
 }
 
+cl_mem GpuContext::getOrCreate_SomethingToWriteOn(const std::string& globalReferenceID, const std::string& localReferenceID, size_t length) {
+    return getOrCreateCacheBuffer(somethingToWriteOn_, globalReferenceID, BufferKey{localReferenceID}, length);
+}
+
 void GpuContext::clearOptimizerStates(const std::string& modelID) {
     releaseAndClearModelEntry(mStatesWeights_, modelID);
     releaseAndClearModelEntry(mStatesBiases_, modelID);
@@ -476,6 +479,7 @@ void GpuContext::clearActivationCaches(const std::string& modelID) {
     releaseAndClearModelEntry(dActByModel_, modelID);
     releaseAndClearModelEntry(deltasByModel_, modelID);
     releaseAndClearModelEntry(inputsByModel_, modelID);
+    releaseAndClearModelEntry(somethingToWriteOn_, modelID);
 }
 
 void GpuContext::clear_dBeta_And_dGamma_By_Model(const std::string& modelID) {
