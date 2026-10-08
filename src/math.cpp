@@ -66,7 +66,7 @@ Napi::Value element_wise_sub_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
     Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>();
     std::string modelID = info[2].As<Napi::String>().Utf8Value();
-    sts::string layerID = info[2].As<Napi::String>().Utf8Value();
+    std::string layerID = info[2].As<Napi::String>().Utf8Value();
     int size = arr1.ElementLength();
     Napi::Float32Array output = Napi::Float32Array::New(env, size);
 
