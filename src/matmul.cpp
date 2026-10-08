@@ -90,12 +90,13 @@ Napi::Value MatMul_CPU(const Napi::CallbackInfo& info) {
 
 Napi::Value DeltaMatMul_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    auto delta   = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array delta   = info[0].As<Napi::Float32Array>();
     int inputSize  = info[1].As<Napi::Number>().Int32Value();
     int outputSize = info[2].As<Napi::Number>().Int32Value();
     Napi::Float32Array weightsArray = info[3].As<Napi::Float32Array>();
     int pointer = info[4].As<Napi::Number>().Int32Value();
     std::string modelID = info[5].As<Napi::String>().Utf8Value();
+    std::string layerID = info[6].As<Napi::String>().Utf8Value();
 
     Napi::Float32Array output = Napi::Float32Array::New(env, inputSize);
 
@@ -104,7 +105,7 @@ Napi::Value DeltaMatMul_GPU(const Napi::CallbackInfo& info) {
     cl_command_queue queue = gpu.queue();
     cl_kernel k = gpu.kernel("delta_matmul");
 
-    cl_int err;
+    int deltaSize = delta.ElementSize();
 
     cl_mem dDelta = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_incoming_delta", static_cast<size_t>(outputSize));
     clEnqueueWriteBuffer(queue, dDelta, CL_FALSE, 0, sizeof(float) * deltaSize, delta.Data(), 0, nullptr, nullptr);
