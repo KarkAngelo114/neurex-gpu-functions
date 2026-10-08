@@ -75,13 +75,13 @@ Napi::Value element_wise_sub_GPU(const Napi::CallbackInfo& info) {
     cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("element_wise_sub");
 
-    cl_mem input_arr1 = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_input_arr1", static_cast<size_t>(size));
+    cl_mem input_arr1 = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_element_wise_sub_input_arr1", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, input_arr1, CL_FALSE, 0, sizeof(float) * size, arr1.Data(), 0, nullptr, nullptr);
 
-    cl_mem input_arr2 = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_input_arr2", static_cast<size_t>(size));
+    cl_mem input_arr2 = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_element_wise_sub_input_arr2", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, input_arr2, CL_FALSE, 0, sizeof(float) * size, arr2.Data(), 0, nullptr, nullptr);
 
-    cl_mem output_arr = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_element_wise_output_buffer", static_cast<size_t>(size));
+    cl_mem output_arr = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_element_wise_sub_output_buffer", static_cast<size_t>(size));
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &input_arr1);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &input_arr2);
@@ -142,7 +142,7 @@ Napi::Value scaleDiff_GPU(const Napi::CallbackInfo& info) {
     cl_mem input_arr3 = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"scale_diff_arr3", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, input_arr3, CL_FALSE, 0, sizeof(float) * size, arr3.Data(), 0, nullptr, nullptr);
 
-    cl_mem output_arr = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"scale_output_buffer", static_cast<size_t>(size));
+    cl_mem output_arr = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"scale_diff_output_buffer", static_cast<size_t>(size));
 
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &input_arr1);
@@ -191,6 +191,8 @@ Napi::Value Scale_GPU(const Napi::CallbackInfo& info) {
     std::string modelID = info[2].As<Napi::String>().Utf8Value();
     std::string layerID = info[3].As<Napi::String>().Utf8Value();
 
+    Napi::Float32Array output = Napi::Float32Array::New(env, size);
+
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("scale");
@@ -208,9 +210,9 @@ Napi::Value Scale_GPU(const Napi::CallbackInfo& info) {
     size_t global = (size_t)size;
     clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &global, nullptr, 0, nullptr, nullptr);
 
-    clEnqueueReadBuffer(queue, input, CL_TRUE, 0, sizeof(float) * size, inputArray.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, input, CL_TRUE, 0, sizeof(float) * size, output.Data(), 0, nullptr, nullptr);
     
-    return inputArray;
+    return output;
 }
 
 Napi::Value Scale_CPU(const Napi::CallbackInfo& info) {

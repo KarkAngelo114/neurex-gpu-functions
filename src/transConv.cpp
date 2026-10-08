@@ -236,14 +236,13 @@ Napi::Value transConvBackward_GPU(const Napi::CallbackInfo& info) {
 
     int deltaSize = deltaTensor.ElementLength();
     int outputSize = outputTensor.ElementLength();
-    
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
     cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("transConvBackward");
 
-    cl_mem delta = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_incoming_delta", static_cast<size_t>(deltaSize));
+    cl_mem delta = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_trans_conv_incoming_delta", static_cast<size_t>(deltaSize));
     clEnqueueWriteBuffer(queue, delta, CL_FALSE, 0, sizeof(float) * deltaSize, deltaTensor.Data(), 0, nullptr, nullptr);
     cl_mem output = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_trans_conv_backward_output", static_cast<size_t>(outputSize));
     cl_mem weights = gpu.getWeights(modelID, pointer);
