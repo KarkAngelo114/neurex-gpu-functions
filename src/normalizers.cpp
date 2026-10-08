@@ -93,6 +93,7 @@ Napi::Value LayerNorm_GPU(const Napi::CallbackInfo& info) {
     std::string layerID = info[7].As<Napi::String>().Utf8Value();
 
     float* input = inputTensor.Data();
+    int deltaSize = inputTensor.ElementLength();
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
