@@ -177,7 +177,7 @@ Napi::Value MaxPoolDelta_GPU(const Napi::CallbackInfo& info) {
     int W = info[3].As<Napi::Number>().Int32Value();
     int D = info[4].As<Napi::Number>().Int32Value();
     std::string modelID = info[5].As<Napi::String>().Utf8Value();
-    std::string layedID = info[6].As<Napi::String>().Utf8Value();
+    std::string layerID = info[6].As<Napi::String>().Utf8Value();
     int size = H * W * D;
 
     Napi::Float32Array output = Napi::Float32Array::New(env, size);
