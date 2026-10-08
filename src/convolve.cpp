@@ -250,7 +250,7 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, global, nullptr, 0, nullptr, nullptr);
 
     // Read result back to host
-    clEnqueueReadBuffer(queue, outputBuf, CL_TRUE, 0, sizeof(float) * outputSize, output.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, outputBuf, CL_TRUE, 0, sizeof(float) * targetSize, output.Data(), 0, nullptr, nullptr);
 
     return output;
 }
