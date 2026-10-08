@@ -124,7 +124,7 @@ Napi::Value LayerNorm_GPU(const Napi::CallbackInfo& info) {
     // get standardization value by getting the square root of sum of variance and epsilon
     float std = std::sqrt(variance + eps);
 
-    cl_mem _input= gpu.getOrCreate_SomethingToWriteOn(modelID, layerID, static_cast<size_t>(size));
+    cl_mem _input= gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_layer_norm_input", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, _input, CL_FALSE, 0, sizeof(float) * deltaSize, inputTensor.Data(), 0, nullptr, nullptr);
     
     cl_mem _gamma = gpu.getWeights(modelID, pointer);

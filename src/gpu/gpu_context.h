@@ -116,7 +116,7 @@ class GpuContext {
          * @param modelID model this state belongs to
          * @param pointer layer pointer within the model
          * @param isWeights true = weight-state map, false = bias-state map
-         * @param length element count, used only the first time the buffer is created
+         * @param length requested element count; the cached allocation grows as needed
          * @param initialData host data to seed the buffer with the first time it's created (may be nullptr for zero-init)
          * @return a persistent clBuffer holding the m state
          */
@@ -148,35 +148,35 @@ class GpuContext {
         /**
          * @param modelID model this value belongs to
          * @param layerID an identicator for a layer output
-         * @param length element count, used only the first time the buffer is created
+         * @param length requested element count; the cached allocation grows as needed
          */
         cl_mem getOrCreate_Input(const std::string& modelID, const std::string& layerID, size_t length);
 
         /**
          * @param modelID model this value belongs to
          * @param layerID an identicator for a layer output
-         * @param length element count, used only the first time the buffer is created
+         * @param length requested element count; the cached allocation grows as needed
          */
         cl_mem getOrCreate_Z(const std::string& modelID, const std::string& layerID, size_t length);
 
         /**
          * @param modelID model this value belongs to
          * @param layerID an identicator for a layer output
-         * @param length element count, used only the first time the buffer is created
+         * @param length requested element count; the cached allocation grows as needed
          */
         cl_mem getOrCreate_ActivationOutput(const std::string& modelID, const std::string& layerID, size_t length);
 
         /**
          * @param modelID model this value belongs to
          * @param layerID an identicator for a layer output
-         * @param length element count, used only the first time the buffer is created
+         * @param length requested element count; the cached allocation grows as needed
          */
         cl_mem getOrCreate_DAct(const std::string& modelID, const std::string& layerID, size_t length);
 
         /**
          * @param modelID model this value belongs to
          * @param layerID an identicator for a layer output
-         * @param length element count, used only the first time the buffer is created
+         * @param length requested element count; the cached allocation grows as needed
          */
         cl_mem getOrCreate_Delta(const std::string& modelID, const std::string& layerID, size_t length);
 
@@ -224,7 +224,7 @@ class GpuContext {
          * used to create buffer for dGamma
          * @param modelID model this value belongs to
          * @param layerID an identicator for a layer output
-         * @param length element count, used only the first time the buffer is created 
+         * @param length requested element count; the cached allocation grows as needed
          */
         cl_mem getOrCreate_dGamma(const std::string& modelID, const std::string& layerID, size_t length);
 
@@ -232,7 +232,7 @@ class GpuContext {
          * used to create buffer for dBeta
          * @param modelID model this value belongs to
          * @param layerID an identicator for a layer output
-         * @param length element count, used only the first time the buffer is created 
+         * @param length requested element count; the cached allocation grows as needed
          */
         cl_mem getOrCreate_dBeta(const std::string& modelID, const std::string& layerID, size_t length);
 
@@ -240,7 +240,7 @@ class GpuContext {
          * used to create buffer for dBeta
          * @param globalReferenceID global reference ID
          * @param localReferenceID local reference ID
-         * @param length element count, used only the first time the buffer is created 
+         * @param length requested element count; the cached allocation grows as needed
          */
         cl_mem getOrCreate_SomethingToWriteOn(const std::string& globalReferenceID, const std::string& localReferenceID, size_t length);
 
@@ -321,7 +321,6 @@ class GpuContext {
         // shared helper: fetch-or-create a cached buffer inside one of the maps above
         cl_mem getOrCreateStateBuffer(std::unordered_map<std::string, CL_MEM_ARRAY>& store, const std::string& modelID, int pointer, size_t length, const float* initialData);
 
-        // Shared lazy allocator for caches keyed by either layerID or integer key.
-        // These buffers are written by kernels, so they do not need seed data.
+        // Shared allocator for kernel-written buffers, growing existing cache entries as needed.
         cl_mem getOrCreateCacheBuffer(BufferCache& store, const std::string& modelID, const BufferKey& key, size_t length);
 };

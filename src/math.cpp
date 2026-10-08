@@ -20,7 +20,7 @@ Napi::Value element_wise_mul_GPU(const Napi::CallbackInfo& info) {
 
     cl_mem dActBuffer = gpu.getDAct(modelID, layerID); // cached raw derivative — no upload
     cl_mem output_arr = gpu.getOrCreate_Delta(modelID, layerID, static_cast<size_t>(arr_length)); // final delta, cached for gradient accumulation to consume next
-    cl_mem deltaBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID, static_cast<size_t>(arr_length));
+    cl_mem deltaBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_incoming_delta", static_cast<size_t>(arr_length));
     clEnqueueWriteBuffer(queue, deltaBuffer, CL_FALSE, 0, sizeof(float) * arr_length, arr2.Data(), 0, nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &dActBuffer);

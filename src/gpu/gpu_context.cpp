@@ -5,6 +5,7 @@
 #include <sstream>
 #include <filesystem>
 #include <unordered_set>
+#include <limits>
 using FloatArray = std::vector<float>;
 using Matrix = std::vector<FloatArray>;
 
@@ -317,6 +318,7 @@ void GpuContext::clearAllParams() {
     releaseCache(dBetaByModel_);
     releaseCache(dGammaByModel_);
     releaseCache(inputsByModel_); 
+    releaseCache(somethingToWriteOn_);
     for (auto& entry : mStatesWeights_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
     for (auto& entry : mStatesBiases_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
     for (auto& entry : vStatesWeights_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
@@ -335,6 +337,7 @@ void GpuContext::clearAllParams() {
     deltasByModel_.clear();
     dBetaByModel_.clear();
     dGammaByModel_.clear();
+    somethingToWriteOn_.clear();
     mStatesWeights_.clear(); 
     mStatesBiases_.clear();
     vStatesWeights_.clear(); 
@@ -372,11 +375,21 @@ cl_mem GpuContext::getOrCreateStateBuffer(std::unordered_map<std::string, CL_MEM
 
 cl_mem GpuContext::getOrCreateCacheBuffer(BufferCache& store, const std::string& modelID, const BufferKey& key, size_t length) {
     validateBufferKey(key);
+    if (length == 0 || length > std::numeric_limits<size_t>::max() / sizeof(float)) {
+        throw std::invalid_argument("GpuContext: cached buffer length must be positive and fit in bytes.");
+    }
 
     auto& layerBuffers = store[modelID];
     auto bufferIt = layerBuffers.find(key);
     if (bufferIt != layerBuffers.end()) {
-        return bufferIt->second;
+        size_t currentSize = 0;
+        cl_int err = clGetMemObjectInfo(bufferIt->second, CL_MEM_SIZE, sizeof(currentSize), &currentSize, nullptr);
+        if (err != CL_SUCCESS) {
+            throw std::runtime_error("GpuContext: failed to inspect cached buffer for modelID='" + modelID + "' (" + describeBufferKey(key) + ").");
+        }
+        if (currentSize >= sizeof(float) * length) {
+            return bufferIt->second;
+        }
     }
 
     cl_int err = CL_SUCCESS;
@@ -386,7 +399,13 @@ cl_mem GpuContext::getOrCreateCacheBuffer(BufferCache& store, const std::string&
         throw std::runtime_error("GpuContext: failed to allocate cached buffer for modelID='" + modelID + "' (" + describeBufferKey(key) + ").");
     }
 
-    layerBuffers.emplace(key, buffer);
+    if (bufferIt == layerBuffers.end()) {
+        layerBuffers.emplace(key, buffer);
+    } else {
+        cl_mem oldBuffer = bufferIt->second;
+        bufferIt->second = buffer;
+        if (oldBuffer) clReleaseMemObject(oldBuffer);
+    }
     return buffer;
 }
 

@@ -38,7 +38,7 @@ Napi::Value ComputeGradientForDenseWeights_GPU(const Napi::CallbackInfo& info) {
 
     cl_mem activations = gpu.getInput(modelID, layerID);
     cl_mem deltaInput = gpu.getDelta(modelID, layerID);
-    cl_mem weight_grads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID, static_cast<size_t>(size));
+    cl_mem weight_grads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_dense_weight_grads", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, weight_grads, CL_FALSE, 0, sizeof(float) * size, weightGrads.Data(), 0, nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &activations);
@@ -100,7 +100,7 @@ Napi::Value computeBiasGradsForConnected_Layer_GPU(const Napi::CallbackInfo& inf
     cl_command_queue queue = gpu.queue();
 
     cl_mem deltaInput = gpu.getDelta(modelID, layerID);
-    cl_mem gradsInput = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID, static_cast<size_t>(biasGradsSize));
+    cl_mem gradsInput = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_dense_bias_grads", static_cast<size_t>(biasGradsSize));
     clEnqueueWriteBuffer(queue, gradsInput, CL_FALSE, 0, sizeof(float) * biasGradsSize, biasgrads.Data(), 0, nullptr, nullptr);
     
 
@@ -170,7 +170,7 @@ Napi::Value computeKernelGradients_GPU(const Napi::CallbackInfo& info) {
 
     cl_mem activations = gpu.getInput(modelID, layerID);
     cl_mem delta_input = gpu.getDelta(modelID, layerID);
-    cl_mem gradsArr = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID, static_cast<size_t>(size));
+    cl_mem gradsArr = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_conv_weight_grads", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, gradsArr, CL_FALSE, 0, sizeof(float) * size, weightGradsTensor.Data(), 0, nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &activations);
@@ -309,7 +309,7 @@ Napi::Value computeBiasGradsForConv_GPU(const Napi::CallbackInfo& info) {
     int size = biasGrads.ElementLength();
     
     cl_mem delta = gpu.getDelta(modelID, layerID);
-    cl_mem grads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID, static_cast<size_t>(size));
+    cl_mem grads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_conv_bias_grads", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, grads, CL_FALSE, 0, sizeof(float) * size, biasGrads.Data(), 0, nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &grads);
@@ -473,7 +473,7 @@ Napi::Value accumulateKernelGradsForTransConv_GPU(const Napi::CallbackInfo& info
 
     cl_mem activations = gpu.getInput(modelID, layerID);
     cl_mem delta_input = gpu.getDelta(modelID, layerID);
-    cl_mem grads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID, static_cast<size_t>(size));
+    cl_mem grads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_trans_conv_kernel_grads", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, grads, CL_FALSE, 0, sizeof(float) * size, weightGrads.Data(), 0, nullptr, nullptr);
 
     // Set kernel arguments
@@ -753,7 +753,7 @@ Napi::Value AccumulateGammaGrads_GPU(const Napi::CallbackInfo& info) {
     cl_kernel kernel = gpu.kernel("accumulate_gamma_beta_grads");
    
     cl_mem dGamma = gpu.get_dGamma(modelID, layerID);
-    cl_mem inputgrads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID, static_cast<size_t>(size));
+    cl_mem inputgrads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_gamma_grads_input", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, inputgrads, CL_FALSE, 0, sizeof(float) * size, grads.Data(), 0, nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &dGamma);
@@ -784,7 +784,7 @@ Napi::Value AccumulateBetaGrads_GPU(const Napi::CallbackInfo& info) {
     cl_kernel kernel = gpu.kernel("accumulate_gamma_beta_grads");
     
     cl_mem dBeta = gpu.get_dBeta(modelID, layerID);
-    cl_mem inputgrads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID, static_cast<size_t>(size));
+    cl_mem inputgrads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_beta_grads_input", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, inputgrads, CL_FALSE, 0, sizeof(float) * size, grads.Data(), 0, nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &dBeta);
