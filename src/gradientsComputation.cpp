@@ -751,8 +751,6 @@ Napi::Value AccumulateGammaGrads_GPU(const Napi::CallbackInfo& info) {
     cl_context context = gpu.context();
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("accumulate_gamma_beta_grads");
-
-    int size = grads.ElementLength();
    
     cl_mem dGamma = gpu.get_dGamma(modelID, layerID);
     cl_mem inputgrads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID, static_cast<size_t>(size));
