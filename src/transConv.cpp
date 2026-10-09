@@ -213,7 +213,7 @@ Napi::Value transConvBackward_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array weightsArray = info[6].As<Napi::Float32Array>();
     int pointer = info[7].As<Napi::Number>().Int32Value();
     std::string modelID = info[8].As<Napi::String>().Utf8Value();
-    std::string layerID = info[7].As<Napi::String>().Utf8Value();
+    std::string layerID = info[9].As<Napi::String>().Utf8Value();
 
     int iH = inputShape[0];
     int iW = inputShape[1];

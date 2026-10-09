@@ -19,33 +19,28 @@ static IntArray Vectorize(const Napi::Array& arr) {
     return VectorArray;
 }
 
-static Napi::Float32Array Rotate_kernels(Napi::Env env, int F, int KH, int KW, int D, const Napi::Float32Array& kernels) {
-    size_t kernel_length = kernels.ElementLength();
-
-    Napi::Float32Array output = Napi::Float32Array::New(env, kernel_length);
-
-    const float* src = kernels.Data();
-    float* dst = output.Data();
-
-    for (size_t f = 0; f < (size_t)F; f++) {
-        for (size_t kh = 0; kh < (size_t)KH; kh++) {
-            for (size_t kw = 0; kw < (size_t)KW; kw++) {
-                for (size_t d = 0; d < (size_t)D; d++) {
-                    // Original Index
-                    size_t oldIdx = (f * KH * KW * D) + (kh * KW * D) + (kw * D) + d;
-                    
-                    // Rotated Index (Flip KH and KW)
-                    size_t newKh = KH - 1 - kh;
-                    size_t newKw = KW - 1 - kw;
-                    size_t newIdx = (f * KH * KW * D) + (newKh * KW * D) + (newKw * D) + d;
-                    
-                    dst[newIdx] = src[oldIdx];
-                }
-            }
+static void ValidateShape(const IntArray& shape, size_t expectedDimensions, const char* name) {
+    if (shape.size() != expectedDimensions) {
+        throw std::invalid_argument(std::string(name) + " must have " +
+            std::to_string(expectedDimensions) + " dimensions.");
+    }
+    for (int dimension : shape) {
+        if (dimension < 0) {
+            throw std::invalid_argument(std::string(name) + " dimensions must not be negative.");
         }
     }
+}
 
-    return output;
+static void CheckOpenCLError(cl_int error, const std::string& operation) {
+    if (error != CL_SUCCESS) {
+        throw std::runtime_error(operation + " failed with OpenCL error " + std::to_string(error) + ".");
+    }
+}
+
+template <typename T>
+static void SetKernelArg(cl_kernel kernel, cl_uint index, const T& value) {
+    CheckOpenCLError(clSetKernelArg(kernel, index, sizeof(T), &value),
+        "clSetKernelArg(" + std::to_string(index) + ")");
 }
 
 // ==================== MAIN FUNCTIONS ======================= //
@@ -53,17 +48,18 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
-    int strides = info[1].As<Napi::Number>().Int32Value();
+    IntArray inputShape = Vectorize(info[1].As<Napi::Array>());
     IntArray outputShape = Vectorize(info[2].As<Napi::Array>());
     IntArray kernelShape = Vectorize(info[3].As<Napi::Array>());
-    IntArray inputShape = Vectorize(info[4].As<Napi::Array>());
-    Napi::Float32Array weightsArray = info[5].As<Napi::Float32Array>();
-    Napi::Float32Array biasesArray = info[6].As<Napi::Float32Array>();
-    int pointer = info[7].As<Napi::Number>().Int32Value();
-    std::string modelID = info[8].As<Napi::String>().Utf8Value();
-    std::string layerID = info[9].As<Napi::String>().Utf8Value();
+    int pointer = info[6].As<Napi::Number>().Int32Value();
+    std::string modelID = info[7].As<Napi::String>().Utf8Value();
+    std::string layerID = info[8].As<Napi::String>().Utf8Value();
 
-    int inputSize = input.ElementLength();
+    ValidateShape(inputShape, 3, "ConvolveForward inputShape");
+    ValidateShape(outputShape, 3, "ConvolveForward outputShape");
+    ValidateShape(kernelShape, 4, "ConvolveForward kernelShape");
+
+    size_t inputSize = input.ElementLength();
     int numFilters = kernelShape[0];
     int kernelH = kernelShape[1];
     int kernelW = kernelShape[2];
@@ -71,38 +67,51 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
 
     int inputH = inputShape[0];
     int inputW = inputShape[1];
+    int inputDepth = inputShape[2];
     int outputH = outputShape[0];
     int outputW = outputShape[1];
-    int outputSize = outputH * outputW * numFilters;
-    int kernelSize = kernelH * kernelW * depth;
+    int outputDepth = outputShape[2];
+    if (depth != inputDepth || numFilters != outputDepth) {
+        throw std::invalid_argument("ConvolveForward input, output, and kernel depths do not match.");
+    }
+
+    const size_t expectedInputSize = static_cast<size_t>(inputH) * inputW * inputDepth;
+    const size_t expectedKernelSize = static_cast<size_t>(numFilters) * kernelH * kernelW * depth;
+    if (input.ElementLength() != expectedInputSize) {
+        throw std::invalid_argument("ConvolveForward input length does not match inputShape.");
+    }
+    if (info[4].As<Napi::Float32Array>().ElementLength() != expectedKernelSize) {
+        throw std::invalid_argument("ConvolveForward weight length does not match kernelShape.");
+    }
+    if (info[5].As<Napi::Float32Array>().ElementLength() != static_cast<size_t>(numFilters)) {
+        throw std::invalid_argument("ConvolveForward bias length does not match the number of filters.");
+    }
+
+    size_t outputSize = static_cast<size_t>(outputH) * outputW * outputDepth;
     Napi::Float32Array output = Napi::Float32Array::New(env, outputSize);
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
-    cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("convolve");
 
     cl_mem inputTensor = gpu.getOrCreate_Input(modelID, layerID, static_cast<size_t>(inputSize));
-    clEnqueueWriteBuffer(queue, inputTensor, CL_FALSE, 0, sizeof(float) * inputSize, input.Data(), 0, nullptr, nullptr);
+    CheckOpenCLError(clEnqueueWriteBuffer(queue, inputTensor, CL_FALSE, 0, sizeof(float) * inputSize, input.Data(), 0, nullptr, nullptr),"clEnqueueWriteBuffer(ConvolveForward input)");
     cl_mem weights = gpu.getWeights(modelID, pointer);
     cl_mem biases = gpu.getBiases(modelID, pointer);
     cl_mem output_tensor = gpu.getOrCreate_Z(modelID, layerID, static_cast<size_t>(outputSize));
 
-
-    // Set args
-    clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputTensor);
-    clSetKernelArg(kernel, 1, sizeof(cl_mem), &weights);
-    clSetKernelArg(kernel, 2, sizeof(cl_mem), &biases);
-    clSetKernelArg(kernel, 3, sizeof(cl_mem), &output_tensor);
-    clSetKernelArg(kernel, 4, sizeof(int), &strides);
-    clSetKernelArg(kernel, 5, sizeof(int), &outputH);
-    clSetKernelArg(kernel, 6, sizeof(int), &outputW);
-    clSetKernelArg(kernel, 7, sizeof(int), &numFilters);
-    clSetKernelArg(kernel, 8, sizeof(int), &kernelH);
-    clSetKernelArg(kernel, 9, sizeof(int), &kernelW);
-    clSetKernelArg(kernel, 10, sizeof(int), &depth);
-    clSetKernelArg(kernel, 11, sizeof(int), &inputH);
-    clSetKernelArg(kernel, 12, sizeof(int), &inputW);
+    SetKernelArg(kernel, 0, inputTensor);
+    SetKernelArg(kernel, 1, weights);
+    SetKernelArg(kernel, 2, biases);
+    SetKernelArg(kernel, 3, output_tensor);
+    SetKernelArg(kernel, 4, outputH);
+    SetKernelArg(kernel, 5, outputW);
+    SetKernelArg(kernel, 6, numFilters);
+    SetKernelArg(kernel, 7, kernelH);
+    SetKernelArg(kernel, 8, kernelW);
+    SetKernelArg(kernel, 9, depth);
+    SetKernelArg(kernel, 10, inputH);
+    SetKernelArg(kernel, 11, inputW);
 
     size_t global[3] = {
         (size_t)outputH,
@@ -110,80 +119,95 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
         (size_t)numFilters
     };
 
-    clEnqueueNDRangeKernel(queue,kernel,3,nullptr,global,nullptr,0,nullptr,nullptr);
-
-    clEnqueueReadBuffer(queue, output_tensor, CL_TRUE, 0, sizeof(float) * outputSize, output.Data(), 0, nullptr, nullptr);
+    CheckOpenCLError(clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, global, nullptr, 0, nullptr, nullptr),"clEnqueueNDRangeKernel(ConvolveForward)");
+    CheckOpenCLError(clEnqueueReadBuffer(queue, output_tensor, CL_TRUE, 0, sizeof(float) * outputSize, output.Data(), 0, nullptr, nullptr),"clEnqueueReadBuffer(ConvolveForward output)");
 
     return output;
 }
 
 Napi::Value Convolve_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-
     Napi::Float32Array inputTensor = info[0].As<Napi::Float32Array>();
-    int strides = info[1].As<Napi::Number>().Int32Value();
+    IntArray inputShape = Vectorize(info[1].As<Napi::Array>());
     IntArray outputShape = Vectorize(info[2].As<Napi::Array>());
     IntArray kernelShape = Vectorize(info[3].As<Napi::Array>());
-    IntArray inputShape = Vectorize(info[4].As<Napi::Array>());
-    Napi::Float32Array weightsArray = info[5].As<Napi::Float32Array>();
-    Napi::Float32Array biasesArray = info[6].As<Napi::Float32Array>();
+    Napi::Float32Array weightsArray = info[4].As<Napi::Float32Array>();
+    Napi::Float32Array biasesArray = info[5].As<Napi::Float32Array>();
 
+    ValidateShape(inputShape, 3, "ConvolveForward inputShape");
+    ValidateShape(outputShape, 3, "ConvolveForward outputShape");
+    ValidateShape(kernelShape, 4, "ConvolveForward kernelShape");
 
-    int numFilters = kernelShape[0];
-    int kernelH = kernelShape[1];
-    int kernelW = kernelShape[2];
-    int depth = kernelShape[3];
+    const int inputH = inputShape[0];
+    const int inputW = inputShape[1];
+    const int inputDepth = inputShape[2];
+    const int outputH = outputShape[0];
+    const int outputW = outputShape[1];
+    const int outputDepth = outputShape[2];
+    const int numFilters = kernelShape[0];
+    const int kernelH = kernelShape[1];
+    const int kernelW = kernelShape[2];
+    const int depth = kernelShape[3];
 
-    int inputH = inputShape[0];
-    int inputW = inputShape[1];
-    int outputH = outputShape[0];
-    int outputW = outputShape[1];
-    int outputSize = outputH * outputW * numFilters;
-    int kernelSize = kernelH * kernelW * depth;
+    if (depth != inputDepth || numFilters != outputDepth) {
+        throw std::invalid_argument("ConvolveForward input, output, and kernel depths do not match.");
+    }
+    if (inputTensor.ElementLength() != static_cast<size_t>(inputH) * inputW * inputDepth) {
+        throw std::invalid_argument("ConvolveForward input length does not match inputShape.");
+    }
+    if (weightsArray.ElementLength() != static_cast<size_t>(numFilters) * kernelH * kernelW * depth) {
+        throw std::invalid_argument("ConvolveForward weight length does not match kernelShape.");
+    }
+    if (biasesArray.ElementLength() != static_cast<size_t>(numFilters)) {
+        throw std::invalid_argument("ConvolveForward bias length does not match the number of filters.");
+    }
+
+    const size_t outputSize = static_cast<size_t>(outputH) * outputW * outputDepth;
     Napi::Float32Array outputTensor = Napi::Float32Array::New(env, outputSize);
-
-    float* input = inputTensor.Data();
+    const float* input = inputTensor.Data();
+    const float* weights = weightsArray.Data();
+    const float* biases = biasesArray.Data();
     float* output = outputTensor.Data();
-    float* weights = weightsArray.Data();
-    float* biases = biasesArray.Data();
 
-    for (int y = 0; y < outputH; y++) {
-        int baseY = y * strides;
+    for (int h = 0; h < outputH; h++) {
+        for (int w = 0; w < outputW; w++) {
+            const size_t outputBase = (static_cast<size_t>(h) * outputW + w) * outputDepth;
 
-        for (int x = 0; x < outputW; x++) {
-            int baseX = x * strides;
-            int outBase = (y * outputW + x) * numFilters;
+            for (int filter = 0; filter < numFilters; filter++) {
+                float sum = biases[filter];
+                const size_t filterBase = static_cast<size_t>(filter) * kernelH * kernelW * depth;
 
-            for (int f = 0; f < numFilters; f++) {
-                float sum = biases[f];
-                int filterOffset = f * kernelSize;
+                for (int kh = 0; kh < kernelH; kh++) {
+                    const int inputHIndex = h + kh;
+                    if (inputHIndex >= inputH) continue;
 
-                for (int ky = 0; ky < kernelH; ky++) {
-                    int inY = baseY + ky;
+                    for (int kw = 0; kw < kernelW; kw++) {
+                        const int inputWIndex = w + kw;
+                        if (inputWIndex >= inputW) continue;
 
-                    if (inY >= inputH) continue;
-
-                    for (int kx = 0; kx < kernelW; kx++) {
-                        int inX = baseX + kx;
-                        if (inX >= inputW) continue;
-
-                        int inputBase = (inY * inputW + inX) * depth;
-                        int kernelBase = filterOffset + (ky * kernelW + kx) * depth;
-                        int c = 0;
-                        
-                        for (; c <= depth - 4; c += 4) {
-                            sum += input[inputBase + c] * weights[kernelBase + c];
-                            sum += input[inputBase + c + 1] * weights[kernelBase + c + 1];
-                            sum += input[inputBase + c + 2] * weights[kernelBase + c + 2];
-                            sum += input[inputBase + c + 3] * weights[kernelBase + c + 3];
+                        const size_t inputBase = (static_cast<size_t>(inputHIndex) * inputW + inputWIndex) * inputDepth;
+                        const size_t weightBase = filterBase + (static_cast<size_t>(kh) * kernelW + kw) * depth;
+                        int channel = 0;
+                        for (; channel <= depth - 4; channel += 4) {
+                            const float input0 = input[inputBase + channel];
+                            const float input1 = input[inputBase + channel + 1];
+                            const float input2 = input[inputBase + channel + 2];
+                            const float input3 = input[inputBase + channel + 3];
+                            const float weight0 = weights[weightBase + channel];
+                            const float weight1 = weights[weightBase + channel + 1];
+                            const float weight2 = weights[weightBase + channel + 2];
+                            const float weight3 = weights[weightBase + channel + 3];
+                            sum += input0 * weight0;
+                            sum += input1 * weight1;
+                            sum += input2 * weight2;
+                            sum += input3 * weight3;
                         }
-
-                        for (; c < depth; c++) {
-                            sum += input[inputBase + c] * weights[kernelBase + c];
+                        for (; channel < depth; channel++) {
+                            sum += input[inputBase + channel] * weights[weightBase + channel];
                         }
                     }
                 }
-                output[outBase + f] = sum;
+                output[outputBase + filter] = sum;
             }
         }
     }
@@ -194,125 +218,152 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     
     Napi::Float32Array inputTensor = info[0].As<Napi::Float32Array>();
-    IntArray deltaShape = Vectorize(info[1].As<Napi::Array>());
-    IntArray kernelShape = Vectorize(info[2].As<Napi::Array>());
-    IntArray outputShape = Vectorize(info[3].As<Napi::Array>());
-    Napi::Float32Array kernelsArray = info[4].As<Napi::Float32Array>(); // this won't be used here for buffer creation
-    int stride = info[5].As<Napi::Number>().Int32Value();
-    int pointer = info[6].As<Napi::Number>().Int32Value();
-    std::string modelID = info[7].As<Napi::String>().Utf8Value();
-    std::string layerID = info[8].As<Napi::String>().Utf8Value();
+    IntArray outputShape = Vectorize(info[1].As<Napi::Array>());
+    IntArray deltaShape = Vectorize(info[2].As<Napi::Array>());
+    IntArray kernelShape = Vectorize(info[3].As<Napi::Array>());
+    int pointer = info[5].As<Napi::Number>().Int32Value();
+    std::string modelID = info[6].As<Napi::String>().Utf8Value();
+    std::string layerID = info[7].As<Napi::String>().Utf8Value();
 
-    int Hp = deltaShape[0];
-    int Wp = deltaShape[1];
-    int C_in = deltaShape[2];
+    ValidateShape(outputShape, 3, "ConvolveBackward outputShape");
+    ValidateShape(deltaShape, 3, "ConvolveBackward deltaShape");
+    ValidateShape(kernelShape, 4, "ConvolveBackward kernelShape");
 
     int F = kernelShape[0];
     int KH = kernelShape[1];
     int KW = kernelShape[2];
     int C_k = kernelShape[3];
-
+    int deltaH = deltaShape[0];
+    int deltaW = deltaShape[1];
+    int deltaDepth = deltaShape[2];
     int oH = outputShape[0];
     int oW = outputShape[1];
+    int outputDepth = outputShape[2];
 
-    int targetSize = oH * oW * C_k;
-    int deltaSize = Hp * Wp * C_in;
+    if (deltaDepth != F || outputDepth != C_k) {
+        throw std::invalid_argument("ConvolveBackward delta, output, and kernel depths do not match.");
+    }
+    if (inputTensor.ElementLength() != static_cast<size_t>(deltaH) * deltaW * deltaDepth) {
+        throw std::invalid_argument("ConvolveBackward input length does not match deltaShape.");
+    }
+    if (info[4].As<Napi::Float32Array>().ElementLength() != static_cast<size_t>(F) * KH * KW * C_k) {
+        throw std::invalid_argument("ConvolveBackward weight length does not match kernelShape.");
+    }
+
+    const size_t targetSize = static_cast<size_t>(oH) * oW * outputDepth;
+    const size_t deltaSize = static_cast<size_t>(deltaH) * deltaW * deltaDepth;
     Napi::Float32Array output = Napi::Float32Array::New(env, targetSize);
     
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
-    cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("delta_convolve");
 
     cl_mem weights = gpu.getWeights(modelID, pointer);
-    cl_mem delta = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_conv_incoming_delta", static_cast<size_t>(deltaSize));
-    clEnqueueWriteBuffer(queue, delta, CL_FALSE, 0, sizeof(float) * deltaSize, inputTensor.Data(), 0, nullptr, nullptr);
-    cl_mem outputBuf = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_output_conv_backward", static_cast<size_t>(targetSize));
+    cl_mem delta = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_conv_incoming_delta", deltaSize);
+    CheckOpenCLError(clEnqueueWriteBuffer(queue, delta, CL_FALSE, 0, sizeof(float) * deltaSize, inputTensor.Data(), 0, nullptr, nullptr),"clEnqueueWriteBuffer(ConvolveBackward delta)");
+    cl_mem outputBuf = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_output_conv_backward", targetSize);
 
-    clSetKernelArg(kernel, 0, sizeof(cl_mem), &delta);
-    clSetKernelArg(kernel, 1, sizeof(cl_mem), &weights);
-    clSetKernelArg(kernel, 2, sizeof(cl_mem), &outputBuf);
-    clSetKernelArg(kernel, 3, sizeof(int), &Wp);
-    clSetKernelArg(kernel, 4, sizeof(int), &C_in);
-    clSetKernelArg(kernel, 5, sizeof(int), &F);
-    clSetKernelArg(kernel, 6, sizeof(int), &KH);
-    clSetKernelArg(kernel, 7, sizeof(int), &KW);
-    clSetKernelArg(kernel, 8, sizeof(int), &C_k);
-    clSetKernelArg(kernel, 9, sizeof(int), &oH);
-    clSetKernelArg(kernel, 10, sizeof(int), &oW);
-    clSetKernelArg(kernel, 11, sizeof(int), &stride);
+    SetKernelArg(kernel, 0, delta);
+    SetKernelArg(kernel, 1, weights);
+    SetKernelArg(kernel, 2, outputBuf);
+    SetKernelArg(kernel, 3, deltaH);
+    SetKernelArg(kernel, 4, deltaW);
+    SetKernelArg(kernel, 5, F);
+    SetKernelArg(kernel, 6, KH);
+    SetKernelArg(kernel, 7, KW);
+    SetKernelArg(kernel, 8, C_k);
+    SetKernelArg(kernel, 9, oH);
+    SetKernelArg(kernel, 10, oW);
 
     size_t global[3] = {
         (size_t)oH,
         (size_t)oW,
         (size_t)C_k
     };
-    clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, global, nullptr, 0, nullptr, nullptr);
-
-    // Read result back to host
-    clEnqueueReadBuffer(queue, outputBuf, CL_TRUE, 0, sizeof(float) * targetSize, output.Data(), 0, nullptr, nullptr);
-
+    CheckOpenCLError(clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, global, nullptr, 0, nullptr, nullptr),"clEnqueueNDRangeKernel(ConvolveBackward)");
+    CheckOpenCLError(clEnqueueReadBuffer(queue, outputBuf, CL_TRUE, 0, sizeof(float) * targetSize, output.Data(), 0, nullptr, nullptr),"clEnqueueReadBuffer(ConvolveBackward output)");
     return output;
 }
 
 Napi::Value ConvolveDelta_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array inputTensor = info[0].As<Napi::Float32Array>();
-    IntArray deltaShape = Vectorize(info[1].As<Napi::Array>());
-    IntArray kernelShape = Vectorize(info[2].As<Napi::Array>());
-    IntArray outputShape = Vectorize(info[3].As<Napi::Array>());
-    Napi::Float32Array kernelArray = info[4].As<Napi::Float32Array>();
-    int stride = info[5].As<Napi::Number>().Int32Value();
+    IntArray outputShape = Vectorize(info[1].As<Napi::Array>());
+    IntArray deltaShape = Vectorize(info[2].As<Napi::Array>());
+    IntArray kernelShape = Vectorize(info[3].As<Napi::Array>());
+    Napi::Float32Array kernelsArray = info[4].As<Napi::Float32Array>();
 
-    int Hp = deltaShape[0];
-    int Wp = deltaShape[1];
-    int C_in = deltaShape[2];
+    ValidateShape(outputShape, 3, "ConvolveBackward outputShape");
+    ValidateShape(deltaShape, 3, "ConvolveBackward deltaShape");
+    ValidateShape(kernelShape, 4, "ConvolveBackward kernelShape");
 
-    int F = kernelShape[0];
-    int KH = kernelShape[1];
-    int KW = kernelShape[2];
-    int C_k = kernelShape[3];
+    const int outputH = outputShape[0];
+    const int outputW = outputShape[1];
+    const int outputDepth = outputShape[2];
+    const int deltaH = deltaShape[0];
+    const int deltaW = deltaShape[1];
+    const int deltaDepth = deltaShape[2];
+    const int numFilters = kernelShape[0];
+    const int kernelH = kernelShape[1];
+    const int kernelW = kernelShape[2];
+    const int depth = kernelShape[3];
 
-    int oH = outputShape[0];
-    int oW = outputShape[1];
+    if (deltaDepth != numFilters || outputDepth != depth) {
+        throw std::invalid_argument("ConvolveBackward delta, output, and kernel depths do not match.");
+    }
+    if (inputTensor.ElementLength() != static_cast<size_t>(deltaH) * deltaW * deltaDepth) {
+        throw std::invalid_argument("ConvolveBackward input length does not match deltaShape.");
+    }
+    if (kernelsArray.ElementLength() != static_cast<size_t>(numFilters) * kernelH * kernelW * depth) {
+        throw std::invalid_argument("ConvolveBackward weight length does not match kernelShape.");
+    }
 
-    Napi::Float32Array kernels = Rotate_kernels(env, F, KH, KW, C_k, kernelArray);
-
-    
-    int outputSize = oH * oW * C_k;
+    const size_t outputSize = static_cast<size_t>(outputH) * outputW * outputDepth;
     Napi::Float32Array outputTensor = Napi::Float32Array::New(env, outputSize);
-
-    float* input = inputTensor.Data();
-    float* rotated_kernel = kernels.Data();
+    const float* delta = inputTensor.Data();
+    const float* weights = kernelsArray.Data();
     float* output = outputTensor.Data();
 
-    for (int c_out = 0; c_out < C_k; c_out++) {
-        for (int h = 0; h < oH; h++) {
-            for (int w = 0; w < oW; w++) {
+    for (int h = 0; h < outputH; h++) {
+        for (int w = 0; w < outputW; w++) {
+            const size_t outputBase = (static_cast<size_t>(h) * outputW + w) * outputDepth;
+
+            for (int channel = 0; channel < outputDepth; channel++) {
                 float sum = 0.0f;
-                for (int kh = 0; kh < KH; kh++) {
-                    for (int kw = 0; kw < KW; kw++) {
-                        int ph = h * stride + kh;
-                        int pw = w * stride + kw;
-                        int baseIdx = (ph * Wp + pw) * C_in;
-                        int kernelBase = ((kh * KW + kw) * F) * C_k + c_out;
+                for (int kh = 0; kh < kernelH; kh++) {
+                    const int deltaHIndex = h - kh;
+                    if (deltaHIndex < 0 || deltaHIndex >= deltaH) continue;
 
-                        int f = 0;
-                        for (; f <= F - 4; f += 4) {
-                            sum += input[baseIdx + f] * rotated_kernel[f * C_k + kernelBase];
-                            sum += input[baseIdx + f + 1] * rotated_kernel[(f + 1) * C_k + kernelBase];
-                            sum += input[baseIdx + f + 2] * rotated_kernel[(f + 2) * C_k + kernelBase];
-                            sum += input[baseIdx + f + 3] * rotated_kernel[(f + 3) * C_k + kernelBase];
+                    for (int kw = 0; kw < kernelW; kw++) {
+                        const int deltaWIndex = w - kw;
+                        if (deltaWIndex < 0 || deltaWIndex >= deltaW) continue;
+
+                        const size_t deltaBase = (static_cast<size_t>(deltaHIndex) * deltaW + deltaWIndex) * deltaDepth;
+                        const size_t kernelBase = (static_cast<size_t>(kernelH - 1 - kh) * kernelW +
+                            (kernelW - 1 - kw)) * depth + channel;
+
+                        int filter = 0;
+                        for (; filter <= numFilters - 4; filter += 4) {
+                            const float delta0 = delta[deltaBase + filter];
+                            const float delta1 = delta[deltaBase + filter + 1];
+                            const float delta2 = delta[deltaBase + filter + 2];
+                            const float delta3 = delta[deltaBase + filter + 3];
+                            const size_t weight0 = (static_cast<size_t>(filter) * kernelH * kernelW * depth) + kernelBase;
+                            const size_t weight1 = (static_cast<size_t>(filter + 1) * kernelH * kernelW * depth) + kernelBase;
+                            const size_t weight2 = (static_cast<size_t>(filter + 2) * kernelH * kernelW * depth) + kernelBase;
+                            const size_t weight3 = (static_cast<size_t>(filter + 3) * kernelH * kernelW * depth) + kernelBase;
+                            sum += delta0 * weights[weight0];
+                            sum += delta1 * weights[weight1];
+                            sum += delta2 * weights[weight2];
+                            sum += delta3 * weights[weight3];
                         }
-
-                        for (; f < F; f++) {
-                            int padIdx = baseIdx + f;
-                            int kernelIdx = ((f * KH + kh) * KW + kw) * C_k + c_out;
-                            sum += input[padIdx] * rotated_kernel[kernelIdx];
+                        for (; filter < numFilters; filter++) {
+                            const size_t weight = (static_cast<size_t>(filter) * kernelH * kernelW * depth) + kernelBase;
+                            sum += delta[deltaBase + filter] * weights[weight];
                         }
                     }
                 }
-                output[(h * oW + w) * C_k + c_out] = sum;
+                output[outputBase + channel] = sum;
             }
         }
     }
@@ -338,6 +389,6 @@ Napi::Value ConvolveDeltaWrapper(const Napi::CallbackInfo& info) {
 
 /* ==================== Module exports ======================== */
 void ConvolveRegister(Napi::Env env, Napi::Object exports) {
-    exports.Set("Convolve", Napi::Function::New(env, ConvolveWrapper));
-    exports.Set("ConvolveDelta", Napi::Function::New(env, ConvolveDeltaWrapper));
+    exports.Set("ConvolveForward", Napi::Function::New(env, ConvolveWrapper));
+    exports.Set("ConvolveBackward", Napi::Function::New(env, ConvolveDeltaWrapper));
 }

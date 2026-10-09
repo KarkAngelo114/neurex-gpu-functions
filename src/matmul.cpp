@@ -105,7 +105,7 @@ Napi::Value DeltaMatMul_GPU(const Napi::CallbackInfo& info) {
     cl_command_queue queue = gpu.queue();
     cl_kernel k = gpu.kernel("delta_matmul");
 
-    int deltaSize = delta.ElementSize();
+    int deltaSize = delta.ElementLength();
 
     cl_mem dDelta = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_incoming_delta_matmul", static_cast<size_t>(outputSize));
     clEnqueueWriteBuffer(queue, dDelta, CL_FALSE, 0, sizeof(float) * deltaSize, delta.Data(), 0, nullptr, nullptr);

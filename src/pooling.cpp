@@ -195,6 +195,8 @@ Napi::Value MaxPoolDelta_GPU(const Napi::CallbackInfo& info) {
     cl_mem indices = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_maxpool_delta_indices_buffer", static_cast<size_t>(indices_Size));
     clEnqueueWriteBuffer(queue, indices, CL_FALSE, 0, sizeof(float) * indices_Size, indicesArray.Data(), 0, nullptr, nullptr);
     cl_mem outputTensor = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_maxpool_delta_output_buffer", static_cast<size_t>(size));
+    const float zero = 0.0f;
+    clEnqueueFillBuffer(queue, outputTensor, &zero, sizeof(float), 0, sizeof(float) * size, 0, nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputData);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &indices);
