@@ -203,7 +203,7 @@ Napi::Value RMSProp_GPU(const Napi::CallbackInfo& info) {
     std::string tag = isWeights ? "_weightGrads" : "_biasGrads";
     cl_mem grads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+tag, static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, grads, CL_FALSE, 0, sizeof(float) * size, gradTensor.Data(), 0, nullptr, nullptr);
-    cl_mem parameters = isWeights ? gpu.getWeights(modelID, pointer) : gpu.getBiases(modelID, pointer);
+    cl_mem params = isWeights ? gpu.getWeights(modelID, pointer) : gpu.getBiases(modelID, pointer);
     cl_mem sqAvg = gpu.getOrCreate_SqAvg(modelID, pointer, isWeights, static_cast<size_t>(size), sqAvgTensor.Data());
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &params);
