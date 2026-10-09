@@ -18,34 +18,44 @@ static IntArray Vectorize(const Napi::Array& arr) {
     return VectorArray;
 }
 
-Napi::Value ComputeGradientForDenseWeights_GPU(const Napi::CallbackInfo& info) {
+Napi::Value accumulateWeightsAndBiasGradsForConnectedLayer_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    Napi::Float32Array activation_output = info[0].As<Napi::Float32Array>();
-    Napi::Float32Array deltas = info[1].As<Napi::Float32Array>();
-    Napi::Float32Array weightGrads = info[2].As<Napi::Float32Array>();
-    int inputSize = info[3].As<Napi::Number>().Int32Value();
-    int outputSize = info[4].As<Napi::Number>().Int32Value();
-    int pointer = info[5].As<Napi::Number>().Int32Value();
-    std::string modelID = info[6].As<Napi::String>().Utf8Value();
-    std::string layerID = info[7].As<Napi::String>().Utf8Value();
 
-    int size = weightGrads.ElementLength();
+    Napi::Float32Array activations_outputs = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array deltas = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array weightGrads_tensor = info[2].As<Napi::Float32Array>();
+    Napi::Float32Array biasGrads_tensor = info[3].As<Napi::Float32Array>();
+    IntArray weightShape = Vectorize(info[4].As<Napi::Array>());
+    std::string modelID = info[5].As<Napi::String>().Utf8Value();
+    std::string layerID = info[6].As<Napi::String>().Utf8Value();
+
+    int inputSize = weightShape[0];
+    int outputSize = weightShape[1];
+
+    int weightGrads_size = weightGrads_tensor.ElementLength();
+    int biasGrads_size = biasGrads_tensor.ElementLength();
+
 
     auto& gpu = GpuContext::instance();
-    cl_kernel kernel = gpu.kernel("computeWeightGradsForConnected_Layer");
+    cl_kernel kernel = gpu.kernel("accumulateWeightsAndBiasGradsDense");
     cl_context context = gpu.context();
     cl_command_queue queue = gpu.queue();
 
     cl_mem activations = gpu.getInput(modelID, layerID);
     cl_mem deltaInput = gpu.getDelta(modelID, layerID);
-    cl_mem weight_grads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_dense_weight_grads", static_cast<size_t>(size));
-    clEnqueueWriteBuffer(queue, weight_grads, CL_FALSE, 0, sizeof(float) * size, weightGrads.Data(), 0, nullptr, nullptr);
+
+    cl_mem weight_grads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_dense_weight_grads", static_cast<size_t>(weightGrads_size));
+    clEnqueueWriteBuffer(queue, weight_grads, CL_FALSE, 0, sizeof(float) * weightGrads_size, weightGrads_tensor.Data(), 0, nullptr, nullptr);
+
+    cl_mem bias_grads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_dense_bias_grads", static_cast<size_t>(biasGrads_size));
+    clEnqueueWriteBuffer(queue, bias_grads, CL_FALSE, 0, sizeof(float) * biasGrads_size, biasGrads_tensor.Data(), 0, nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &activations);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &deltaInput);
     clSetKernelArg(kernel, 2, sizeof(cl_mem), &weight_grads);
-    clSetKernelArg(kernel, 3, sizeof(int), &inputSize);
-    clSetKernelArg(kernel, 4, sizeof(int), &outputSize);
+    clSetKernelArg(kernel, 3, sizeof(cl_mem), &bias_grads);
+    clSetKernelArg(kernel, 4, sizeof(int), &inputSize);
+    clSetKernelArg(kernel, 5, sizeof(int), &outputSize);
 
     size_t globalSize[2] = {
         (size_t)inputSize,
@@ -54,84 +64,59 @@ Napi::Value ComputeGradientForDenseWeights_GPU(const Napi::CallbackInfo& info) {
 
     clEnqueueNDRangeKernel(queue, kernel, 2, nullptr, globalSize, nullptr, 0, nullptr, nullptr);
 
-    clEnqueueReadBuffer(queue, weight_grads, CL_TRUE, 0, sizeof(float) * weightGrads.ElementLength(), weightGrads.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, weight_grads, CL_TRUE, 0, sizeof(float) * weightGrads_size, weightGrads_tensor.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, bias_grads, CL_TRUE, 0, sizeof(float) * biasGrads_size, biasGrads_tensor.Data(), 0, nullptr, nullptr);
 
-    return weightGrads;
+    Napi::Object output = Napi::Object::New(env);
+    output.Set("weightGrads", weightGrads_tensor);
+    output.Set("biasGrads", biasGrads_tensor);
+
+    return output;
 
 }
 
-Napi::Value ComputeGradientForDenseWeights_CPU(const Napi::CallbackInfo& info) {
+Napi::Value accumulateWeightsAndBiasGradsForConnectedLayer_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    Napi::Float32Array activation_output = info[0].As<Napi::Float32Array>();
+    
+    Napi::Float32Array activations_outputs = info[0].As<Napi::Float32Array>();
     Napi::Float32Array deltas = info[1].As<Napi::Float32Array>();
-    Napi::Float32Array weightGrads = info[2].As<Napi::Float32Array>();
-    int inputSize = info[3].As<Napi::Number>().Int32Value();
-    int outputSize = info[4].As<Napi::Number>().Int32Value();
+    Napi::Float32Array weightGrads_tensor = info[2].As<Napi::Float32Array>();
+    Napi::Float32Array biasGrads_tensor = info[3].As<Napi::Float32Array>();
+    IntArray weightShape = Vectorize(info[4].As<Napi::Array>());
 
-    float* a = activation_output.Data();
-    float* d = deltas.Data();
-    float* wg = weightGrads.Data();
+    int inputSize = weightShape[0];
+    int outputSize = weightShape[1];
 
+    float* activations = activations_outputs.Data();
+    float* delta = deltas.Data();
+    float* weightGrads = weightGrads_tensor.Data();
+    float* biasGrads = biasGrads_tensor.Data();
+
+    // accumulate biasGrads
+    #pragma omp parallel for
+    #pragma omp unroll partial(4)
+    for (int i = 0; i < deltas.ElementLength(); i++) {
+        biasGrads[i] += delta[i];
+    }
+
+    // accumulate weightGrads
     for (int i = 0; i < inputSize; i++) {
-        float inputVal = a[i];
-        int offset = i * outputSize;
+        float inputVal = activations[i];
+        int rowStart = i * outputSize;
 
         #pragma omp unroll partial(4)
-        for (size_t j = 0; j < outputSize; j++) {
-            wg[offset + j] += inputVal * d[j];
+        for (int j = 0; j < outputSize; j++) {
+            weightGrads[rowStart + j] += inputVal * delta[j];
         }
     }
-    return weightGrads;
-}
 
-Napi::Value computeBiasGradsForConnected_Layer_GPU(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-    Napi::Float32Array biasgrads = info[0].As<Napi::Float32Array>();
-    Napi::Float32Array deltas = info[1].As<Napi::Float32Array>(); // use the cached delta
-    int pointer = info[2].As<Napi::Number>().Int32Value();
-    std::string modelID = info[3].As<Napi::String>().Utf8Value();
-    std::string layerID = info[4].As<Napi::String>().Utf8Value();
 
-    int biasGradsSize = biasgrads.ElementLength();
+    Napi::Object output = Napi::Object::New(env);
+    output.Set("weightGrads", weightGrads_tensor);
+    output.Set("biasGrads", biasGrads_tensor);
 
-    auto& gpu = GpuContext::instance();
-    cl_kernel kernel = gpu.kernel("computeBiasGradsForConnected_Layer");
-    cl_context context = gpu.context();
-    cl_command_queue queue = gpu.queue();
+    return output;
 
-    cl_mem deltaInput = gpu.getDelta(modelID, layerID);
-    cl_mem gradsInput = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_dense_bias_grads", static_cast<size_t>(biasGradsSize));
-    clEnqueueWriteBuffer(queue, gradsInput, CL_FALSE, 0, sizeof(float) * biasGradsSize, biasgrads.Data(), 0, nullptr, nullptr);
-    
-
-    clSetKernelArg(kernel, 0, sizeof(cl_mem), &deltaInput);
-    clSetKernelArg(kernel, 1, sizeof(cl_mem), &gradsInput);
-    clSetKernelArg(kernel, 2, sizeof(int), &biasGradsSize);
-
-    size_t globalSize = biasGradsSize;
-    clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
-
-    // Read results back into the output array
-    clEnqueueReadBuffer(queue, gradsInput, CL_TRUE, 0, sizeof(float) * biasGradsSize, biasgrads.Data(), 0, nullptr, nullptr);
-
-    return biasgrads;
-}
-
-Napi::Value computeBiasGradsForConnected_Layer_CPU(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-    Napi::Float32Array biasgrads = info[0].As<Napi::Float32Array>();
-    Napi::Float32Array deltas = info[1].As<Napi::Float32Array>();
-
-    float* bg = biasgrads.Data();
-    float* d = deltas.Data();
-    size_t length = biasgrads.ElementLength();
-
-    #pragma omp unroll partial(4)
-    for (int i = 0; i < length; i++) {
-        bg[i] += d[i];
-    }
-
-    return biasgrads;
 }
 
 Napi::Value computeKernelGradients_GPU(const Napi::CallbackInfo& info) {
@@ -834,20 +819,12 @@ Napi::Value AccumulateBetaGrads_CPU(const Napi::CallbackInfo& info) {
 
 // =================== wrappers ===================== //
 
-Napi::Value computeBiasGradsForConnected_LayerWrapper(const Napi::CallbackInfo& info) {
+Napi::Value accumulateWeightsAndBiasGradsForConnectedLayer(const Napi::CallbackInfo& info) {
     if (getComputeBackendType() == "opencl") {
-        return computeBiasGradsForConnected_Layer_GPU(info);
+        return accumulateWeightsAndBiasGradsForConnectedLayer_GPU(info);
     }
 
-    return computeBiasGradsForConnected_Layer_CPU(info);
-}
-
-Napi::Value ComputeGradientForDenseWeightsWrapper(const Napi::CallbackInfo& info) {
-    if (getComputeBackendType() == "opencl") {
-        return ComputeGradientForDenseWeights_GPU(info);
-    }
-
-    return ComputeGradientForDenseWeights_CPU(info);
+    return accumulateWeightsAndBiasGradsForConnectedLayer_CPU(info);
 }
 
 Napi::Value computeKernelGradientsWrapper(const Napi::CallbackInfo& info) {
@@ -908,9 +885,8 @@ Napi::Value AccumulateBetaGrads_wrapper(const Napi::CallbackInfo& info) {
 
 /* ================ module exports ===================*/
 void GradientCalculationRegister(Napi::Env env, Napi::Object exports) {
-    exports.Set("computeWeightGradientsForWeightsInConnectedLayer", Napi::Function::New(env, ComputeGradientForDenseWeightsWrapper));
+    exports.Set("accumulateWeightsAndBiasGradsForConnectedLayer", Napi::Function::New(env, accumulateWeightsAndBiasGradsForConnectedLayer));
     exports.Set("computeKernelGradients", Napi::Function::New(env, computeKernelGradientsWrapper));
-    exports.Set("computeBiasGradsForConnected_Layer", Napi::Function::New(env, computeBiasGradsForConnected_LayerWrapper));
     exports.Set("computeBiasGradsForConv", Napi::Function::New(env, computeBiasGradsForConvWrapper));
     exports.Set("recurrentWeightGradsAccumulation", Napi::Function::New(env, recurrentWeightGradsAccumulationWrapper));
     exports.Set("recurrentBiasGradsAccumulation", Napi::Function::New(env, recurrentBiasGradsAccumulationWrapper));
