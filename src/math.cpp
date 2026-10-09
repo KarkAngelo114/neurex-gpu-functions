@@ -7,8 +7,8 @@
 
 Napi::Value element_wise_mul_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
-    Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>(); 
+    Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>(); // derivative activation output after using layer's own Z
+    Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>(); // the incoming delta
     std::string modelID = info[2].As<Napi::String>().Utf8Value();
     std::string layerID = info[3].As<Napi::String>().Utf8Value();
     int arr_length = arr2.ElementLength();
@@ -133,16 +133,16 @@ Napi::Value scaleDiff_GPU(const Napi::CallbackInfo& info) {
     cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("scale_diff");
 
-    cl_mem input_arr1 = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"scale_diff_arr1", static_cast<size_t>(size));
+    cl_mem input_arr1 = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_scale_diff_arr1", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, input_arr1, CL_FALSE, 0, sizeof(float) * size, arr1.Data(), 0, nullptr, nullptr);
 
-    cl_mem input_arr2 = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"scale_diff_arr2", static_cast<size_t>(size));
+    cl_mem input_arr2 = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_scale_diff_arr2", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, input_arr2, CL_FALSE, 0, sizeof(float) * size, arr2.Data(), 0, nullptr, nullptr);
 
-    cl_mem input_arr3 = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"scale_diff_arr3", static_cast<size_t>(size));
+    cl_mem input_arr3 = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_scale_diff_arr3", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, input_arr3, CL_FALSE, 0, sizeof(float) * size, arr3.Data(), 0, nullptr, nullptr);
 
-    cl_mem output_arr = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"scale_diff_output_buffer", static_cast<size_t>(size));
+    cl_mem output_arr = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_scale_diff_output_buffer", static_cast<size_t>(size));
 
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &input_arr1);

@@ -296,7 +296,7 @@ Napi::Value Softmax_CPU(const Napi::CallbackInfo& info) {
 // ===================== derivatives ==========================
 Napi::Value DLinear_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    Napi::Float32Array input = info[0].As<Napi::Float32Array>(); // this won't be use in this branch for buffer creation, but only for size referencing
+    Napi::Float32Array input = info[0].As<Napi::Float32Array>();
     std::string modelID = info[1].As<Napi::String>().Utf8Value();
     std::string layerID = info[2].As<Napi::String>().Utf8Value();
 
@@ -307,7 +307,7 @@ Napi::Value DLinear_GPU(const Napi::CallbackInfo& info) {
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("dlinear");
 
-    cl_mem inputData = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* input_size, input.Data(), nullptr);
+    cl_mem inputData = gpu.getZ(modelID, layerID);
     cl_mem outputData = gpu.getOrCreate_DAct(modelID, layerID, static_cast<size_t>(input_size));
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputData);
@@ -319,8 +319,6 @@ Napi::Value DLinear_GPU(const Napi::CallbackInfo& info) {
 
     Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
     clEnqueueReadBuffer(queue, outputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
-
-    clReleaseMemObject(inputData);
 
     return output;
 }
@@ -361,7 +359,7 @@ Napi::Value DReLu_GPU(const Napi::CallbackInfo& info) {
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("drelu");
 
-    cl_mem inputData = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* input_size, input.Data(), nullptr);
+    cl_mem inputData = gpu.getZ(modelID, layerID);
     cl_mem outputData = gpu.getOrCreate_DAct(modelID, layerID, input_size);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputData);
@@ -373,8 +371,6 @@ Napi::Value DReLu_GPU(const Napi::CallbackInfo& info) {
 
     Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
     clEnqueueReadBuffer(queue, outputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
-
-    clReleaseMemObject(inputData);
 
     return output;
 }
@@ -409,7 +405,7 @@ Napi::Value DSigmoid_GPU(const Napi::CallbackInfo& info) {
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("dsigmoid");
 
-    cl_mem inputData = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* input_size, input.Data(), nullptr);
+    cl_mem inputData = gpu.getZ(modelID, layerID);
     cl_mem outputData = gpu.getOrCreate_DAct(modelID, layerID, static_cast<size_t>(input_size));
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputData);
@@ -422,8 +418,6 @@ Napi::Value DSigmoid_GPU(const Napi::CallbackInfo& info) {
 
     Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
     clEnqueueReadBuffer(queue, outputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
-
-    clReleaseMemObject(inputData);
 
     return output;
 }
@@ -459,7 +453,7 @@ Napi::Value DTanh_GPU(const Napi::CallbackInfo& info) {
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("dtanh");
 
-    cl_mem inputData = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* input_size, input.Data(), nullptr);
+    cl_mem inputData = gpu.getZ(modelID, layerID);
     cl_mem outputData = gpu.getOrCreate_DAct(modelID, layerID, static_cast<size_t>(input_size));
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputData);
@@ -471,8 +465,6 @@ Napi::Value DTanh_GPU(const Napi::CallbackInfo& info) {
 
     Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
     clEnqueueReadBuffer(queue, outputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
-
-    clReleaseMemObject(inputData);
     
     return output;
 }

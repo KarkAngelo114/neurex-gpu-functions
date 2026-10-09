@@ -225,7 +225,7 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     cl_kernel kernel = gpu.kernel("delta_convolve");
 
     cl_mem weights = gpu.getWeights(modelID, pointer);
-    cl_mem delta = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_incoming_delta", static_cast<size_t>(deltaSize));
+    cl_mem delta = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_conv_incoming_delta", static_cast<size_t>(deltaSize));
     clEnqueueWriteBuffer(queue, delta, CL_FALSE, 0, sizeof(float) * deltaSize, inputTensor.Data(), 0, nullptr, nullptr);
     cl_mem outputBuf = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_output_conv_backward", static_cast<size_t>(targetSize));
 

@@ -17,6 +17,7 @@ Napi::Value SGD_GPU(const Napi::CallbackInfo& info) {
     int pointer = info[5].As<Napi::Number>().Int32Value();
     std::string paramType = info[6].As<Napi::String>().Utf8Value();
     std::string modelID = info[7].As<Napi::String>().Utf8Value();
+    std::string layerID = info[8].As<Napi::String>().Utf8Value();
 
     int param_length = params.ElementLength();
 
@@ -26,10 +27,12 @@ Napi::Value SGD_GPU(const Napi::CallbackInfo& info) {
     cl_kernel kernel = gpu.kernel("sgd");
 
     bool isWeights = (paramType == "weights");
+    std::string tag = isWeights ? "_weightGrads" : "_biasGrads";
+    cl_mem gradients = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+tag, static_cast<size_t>(param_length));
+    clEnqueueWriteBuffer(queue, gradients, CL_FALSE, 0, sizeof(float) * param_length, grads.Data(), 0, nullptr, nullptr);
     cl_mem parameters = isWeights ? gpu.getWeights(modelID, pointer) : gpu.getBiases(modelID, pointer);
-    cl_mem gradients = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* param_length, grads.Data(), nullptr);
     cl_mem velocity_array = gpu.getOrCreate_Velocity(modelID, pointer, isWeights, static_cast<size_t>(param_length), velocity.Data());
-
+    
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &parameters);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &gradients);
     clSetKernelArg(kernel, 2, sizeof(cl_mem), &velocity_array);
@@ -42,8 +45,6 @@ Napi::Value SGD_GPU(const Napi::CallbackInfo& info) {
 
     clEnqueueReadBuffer(queue, parameters, CL_TRUE, 0, sizeof(float)* param_length, params.Data(), 0, nullptr, nullptr );
     clEnqueueReadBuffer(queue, velocity_array, CL_TRUE, 0, sizeof(float)* param_length, velocity.Data(), 0, nullptr, nullptr );
-
-    clReleaseMemObject(gradients);
 
     Napi::Object output = Napi::Object::New(env);
     output.Set("params", params);
@@ -94,7 +95,9 @@ Napi::Value Adam_GPU(const Napi::CallbackInfo& info) {
     int pointer = info[9].As<Napi::Number>().Int32Value();
     std::string paramType = info[10].As<Napi::String>().Utf8Value();
     std::string modelID = info[11].As<Napi::String>().Utf8Value();
+    std::string layerID = info[12].As<Napi::String>().Utf8Value();
     int params_len = params.ElementLength();
+    
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
@@ -102,8 +105,10 @@ Napi::Value Adam_GPU(const Napi::CallbackInfo& info) {
     cl_kernel kernel = gpu.kernel("adam");
 
     bool isWeights = (paramType == "weights");
+    std::string tag = isWeights ? "_weightGrads" : "_biasGrads";
+    cl_mem gradients = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+tag, static_cast<size_t>(params_len));
+    clEnqueueWriteBuffer(queue, gradients, CL_FALSE, 0, sizeof(float) * params_len, grads.Data(), 0, nullptr, nullptr);
     cl_mem parameters = isWeights ? gpu.getWeights(modelID, pointer) : gpu.getBiases(modelID, pointer);
-    cl_mem gradients = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* params_len, grads.Data(), nullptr);
     cl_mem M = gpu.getOrCreate_M(modelID, pointer, isWeights, static_cast<size_t>(params_len), stateM.Data());
     cl_mem V = gpu.getOrCreate_V(modelID, pointer, isWeights, static_cast<size_t>(params_len), stateV.Data());
 
@@ -125,8 +130,6 @@ Napi::Value Adam_GPU(const Napi::CallbackInfo& info) {
     clEnqueueReadBuffer(queue, parameters, CL_TRUE, 0, sizeof(float)* params_len, params.Data(), 0, nullptr, nullptr);
     clEnqueueReadBuffer(queue, M, CL_TRUE, 0, sizeof(float)* params_len, stateM.Data(), 0, nullptr, nullptr);
     clEnqueueReadBuffer(queue, V, CL_TRUE, 0, sizeof(float)* params_len, stateV.Data(), 0, nullptr, nullptr);
-
-    clReleaseMemObject(gradients);
 
     Napi::Object output = Napi::Object::New(env);
     output.Set("params", params);
@@ -187,6 +190,7 @@ Napi::Value RMSProp_GPU(const Napi::CallbackInfo& info) {
     int pointer = info[6].As<Napi::Number>().Int32Value();
     std::string paramType = info[7].As<Napi::String>().Utf8Value();
     std::string modelID = info[8].As<Napi::String>().Utf8Value();
+    std::string layerID = info[9].As<Napi::String>().Utf8Value();
 
     int size = paramTensor.ElementLength();
 
@@ -196,8 +200,10 @@ Napi::Value RMSProp_GPU(const Napi::CallbackInfo& info) {
     cl_kernel kernel = gpu.kernel("rmsprop");
 
     bool isWeights = (paramType == "weights");
-    cl_mem params = isWeights ? gpu.getWeights(modelID, pointer) : gpu.getBiases(modelID, pointer);
-    cl_mem grads = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* size, gradTensor.Data(), nullptr);
+    std::string tag = isWeights ? "_weightGrads" : "_biasGrads";
+    cl_mem grads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+tag, static_cast<size_t>(size));
+    clEnqueueWriteBuffer(queue, grads, CL_FALSE, 0, sizeof(float) * size, gradTensor.Data(), 0, nullptr, nullptr);
+    cl_mem parameters = isWeights ? gpu.getWeights(modelID, pointer) : gpu.getBiases(modelID, pointer);
     cl_mem sqAvg = gpu.getOrCreate_SqAvg(modelID, pointer, isWeights, static_cast<size_t>(size), sqAvgTensor.Data());
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &params);
@@ -213,8 +219,6 @@ Napi::Value RMSProp_GPU(const Napi::CallbackInfo& info) {
 
     clEnqueueReadBuffer(queue, params, CL_TRUE, 0, sizeof(float)* size, paramTensor.Data(), 0, nullptr, nullptr );
     clEnqueueReadBuffer(queue, sqAvg, CL_TRUE, 0, sizeof(float)* size, sqAvgTensor.Data(), 0, nullptr, nullptr );
-
-    clReleaseMemObject(grads);
 
     Napi::Object output = Napi::Object::New(env);
     output.Set("params", paramTensor);
