@@ -78,19 +78,14 @@ Napi::Value MaxPooling_GPU(const Napi::CallbackInfo& info) {
 
     clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, globalSize, nullptr, 0, nullptr, nullptr);
 
-    // READ BACK RESULTS
-    std::vector<float> output(outputSize);
-    std::vector<int> maxIdx(outputSize);
 
-    clEnqueueReadBuffer(queue, outputTensor, CL_TRUE, 0, sizeof(float) * outputSize, output.data(), 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, maxIndexTensor, CL_TRUE, 0, sizeof(int) * outputSize, maxIdx.data(), 0, nullptr, nullptr);
-
-    // BUILD JS OUTPUT
     Napi::Float32Array outArray = Napi::Float32Array::New(env, outputSize);
     Napi::Int32Array maxArray = Napi::Int32Array::New(env, outputSize);
 
-    memcpy(outArray.Data(), output.data(), sizeof(float) * outputSize);
-    memcpy(maxArray.Data(), maxIdx.data(), sizeof(int) * outputSize);
+    clEnqueueReadBuffer(queue, outputTensor, CL_FALSE, 0, sizeof(float) * outputSize, outArray.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, maxIndexTensor, CL_FALSE, 0, sizeof(int) * outputSize, maxArray.Data(), 0, nullptr, nullptr);
+    clFinish(queue);
+
 
     Napi::Object objectOutput = Napi::Object::New(env);
     objectOutput.Set("output", outArray);

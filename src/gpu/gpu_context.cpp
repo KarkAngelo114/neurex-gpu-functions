@@ -28,8 +28,7 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"delta_convolve.cl", "delta_convolve"},
     {"maxpool.cl","maxpool"},
     {"accumulateWeightsAndBiasGradsDense.cl", "accumulateWeightsAndBiasGradsDense"},
-    {"computeKernelGradients.cl", "computeKernelGradients"},
-    {"computeBiasGradsForConv.cl", "computeBiasGradsForConv"},
+    {"accumulateConvWeightandBiasGrads.cl", "accumulateConvWeightandBiasGrads"},
     {"activations.cl", "sigmoid"},
     {"activations.cl", "linear"},
     {"activations.cl", "relu"},
@@ -59,7 +58,7 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"normalizers.cl", "layer_norm_backward_one"},
     {"transConv.cl", "transConv"},
     {"transConv.cl", "transConvBackward"},
-    {"computeKernelGradients.cl", "accumulateTransConvKernelGrads"},
+    {"accumulateConvWeightandBiasGrads.cl", "accumulateTransConvWeightAndBiasGrads"},
     {"encoding.cl", "spe"},
     {"attention.cl", "multi_head_attention"},
     {"attention.cl", "multi_head_attention_projection"},
@@ -228,43 +227,77 @@ bool GpuContext::shutdown() {
     }
     
 }
+
+// Creates the buffer for layer `idx` on first use (same clCreateBuffer call as before).
+// On later calls, if the layer's size is unchanged, it rewrites the existing buffer in
+// place with clEnqueueWriteBuffer. It only reallocates when the element count changed.
+static bool upsertParamBuffer(cl_context ctx, cl_command_queue queue, CL_MEM_ARRAY& slots, size_t idx, const FloatArray& host, std::string& errorOut) {
+    const size_t bytes = sizeof(float) * host.size();
+
+    if (slots.size() <= idx) slots.resize(idx + 1, nullptr);
+
+    cl_mem& slot = slots[idx];
+    if (slot) {
+        size_t currentBytes = 0;
+        cl_int err = clGetMemObjectInfo(slot, CL_MEM_SIZE, sizeof(currentBytes), &currentBytes, nullptr);
+
+        if (err == CL_SUCCESS && currentBytes == bytes) {
+            // Blocking write: `host` is a caller-owned reference that may be freed once we return.
+            err = clEnqueueWriteBuffer(queue, slot, CL_TRUE, 0, bytes, host.data(), 0, nullptr, nullptr);
+            if (err != CL_SUCCESS) {
+                errorOut = "Failed to write GPU buffer at layer " + std::to_string(idx) + ".";
+                return false;
+            }
+            return true;
+        }
+        // Size changed (or unreadable): drop this one buffer and fall through to recreate it.
+        clReleaseMemObject(slot);
+        slot = nullptr;
+    }
+
+    cl_int err = CL_SUCCESS;
+    slot = clCreateBuffer(ctx, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, bytes, const_cast<float*>(host.data()), &err);
+    
+    if (err != CL_SUCCESS || slot == nullptr) {
+        slot = nullptr;
+        errorOut = "Failed to allocate GPU buffer at layer " + std::to_string(idx) + ".";
+        return false;
+    }
+    return true;
+}
+
+// Releases buffers for layers that no longer exist (model got shallower).
+static void trimParamBuffers(CL_MEM_ARRAY& slots, size_t keep) {
+    for (size_t i = keep; i < slots.size(); ++i) {
+        if (slots[i]) clReleaseMemObject(slots[i]);
+    }
+    if (slots.size() > keep) slots.resize(keep);
+}
+
 bool GpuContext::uploadParams(const std::string& modelID, const Matrix& weightMatrix, const Matrix& biasMatrix, std::string& errorOut) {
     if (!has_gpu_) {
         errorOut = "GPU context is not initialized.";
         return false;
     }
 
-    cl_int err;
-    clearParams(modelID);
 
-    CL_MEM_ARRAY newWeights;
-    CL_MEM_ARRAY newBiases;
+    CL_MEM_ARRAY& weights = weightsByModel_[modelID];
+    CL_MEM_ARRAY& biases  = biasesByModel_[modelID];
 
-    for (const auto& layerWeights : weightMatrix) {
-        cl_mem weightBuffer = clCreateBuffer(context_, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
-            sizeof(float) * layerWeights.size(), const_cast<float*>(layerWeights.data()), &err);
-        if (err != CL_SUCCESS) {
-            errorOut = "Failed to allocate GPU buffer for weights.";
-            return false;
-        }
-        newWeights.push_back(weightBuffer);
+    for (size_t i = 0; i < weightMatrix.size(); ++i) {
+        if (!upsertParamBuffer(context_, queue_, weights, i, weightMatrix[i], errorOut)) return false;
     }
 
-    for (const auto& layerBiases : biasMatrix) {
-        cl_mem biasBuffer = clCreateBuffer(context_, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
-            sizeof(float) * layerBiases.size(), const_cast<float*>(layerBiases.data()), &err);
-        if (err != CL_SUCCESS) {
-            errorOut = "Failed to allocate GPU buffer for biases.";
-            return false;
-        }
-        newBiases.push_back(biasBuffer);
+    trimParamBuffers(weights, weightMatrix.size());
+
+    for (size_t i = 0; i < biasMatrix.size(); ++i) {
+        if (!upsertParamBuffer(context_, queue_, biases, i, biasMatrix[i], errorOut)) return false;
     }
 
-    weightsByModel_[modelID] = std::move(newWeights);
-    biasesByModel_[modelID] = std::move(newBiases);
+    trimParamBuffers(biases, biasMatrix.size());
+
     return true;
 }
-
 void GpuContext::clearParams(const std::string& modelID) {
     auto itWeights = weightsByModel_.find(modelID);
     if (itWeights != weightsByModel_.end()) {

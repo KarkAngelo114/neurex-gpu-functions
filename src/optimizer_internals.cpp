@@ -43,8 +43,9 @@ Napi::Value SGD_GPU(const Napi::CallbackInfo& info) {
     size_t globalSize = (size_t)param_length;
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
-    clEnqueueReadBuffer(queue, parameters, CL_TRUE, 0, sizeof(float)* param_length, params.Data(), 0, nullptr, nullptr );
-    clEnqueueReadBuffer(queue, velocity_array, CL_TRUE, 0, sizeof(float)* param_length, velocity.Data(), 0, nullptr, nullptr );
+    clEnqueueReadBuffer(queue, parameters, CL_FALSE, 0, sizeof(float)* param_length, params.Data(), 0, nullptr, nullptr );
+    clEnqueueReadBuffer(queue, velocity_array, CL_FALSE, 0, sizeof(float)* param_length, velocity.Data(), 0, nullptr, nullptr );
+    clFinish(queue);
 
     Napi::Object output = Napi::Object::New(env);
     output.Set("params", params);
@@ -98,7 +99,6 @@ Napi::Value Adam_GPU(const Napi::CallbackInfo& info) {
     std::string layerID = info[12].As<Napi::String>().Utf8Value();
     int params_len = params.ElementLength();
     
-
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
     cl_context context = gpu.context();
@@ -127,9 +127,10 @@ Napi::Value Adam_GPU(const Napi::CallbackInfo& info) {
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
     
     // reads the paramters, M, and V buffers
-    clEnqueueReadBuffer(queue, parameters, CL_TRUE, 0, sizeof(float)* params_len, params.Data(), 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, M, CL_TRUE, 0, sizeof(float)* params_len, stateM.Data(), 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, V, CL_TRUE, 0, sizeof(float)* params_len, stateV.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, parameters, CL_FALSE, 0, sizeof(float)* params_len, params.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, M, CL_FALSE, 0, sizeof(float)* params_len, stateM.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, V, CL_FALSE, 0, sizeof(float)* params_len, stateV.Data(), 0, nullptr, nullptr);
+    clFinish(queue);
 
     Napi::Object output = Napi::Object::New(env);
     output.Set("params", params);
@@ -217,8 +218,9 @@ Napi::Value RMSProp_GPU(const Napi::CallbackInfo& info) {
     size_t globalSize = (size_t)size;
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
-    clEnqueueReadBuffer(queue, params, CL_TRUE, 0, sizeof(float)* size, paramTensor.Data(), 0, nullptr, nullptr );
-    clEnqueueReadBuffer(queue, sqAvg, CL_TRUE, 0, sizeof(float)* size, sqAvgTensor.Data(), 0, nullptr, nullptr );
+    clEnqueueReadBuffer(queue, params, CL_FALSE, 0, sizeof(float)* size, paramTensor.Data(), 0, nullptr, nullptr );
+    clEnqueueReadBuffer(queue, sqAvg, CL_FALSE, 0, sizeof(float)* size, sqAvgTensor.Data(), 0, nullptr, nullptr );
+    clFinish(queue);
 
     Napi::Object output = Napi::Object::New(env);
     output.Set("params", paramTensor);
