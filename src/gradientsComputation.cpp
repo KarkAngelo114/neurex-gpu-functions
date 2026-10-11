@@ -744,7 +744,7 @@ Napi::Value AccumulateGammaAndBetaGrads_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array dBeta_array = info[3].As<Napi::Float32Array>();
     std::string modelID = info[4].As<Napi::String>().Utf8Value();
     std::string layerID = info[5].As<Napi::String>().Utf8Value();
-    int size = gammaGrads.ElementLength();
+    int size = gammaGrads_array.ElementLength();
 
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
