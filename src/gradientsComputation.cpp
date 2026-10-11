@@ -775,6 +775,8 @@ Napi::Value AccumulateGammaAndBetaGrads_GPU(const Napi::CallbackInfo& info) {
     Napi::Object output = Napi::Object::New(env);
     output.Set("gammaGrads", gammaGrads_array);
     output.Set("betaGrads", betaGrads_array);
+
+    return output;
 }
 
 Napi::Value AccumulateGammaAndBetaGrads_CPU(const Napi::CallbackInfo& info) {

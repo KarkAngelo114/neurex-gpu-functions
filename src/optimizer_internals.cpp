@@ -14,10 +14,11 @@ Napi::Value SGD_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array velocity = info[2].As<Napi::Float32Array>();
     float lr = info[3].As<Napi::Number>().FloatValue();
     float momentum = info[4].As<Napi::Number>().FloatValue();
-    int pointer = info[5].As<Napi::Number>().Int32Value();
-    std::string paramType = info[6].As<Napi::String>().Utf8Value();
-    std::string modelID = info[7].As<Napi::String>().Utf8Value();
-    std::string layerID = info[8].As<Napi::String>().Utf8Value();
+    int batchSize = info[5].As<Napi::Number>().Int32Value();
+    int pointer = info[6].As<Napi::Number>().Int32Value();
+    std::string paramType = info[7].As<Napi::String>().Utf8Value();
+    std::string modelID = info[8].As<Napi::String>().Utf8Value();
+    std::string layerID = info[9].As<Napi::String>().Utf8Value();
 
     int param_length = params.ElementLength();
 
@@ -39,6 +40,7 @@ Napi::Value SGD_GPU(const Napi::CallbackInfo& info) {
     clSetKernelArg(kernel, 3, sizeof(float), &lr);
     clSetKernelArg(kernel, 4, sizeof(float), &momentum);
     clSetKernelArg(kernel, 5, sizeof(int), &param_length);
+    clSetKernelArg(kernel, 6, sizeof(int), &batchSize);
 
     size_t globalSize = (size_t)param_length;
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
@@ -61,6 +63,7 @@ Napi::Value SGD_CPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array velocity = info[2].As<Napi::Float32Array>();
     float lr = info[3].As<Napi::Number>().FloatValue();
     float momentum = info[4].As<Napi::Number>().FloatValue();
+    int batchSize = info[5].As<Napi::Number>().Int32Value();
 
     int element_length = params.ElementLength();
 
@@ -71,7 +74,7 @@ Napi::Value SGD_CPU(const Napi::CallbackInfo& info) {
     #pragma omp parallel for
     #pragma omp unroll partial(4)
     for (int i = 0; i < element_length; i++) {
-        v[i] = momentum * v[i] + g[i];
+        v[i] = momentum * v[i] + (g[i] / batchSize);
         p[i] -= lr * v[i];
     }
 
@@ -93,10 +96,11 @@ Napi::Value Adam_GPU(const Napi::CallbackInfo& info) {
     float beta1 = info[6].As<Napi::Number>().FloatValue();
     float beta2 = info[7].As<Napi::Number>().FloatValue();
     float epsilon = info[8].As<Napi::Number>().FloatValue();
-    int pointer = info[9].As<Napi::Number>().Int32Value();
-    std::string paramType = info[10].As<Napi::String>().Utf8Value();
-    std::string modelID = info[11].As<Napi::String>().Utf8Value();
-    std::string layerID = info[12].As<Napi::String>().Utf8Value();
+    int batchSize = info[9].As<Napi::Number>().Int32Value();
+    int pointer = info[10].As<Napi::Number>().Int32Value();
+    std::string paramType = info[11].As<Napi::String>().Utf8Value();
+    std::string modelID = info[12].As<Napi::String>().Utf8Value();
+    std::string layerID = info[13].As<Napi::String>().Utf8Value();
     int params_len = params.ElementLength();
     
     auto& gpu = GpuContext::instance();
@@ -121,7 +125,8 @@ Napi::Value Adam_GPU(const Napi::CallbackInfo& info) {
     clSetKernelArg(kernel, 6, sizeof(float), &beta1);
     clSetKernelArg(kernel, 7, sizeof(float), &beta2);
     clSetKernelArg(kernel, 8, sizeof(float), &epsilon);
-    clSetKernelArg(kernel, 9, sizeof(float), &params_len);
+    clSetKernelArg(kernel, 9, sizeof(int), &params_len);
+    clSetKernelArg(kernel, 10, sizeof(int), &batchSize);
 
     size_t globalSize = (size_t)params_len;
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
@@ -151,7 +156,10 @@ Napi::Value Adam_CPU(const Napi::CallbackInfo& info) {
     float beta1 = info[6].As<Napi::Number>().FloatValue();
     float beta2 = info[7].As<Napi::Number>().FloatValue();
     float epsilon = info[8].As<Napi::Number>().FloatValue();
+    int batchSize = info[9].As<Napi::Number>().Int32Value();
+
     int params_len = params.ElementLength();
+
 
     float* p = params.Data();
     float* g = grads.Data();
@@ -161,7 +169,7 @@ Napi::Value Adam_CPU(const Napi::CallbackInfo& info) {
     #pragma omp parallel for
     #pragma omp unroll partial(4)
     for (int i = 0; i < params_len; i++) {
-        float grad = g[i];
+        float grad = (g[i] / batchSize);
 
         sm[i] = beta1 * sm[i] + (1 - beta1) * grad;
         sv[i] = beta2 * sv[i] + (1 - beta2) * grad * grad;
@@ -188,10 +196,11 @@ Napi::Value RMSProp_GPU(const Napi::CallbackInfo& info) {
     float lr = info[3].As<Napi::Number>().FloatValue();
     float epsilon = info[4].As<Napi::Number>().FloatValue();
     float decayRate = info[5].As<Napi::Number>().FloatValue();
-    int pointer = info[6].As<Napi::Number>().Int32Value();
-    std::string paramType = info[7].As<Napi::String>().Utf8Value();
-    std::string modelID = info[8].As<Napi::String>().Utf8Value();
-    std::string layerID = info[9].As<Napi::String>().Utf8Value();
+    int batchSize = info[6].As<Napi::Number>().Int32Value();
+    int pointer = info[7].As<Napi::Number>().Int32Value();
+    std::string paramType = info[8].As<Napi::String>().Utf8Value();
+    std::string modelID = info[9].As<Napi::String>().Utf8Value();
+    std::string layerID = info[10].As<Napi::String>().Utf8Value();
 
     int size = paramTensor.ElementLength();
 
@@ -214,6 +223,7 @@ Napi::Value RMSProp_GPU(const Napi::CallbackInfo& info) {
     clSetKernelArg(kernel, 4, sizeof(float), &epsilon);
     clSetKernelArg(kernel, 5, sizeof(float), &decayRate);
     clSetKernelArg(kernel, 6, sizeof(int), &size);
+    clSetKernelArg(kernel, 7, sizeof(int), &batchSize);
 
     size_t globalSize = (size_t)size;
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
@@ -236,6 +246,8 @@ Napi::Value RMSProp_CPU(const Napi::CallbackInfo& info) {
     float lr = info[3].As<Napi::Number>().FloatValue();
     float epsilon = info[4].As<Napi::Number>().FloatValue();
     float decayRate = info[5].As<Napi::Number>().FloatValue();
+    int batchSize = info[6].As<Napi::Number>().Int32Value();
+
     int size = paramTensor.ElementLength();
 
     float* params = paramTensor.Data();
@@ -245,8 +257,9 @@ Napi::Value RMSProp_CPU(const Napi::CallbackInfo& info) {
     #pragma omp parallel for
     #pragma omp unroll partial(4)
     for (int i = 0; i < size; i++) {
-        sqAvg[i] = decayRate * sqAvg[i] + (1 - decayRate) * (grads[i] * grads[i]);
-        params[i] -= (lr / (sqrt(sqAvg[i]) + epsilon)) * grads[i];
+        float g = (grads[i] / batchSize);
+        sqAvg[i] = decayRate * sqAvg[i] + (1 - decayRate) * (g * g);
+        params[i] -= (lr / (sqrt(sqAvg[i]) + epsilon)) * g;
     }
 
 
