@@ -789,7 +789,7 @@ Napi::Value AccumulateGammaAndBetaGrads_CPU(const Napi::CallbackInfo& info) {
     float* b = betaGrads.Data();
     float* dB = dGamma.Data();
 
-    int length = grads.ElementLength();
+    int length = gammaGrads.ElementLength();
 
     #pragma omp unroll partial(4)
     for (int i = 0; i < length; i++) {
