@@ -859,7 +859,6 @@ Napi::Value AccumulateGammaAndBetaGrads_wrapper(const Napi::CallbackInfo& info) 
 void GradientCalculationRegister(Napi::Env env, Napi::Object exports) {
     exports.Set("accumulateWeightsAndBiasGradsForConnectedLayer", Napi::Function::New(env, accumulateWeightsAndBiasGradsForConnectedLayer));
     exports.Set("AccumulateWeightAndBiasGradsForConv", Napi::Function::New(env, AccumulateWeightAndBiasGradsForConv));
-    exports.Set("computeBiasGradsForConv", Napi::Function::New(env, computeBiasGradsForConvWrapper));
     exports.Set("recurrentWeightGradsAccumulation", Napi::Function::New(env, recurrentWeightGradsAccumulationWrapper));
     exports.Set("recurrentBiasGradsAccumulation", Napi::Function::New(env, recurrentBiasGradsAccumulationWrapper));
     exports.Set("accumulateWeightandBiasGradsForTransConv", Napi::Function::New(env, accumulateWeightandBiasGradsForTransConv_wrapper));
