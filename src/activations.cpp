@@ -53,7 +53,7 @@ Napi::Value Linear_GPU(const Napi::CallbackInfo& info) {
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
     Napi::Float32Array outputArray = Napi::Float32Array::New(env, input_size);
-    clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float)* input_size, outputArray.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, output, CL_FALSE, 0, sizeof(float)* input_size, outputArray.Data(), 0, nullptr, nullptr);
 
     return outputArray;
 }
@@ -90,7 +90,7 @@ Napi::Value Relu_GPU(const Napi::CallbackInfo& info) {
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
     Napi::Float32Array outputArray = Napi::Float32Array::New(env, input_size);
-    clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float)* input_size, outputArray.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, output, CL_FALSE, 0, sizeof(float)* input_size, outputArray.Data(), 0, nullptr, nullptr);
 
     return outputArray;
 
@@ -138,7 +138,7 @@ Napi::Value Sigmoid_GPU(const Napi::CallbackInfo& info) {
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
     Napi::Float32Array outputArray = Napi::Float32Array::New(env, input_size);
-    clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float)* input_size, outputArray.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, output, CL_FALSE, 0, sizeof(float)* input_size, outputArray.Data(), 0, nullptr, nullptr);
 
     return outputArray;
 }
@@ -185,7 +185,7 @@ Napi::Value Tanh_GPU(const Napi::CallbackInfo& info) {
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
     Napi::Float32Array outputArray = Napi::Float32Array::New(env, input_size);
-    clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float)* input_size, outputArray.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, output, CL_FALSE, 0, sizeof(float)* input_size, outputArray.Data(), 0, nullptr, nullptr);
 
     return outputArray;
 }
@@ -257,7 +257,7 @@ Napi::Value Softmax_GPU(const Napi::CallbackInfo& info) {
     clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
 
     Napi::Float32Array outputArray = Napi::Float32Array::New(env, inputSize);
-    clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float) * inputSize, outputArray.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, output, CL_FALSE, 0, sizeof(float) * inputSize, outputArray.Data(), 0, nullptr, nullptr);
 
     clReleaseMemObject(inputBuffer);
 
@@ -318,7 +318,7 @@ Napi::Value DLinear_GPU(const Napi::CallbackInfo& info) {
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
     Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
-    clEnqueueReadBuffer(queue, outputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, outputData, CL_FALSE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
 
     return output;
 }
@@ -370,7 +370,7 @@ Napi::Value DReLu_GPU(const Napi::CallbackInfo& info) {
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
     Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
-    clEnqueueReadBuffer(queue, outputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, outputData, CL_FALSE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
 
     return output;
 }
@@ -417,7 +417,7 @@ Napi::Value DSigmoid_GPU(const Napi::CallbackInfo& info) {
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
     Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
-    clEnqueueReadBuffer(queue, outputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, outputData, CL_FALSE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
 
     return output;
 }
@@ -464,7 +464,7 @@ Napi::Value DTanh_GPU(const Napi::CallbackInfo& info) {
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
     Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
-    clEnqueueReadBuffer(queue, outputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, outputData, CL_FALSE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
     
     return output;
 }

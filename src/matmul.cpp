@@ -48,7 +48,7 @@ Napi::Value MatMul_GPU(const Napi::CallbackInfo& info) {
     clEnqueueNDRangeKernel(queue, k, 1, nullptr, &global, nullptr, 0, nullptr, nullptr);
 
     // read result
-    clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float) * outputSize, outputTensor.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, output, CL_FALSE, 0, sizeof(float) * outputSize, outputTensor.Data(), 0, nullptr, nullptr);
 
     return outputTensor;
 }
@@ -121,7 +121,7 @@ Napi::Value DeltaMatMul_GPU(const Napi::CallbackInfo& info) {
     size_t global = (size_t)inputSize;
     clEnqueueNDRangeKernel(queue, k, 1, nullptr, &global, nullptr, 0, nullptr, nullptr);
 
-    clEnqueueReadBuffer(queue, dOut, CL_TRUE, 0, sizeof(float)*inputSize, output.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, dOut, CL_FALSE, 0, sizeof(float)*inputSize, output.Data(), 0, nullptr, nullptr);
 
 
     return output;

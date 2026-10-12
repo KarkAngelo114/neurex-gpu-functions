@@ -113,7 +113,7 @@ Napi::Value cacheOutputLayerDelta(const Napi::CallbackInfo& info) {
     cl_command_queue queue = gpu.queue();
     cl_mem outputDeltaBuffer = gpu.getOrCreate_Delta(modelID, layerID, static_cast<size_t>(size));
 
-    clEnqueueWriteBuffer(queue, outputDeltaBuffer, CL_TRUE, 0, sizeof(float)* size, hostOutputDeltaBuffer.Data(), 0, nullptr, nullptr);
+    clEnqueueWriteBuffer(queue, outputDeltaBuffer, CL_FALSE, 0, sizeof(float)* size, hostOutputDeltaBuffer.Data(), 0, nullptr, nullptr);
 
 
     return env.Undefined();

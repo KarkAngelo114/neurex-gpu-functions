@@ -120,7 +120,7 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     };
 
     CheckOpenCLError(clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, global, nullptr, 0, nullptr, nullptr),"clEnqueueNDRangeKernel(ConvolveForward)");
-    CheckOpenCLError(clEnqueueReadBuffer(queue, output_tensor, CL_TRUE, 0, sizeof(float) * outputSize, output.Data(), 0, nullptr, nullptr),"clEnqueueReadBuffer(ConvolveForward output)");
+    CheckOpenCLError(clEnqueueReadBuffer(queue, output_tensor, CL_FALSE, 0, sizeof(float) * outputSize, output.Data(), 0, nullptr, nullptr),"clEnqueueReadBuffer(ConvolveForward output)");
 
     return output;
 }
@@ -281,7 +281,7 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
         (size_t)C_k
     };
     CheckOpenCLError(clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, global, nullptr, 0, nullptr, nullptr),"clEnqueueNDRangeKernel(ConvolveBackward)");
-    CheckOpenCLError(clEnqueueReadBuffer(queue, outputBuf, CL_TRUE, 0, sizeof(float) * targetSize, output.Data(), 0, nullptr, nullptr),"clEnqueueReadBuffer(ConvolveBackward output)");
+    CheckOpenCLError(clEnqueueReadBuffer(queue, outputBuf, CL_FALSE, 0, sizeof(float) * targetSize, output.Data(), 0, nullptr, nullptr),"clEnqueueReadBuffer(ConvolveBackward output)");
     return output;
 }
 

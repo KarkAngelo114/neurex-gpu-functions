@@ -51,7 +51,7 @@ Napi::Value SPE_GPU(const Napi::CallbackInfo& info) {
     size_t globalSize = static_cast<size_t>(size);
     clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
 
-    clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float) * size, outputArray.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, output, CL_FALSE, 0, sizeof(float) * size, outputArray.Data(), 0, nullptr, nullptr);
 
     clReleaseMemObject(input);
     clReleaseMemObject(output);

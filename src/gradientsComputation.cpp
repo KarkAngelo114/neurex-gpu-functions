@@ -67,7 +67,6 @@ Napi::Value accumulateWeightsAndBiasGradsForConnectedLayer_GPU(const Napi::Callb
 
     clEnqueueReadBuffer(queue, weight_grads, CL_FALSE, 0, sizeof(float) * weightGrads_size, weightGrads_tensor.Data(), 0, nullptr, nullptr);
     clEnqueueReadBuffer(queue, bias_grads, CL_FALSE, 0, sizeof(float) * biasGrads_size, biasGrads_tensor.Data(), 0, nullptr, nullptr);
-    clFinish(queue);
 
     Napi::Object output = Napi::Object::New(env);
     output.Set("weightGrads", weightGrads_tensor);
@@ -198,7 +197,6 @@ Napi::Value AccumulateWeightAndBiasGradsForConv_GPU(const Napi::CallbackInfo& in
 
     checkOpenCLError(clEnqueueReadBuffer(queue, weightGradsBuffer, CL_FALSE, 0, sizeof(float) * weightGradsSize, weightGradsTensor.Data(), 0, nullptr, nullptr), "clEnqueueReadBuffer(convolution weight gradients)");
     checkOpenCLError(clEnqueueReadBuffer(queue, biasGradsBuffer, CL_FALSE, 0, sizeof(float) * biasGradsSize, biasGradsTensor.Data(), 0, nullptr, nullptr), "clEnqueueReadBuffer(convolution bias gradients)");
-    clFinish(queue);
 
     Napi::Object output = Napi::Object::New(env);
     output.Set("weightGrads", weightGradsTensor);
@@ -476,7 +474,6 @@ Napi::Value accumulateWeightandBiasGradsForTransConv_GPU(const Napi::CallbackInf
 
     checkOpenCLError(clEnqueueReadBuffer( queue, weightGradsBuffer, CL_FALSE, 0, sizeof(float) * weightGradsSize, weightGrads.Data(), 0, nullptr, nullptr), "clEnqueueReadBuffer(transposed convolution weight gradients)");
     checkOpenCLError(clEnqueueReadBuffer(queue, biasGradsBuffer, CL_FALSE, 0, sizeof(float) * biasGradsSize, biasGrads.Data(), 0, nullptr, nullptr), "clEnqueueReadBuffer(transposed convolution bias gradients)");
-    checkOpenCLError(clFinish(queue), "clFinish(transposed convolution gradients)");
 
     Napi::Object output = Napi::Object::New(env);
     output.Set("weightGrads", weightGrads);
@@ -650,7 +647,7 @@ Napi::Value AccumulateAttentionWeightsGradients_GPU(const Napi::CallbackInfo& in
     size_t global[3] = {4, static_cast<size_t>(embedDim), static_cast<size_t>(embedDim)};
 
     clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, global, nullptr, 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, grads, CL_TRUE, 0, gradientBytes, weightGrads.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, grads, CL_FALSE, 0, gradientBytes, weightGrads.Data(), 0, nullptr, nullptr);
 
     for (cl_mem buffer : args) {
         clReleaseMemObject(buffer);
@@ -727,7 +724,7 @@ Napi::Value AccumulateAttentionBiasGrads_GPU(const Napi::CallbackInfo& info) {
     size_t global[2] = {4, static_cast<size_t>(embedDim)};
 
     clEnqueueNDRangeKernel(queue, kernel, 2, nullptr, global, nullptr, 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, grads, CL_TRUE, 0, gradientBytes, biasGrads.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, grads, CL_FALSE, 0, gradientBytes, biasGrads.Data(), 0, nullptr, nullptr);
 
     for (cl_mem buffer : args) {
         clReleaseMemObject(buffer);
@@ -770,7 +767,6 @@ Napi::Value AccumulateGammaAndBetaGrads_GPU(const Napi::CallbackInfo& info) {
 
     clEnqueueReadBuffer(queue, gammaGrads, CL_FALSE, 0, sizeof(float) * size, gammaGrads_array.Data(), 0, nullptr, nullptr);
     clEnqueueReadBuffer(queue, betaGrads, CL_FALSE, 0, sizeof(float) * size, betaGrads_array.Data(), 0, nullptr, nullptr);
-    clFinish(queue);
 
     Napi::Object output = Napi::Object::New(env);
     output.Set("gammaGrads", gammaGrads_array);

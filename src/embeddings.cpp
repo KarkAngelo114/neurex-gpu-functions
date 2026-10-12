@@ -50,7 +50,7 @@ Napi::Value GetEmbeddings_GPU(const Napi::CallbackInfo& info) {
 
     // Read result back from GPU output buffer
     Napi::Float32Array result = Napi::Float32Array::New(env, totalSize);
-    clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float) * totalSize, result.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, output, CL_FALSE, 0, sizeof(float) * totalSize, result.Data(), 0, nullptr, nullptr);
 
     clReleaseMemObject(output);
     clReleaseMemObject(tokenBuffer);
@@ -119,7 +119,7 @@ Napi::Value ReturnEmbeddings_GPU(const Napi::CallbackInfo& info) {
     };
 
     clEnqueueNDRangeKernel(queue, kernel, 2, 0, globalSize, nullptr, 0, nullptr,nullptr);
-    clEnqueueReadBuffer(queue, gradients, CL_TRUE, 0, sizeof(float)* weightGrads.ElementLength(), weightGrads.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, gradients, CL_FALSE, 0, sizeof(float)* weightGrads.ElementLength(), weightGrads.Data(), 0, nullptr, nullptr);
     clReleaseMemObject(tokenBuffer);
     clReleaseMemObject(delta_input);
     clReleaseMemObject(gradients);

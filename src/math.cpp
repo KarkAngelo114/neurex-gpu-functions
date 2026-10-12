@@ -33,7 +33,7 @@ Napi::Value element_wise_mul_GPU(const Napi::CallbackInfo& info) {
 
     // read result
     Napi::Float32Array output = Napi::Float32Array::New(env, arr_length);
-    clEnqueueReadBuffer(queue, output_arr, CL_TRUE, 0, sizeof(float) * arr_length, output.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, output_arr, CL_FALSE, 0, sizeof(float) * arr_length, output.Data(), 0, nullptr, nullptr);
 
     return output;
 }
@@ -92,7 +92,7 @@ Napi::Value element_wise_sub_GPU(const Napi::CallbackInfo& info) {
     clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
 
     // read result
-    clEnqueueReadBuffer(queue, output_arr, CL_TRUE, 0, sizeof(float) * size, output.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, output_arr, CL_FALSE, 0, sizeof(float) * size, output.Data(), 0, nullptr, nullptr);
     
     return output;
 }
@@ -155,7 +155,7 @@ Napi::Value scaleDiff_GPU(const Napi::CallbackInfo& info) {
     clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
 
     // read result
-    clEnqueueReadBuffer(queue, output_arr, CL_TRUE, 0, sizeof(float) * size, output.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, output_arr, CL_FALSE, 0, sizeof(float) * size, output.Data(), 0, nullptr, nullptr);
     
     return output;
 }
@@ -210,7 +210,7 @@ Napi::Value Scale_GPU(const Napi::CallbackInfo& info) {
     size_t global = (size_t)size;
     clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &global, nullptr, 0, nullptr, nullptr);
 
-    clEnqueueReadBuffer(queue, input, CL_TRUE, 0, sizeof(float) * size, output.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, input, CL_FALSE, 0, sizeof(float) * size, output.Data(), 0, nullptr, nullptr);
     
     return output;
 }

@@ -704,12 +704,12 @@ Napi::Value CoreMultiHeadAttention_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array mhaOutput = Napi::Float32Array::New(env, seqLen * embedDim);
     Napi::Float32Array S = Napi::Float32Array::New(env, numHeads * seqLen * seqLen);
     Napi::Float32Array finalOutput = Napi::Float32Array::New(env, seqLen * embedDim);
-    clEnqueueReadBuffer(queue, q, CL_TRUE, 0, tensorBytes, Q.Data(), 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, k, CL_TRUE, 0, tensorBytes, K.Data(), 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, v, CL_TRUE, 0, tensorBytes, V.Data(), 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, mha, CL_TRUE, 0, tensorBytes, mhaOutput.Data(), 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, scores, CL_TRUE, 0, scoreBytes, S.Data(), 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, output, CL_TRUE, 0, tensorBytes, finalOutput.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, q, CL_FALSE, 0, tensorBytes, Q.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, k, CL_FALSE, 0, tensorBytes, K.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, v, CL_FALSE, 0, tensorBytes, V.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, mha, CL_FALSE, 0, tensorBytes, mhaOutput.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, scores, CL_FALSE, 0, scoreBytes, S.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, output, CL_FALSE, 0, tensorBytes, finalOutput.Data(), 0, nullptr, nullptr);
     cl_mem temporary[] = {inputBuffer, qW, kW, vW, oW, qB, kB, vB, oB, q, k, v, mha, scores, output};
     for (cl_mem buffer : temporary) clReleaseMemObject(buffer);
     Napi::Object result = Napi::Object::New(env);
@@ -783,7 +783,7 @@ Napi::Value CoreMultiHeadAttentionBackward_GPU(const Napi::CallbackInfo& info) {
     clSetKernelArg(dxKernel, 7, sizeof(int), &embedDim);
     clEnqueueNDRangeKernel(queue, dxKernel, 2, nullptr, global, nullptr, 0, nullptr, nullptr);
     Napi::Float32Array outDQ = Napi::Float32Array::New(env, seqLen * embedDim), outDK = Napi::Float32Array::New(env, seqLen * embedDim), outDV = Napi::Float32Array::New(env, seqLen * embedDim), outDMha = Napi::Float32Array::New(env, seqLen * embedDim), outDX = Napi::Float32Array::New(env, seqLen * embedDim);
-    clEnqueueReadBuffer(queue, dQ, CL_TRUE, 0, tensorBytes, outDQ.Data(), 0, nullptr, nullptr); clEnqueueReadBuffer(queue, dK, CL_TRUE, 0, tensorBytes, outDK.Data(), 0, nullptr, nullptr); clEnqueueReadBuffer(queue, dV, CL_TRUE, 0, tensorBytes, outDV.Data(), 0, nullptr, nullptr); clEnqueueReadBuffer(queue, dMha, CL_TRUE, 0, tensorBytes, outDMha.Data(), 0, nullptr, nullptr); clEnqueueReadBuffer(queue, dX, CL_TRUE, 0, tensorBytes, outDX.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, dQ, CL_FALSE, 0, tensorBytes, outDQ.Data(), 0, nullptr, nullptr); clEnqueueReadBuffer(queue, dK, CL_FALSE, 0, tensorBytes, outDK.Data(), 0, nullptr, nullptr); clEnqueueReadBuffer(queue, dV, CL_FALSE, 0, tensorBytes, outDV.Data(), 0, nullptr, nullptr); clEnqueueReadBuffer(queue, dMha, CL_FALSE, 0, tensorBytes, outDMha.Data(), 0, nullptr, nullptr); clEnqueueReadBuffer(queue, dX, CL_FALSE, 0, tensorBytes, outDX.Data(), 0, nullptr, nullptr);
     cl_mem temporary[] = {inputBuffer, qW, kW, vW, oW, qBuffer, kBuffer, vBuffer, sBuffer, dQ, dK, dV, dMha, dX}; for (cl_mem buffer : temporary) clReleaseMemObject(buffer);
     Napi::Object result = Napi::Object::New(env); result.Set("dQ", outDQ); result.Set("dK", outDK); result.Set("dV", outDV); result.Set("dMhaOutput", outDMha); result.Set("dX", outDX); return result;
 }

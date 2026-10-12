@@ -40,7 +40,7 @@ Napi::Value GradientClipping_GPU(const Napi::CallbackInfo& info) {
 
         size_t globalSize = (size_t)size;
         clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
-        clEnqueueReadBuffer(queue, input, CL_TRUE, 0, sizeof(int)* size, inputGrads.Data(), 0, nullptr, nullptr);
+        clEnqueueReadBuffer(queue, input, CL_FALSE, 0, sizeof(int)* size, inputGrads.Data(), 0, nullptr, nullptr);
         clReleaseMemObject(input);
 
         return inputGrads;
@@ -144,7 +144,7 @@ Napi::Value LayerNorm_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array outputTensor = Napi::Float32Array::New(env, size);
     clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
     
-    clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float)* size, outputTensor.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, output, CL_FALSE, 0, sizeof(float)* size, outputTensor.Data(), 0, nullptr, nullptr);
 
 
     return outputTensor;
@@ -284,9 +284,9 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array dbeta = Napi::Float32Array::New(env, size);
 
     // Blocking reads also wait for the kernel to finish.
-    clEnqueueReadBuffer(queue, dxBuffer, CL_TRUE, 0, sizeof(float) * size, dx.Data(), 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, dgammaBuffer, CL_TRUE, 0, sizeof(float) * size, dgamma.Data(), 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, dbetaBuffer, CL_TRUE, 0, sizeof(float) * size, dbeta.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, dxBuffer, CL_FALSE, 0, sizeof(float) * size, dx.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, dgammaBuffer, CL_FALSE, 0, sizeof(float) * size, dgamma.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, dbetaBuffer, CL_FALSE, 0, sizeof(float) * size, dbeta.Data(), 0, nullptr, nullptr);
 
 
     Napi::Object output = Napi::Object::New(env);

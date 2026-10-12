@@ -89,7 +89,7 @@ Napi::Value transConv_GPU(const Napi::CallbackInfo& info) {
     };
 
     clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, globalSize, nullptr, 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float) * outputSize, outputTensor.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, output, CL_FALSE, 0, sizeof(float) * outputSize, outputTensor.Data(), 0, nullptr, nullptr);
 
     return outputTensor;
 }
@@ -271,7 +271,7 @@ Napi::Value transConvBackward_GPU(const Napi::CallbackInfo& info) {
     };
 
     clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, globalSize, nullptr, 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float) * outputTensor.ElementLength(), outputTensor.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, output, CL_FALSE, 0, sizeof(float) * outputTensor.ElementLength(), outputTensor.Data(), 0, nullptr, nullptr);
 
     return outputTensor;
 }
