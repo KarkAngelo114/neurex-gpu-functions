@@ -14,7 +14,7 @@ using String = std::string;
 // row-vector [inputSize] times row-major matrix [inputSize x outputSize] -> [outputSize]
 static void _helper_dotProduct(const float* arr1, const float* mat, int inputSize, int outputSize, float* output) {
 
-    #pragma omp unroll partial(4)
+    
     for (int j = 0; j < outputSize; j++) {
         output[j] = 0.0f;
     }
@@ -23,7 +23,7 @@ static void _helper_dotProduct(const float* arr1, const float* mat, int inputSiz
         float v = arr1[i];
         int rowStart = i * outputSize;
 
-        #pragma omp unroll partial(4)
+        
         for (int j = 0; j < outputSize; j++) {
             output[j] += v * mat[rowStart + j];
         }
@@ -32,7 +32,7 @@ static void _helper_dotProduct(const float* arr1, const float* mat, int inputSiz
 
 // mirrors JS scale(input, scalingValue): in-place divide
 static void _helper_scale(float* data, int length, float scalingValue) {
-    #pragma omp unroll partial(4)
+    
     for (int i = 0; i < length; i++) {
         data[i] /= scalingValue;
     }
@@ -51,7 +51,7 @@ static void _helper_softmax(const float* input, int length, float* output) {
         sum += output[i];
     }
 
-    #pragma omp unroll partial(4)
+    
     for (int i = 0; i < length; i++) {
         output[i] /= sum;
     }
@@ -64,7 +64,7 @@ static void _helper_dsoftmax(const float* s, const float* dS, int length, float*
         dot += dS[i] * s[i];
     }
 
-    #pragma omp unroll partial(4)
+    
     for (int i = 0; i < length; i++) {
         output[i] = s[i] * (dS[i] - dot);
     }
@@ -108,7 +108,7 @@ static void _helper_applyCausalMask(float* scores, int seqLen, float maskValue) 
 static void _helper_transpose2D(const float* matrix, int rows, int cols, float* output) {
     for (int r = 0; r < rows; r++) {
 
-        #pragma omp unroll partial(4)
+        
         for (int c = 0; c < cols; c++) {
             output[c * rows + r] = matrix[r * cols + c];
         }
@@ -116,7 +116,7 @@ static void _helper_transpose2D(const float* matrix, int rows, int cols, float* 
 }
 
 void _helper_matMul(const float* input, int inputSize, int outputSize, const float* weights, const float* biases, float* output) {
-    #pragma omp unroll partial(4)
+    
     for (int j = 0; j < outputSize; j++) {
         output[j] = biases[j];
     }
@@ -126,7 +126,7 @@ void _helper_matMul(const float* input, int inputSize, int outputSize, const flo
         float inputVal = input[i];
         int rowStart = i * outputSize;
 
-        #pragma omp unroll partial(4)
+        
         for (int j = 0; j < outputSize; j++) {
             output[j] += inputVal * weights[rowStart + j];
         }

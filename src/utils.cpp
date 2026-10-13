@@ -13,7 +13,7 @@ static IntArray Vectorize(const Napi::Array& arr) {
     return vectorArray;
 }
 
-pi::Value ApplyPadding_CPU(const Napi::CallbackInfo& info) {
+Napi::Value ApplyPadding_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     Napi::Float32Array input_arr = info[0].As<Napi::Float32Array>();
@@ -47,16 +47,17 @@ pi::Value ApplyPadding_CPU(const Napi::CallbackInfo& info) {
     Napi::Object data = Napi::Object::New(env);
     data.Set("data", outputData);
 
-    // Convert std::vector<int> to Napi::Array
     Napi::Array shapeArray = Napi::Array::New(env, newShape.size());
     for (size_t i = 0; i < newShape.size(); i++) {
         shapeArray.Set(i, Napi::Number::New(env, newShape[i]));
     }
 
     data.Set("shape", shapeArray);
-
     return data;
+}
 
+Napi::Value ApplyPaddingWrapper(const Napi::CallbackInfo& info) {
+    return ApplyPadding_CPU(info);
 }
 
 Napi::Value cacheOutputLayerDelta(const Napi::CallbackInfo& info) {
@@ -86,5 +87,6 @@ Napi::Value cacheOutputLayerDeltaWrapper(const Napi::CallbackInfo& info) {
 }
 
 void utils(Napi::Env env, Napi::Object exports) {
+    exports.Set("ApplyPadding", Napi::Function::New(env, ApplyPaddingWrapper));
     exports.Set("cacheOutputLayerDelta", Napi::Function::New(env, cacheOutputLayerDeltaWrapper));
 }

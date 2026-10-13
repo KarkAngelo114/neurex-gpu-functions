@@ -17,7 +17,6 @@ Napi::Value GradientClipping_GPU(const Napi::CallbackInfo& info) {
 
     float norm = 0.0f;
 
-    #pragma omp simd reduction(+:norm)
     for (int i = 0; i < size; i++) {
         norm += grads[i] * grads[i];
     }
@@ -61,7 +60,6 @@ Napi::Value GradientClipping_CPU(const Napi::CallbackInfo& info) {
 
     float norm = 0.0f;
 
-    #pragma omp simd reduction(+:norm)
     for (int i = 0; i < size; i++) {
         norm += grads[i] * grads[i];
     }
@@ -71,7 +69,7 @@ Napi::Value GradientClipping_CPU(const Napi::CallbackInfo& info) {
     if (norm > threshold) {
         float scalingVal = threshold / norm;
 
-        #pragma omp unroll partial(4)
+        
         for (int i = 0; i < size; i++) {
             grads[i] *= scalingVal;
         }
@@ -102,7 +100,7 @@ Napi::Value LayerNorm_GPU(const Napi::CallbackInfo& info) {
 
     // compute mean
     float mean = 0.0f;
-    #pragma omp unroll partial(4)
+    
     for (int i = 0; i < size; i++) {
         mean += input[i];
     }
@@ -112,7 +110,7 @@ Napi::Value LayerNorm_GPU(const Napi::CallbackInfo& info) {
 
     // compute variance
     float variance = 0.0f;
-    #pragma omp unroll partial(4)
+    
     for (int i = 0; i < size; i++) {
         float diff = input[i] - mean;
         variance += diff * diff;
@@ -166,7 +164,7 @@ Napi::Value LayerNorm_CPU(const Napi::CallbackInfo& info) {
     float* output = outputTensor.Data();
 
     float mean = 0.0f;
-    #pragma omp unroll partial(4)
+    
     for (int i = 0; i < size; i++) {
         mean += input[i];
     }
@@ -174,7 +172,7 @@ Napi::Value LayerNorm_CPU(const Napi::CallbackInfo& info) {
     mean /= size;
 
     float variance = 0.0f;
-    #pragma omp unroll partial(4)
+    
     for (int i = 0; i < size; i++) {
         float diff = input[i] - mean;
         variance += diff * diff;
@@ -185,7 +183,7 @@ Napi::Value LayerNorm_CPU(const Napi::CallbackInfo& info) {
     float std = std::sqrt(variance + eps);
 
     #pragma omp parallel for
-    #pragma omp unroll partial(4)
+    
     for (int i = 0; i < size; i++) {
         float xHat = (input[i] - mean) / std;
         output[i] = gamma[i] * xHat + beta[i];
@@ -271,7 +269,7 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
 
     cl_int err = CL_SUCCESS;
     cl_event kernelEvent = nullptr;
-    cl_int err = clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, &localSize, 0, nullptr, &kernelEvent);
+    err = clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, &localSize, 0, nullptr, &kernelEvent);
 
     if (err != CL_SUCCESS) {
         Napi::Error::New(env, "Failed to enqueue layer norm backward kernel").ThrowAsJavaScriptException();
@@ -289,7 +287,6 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
     clEnqueueReadBuffer(queue, dgammaBuffer, CL_FALSE, 0, sizeof(float) * size, dgamma.Data(), 1, kernelWaitList, &readEvents[1]);
     clEnqueueReadBuffer(queue, dbetaBuffer, CL_FALSE, 0, sizeof(float) * size, dbeta.Data(), 1, kernelWaitList, &readEvents[2]);
 
-    // Needed because this function returns the arrays synchronously.
     clWaitForEvents(3, readEvents);
 
     for (cl_event event : readEvents) {
@@ -297,6 +294,13 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
     }
 
     clReleaseEvent(kernelEvent);
+
+    Napi::Object output = Napi::Object::New(env);
+    output.Set("dX", dx);
+    output.Set("dGamma", dgamma);
+    output.Set("dBeta", dbeta);
+
+    return output;
 }
 
 Napi::Value LayerNormBackward_CPU(const Napi::CallbackInfo& info) {
@@ -323,7 +327,7 @@ Napi::Value LayerNormBackward_CPU(const Napi::CallbackInfo& info) {
 
     // 1. Recompute forward statistics (Mean & Variance)
     float mean = 0.0f;
-    #pragma omp unroll partial(4)
+    
     for (int i = 0; i < size; i++) {
         mean += input[i];
     }
@@ -331,7 +335,7 @@ Napi::Value LayerNormBackward_CPU(const Napi::CallbackInfo& info) {
     mean /= size;
 
     float variance = 0.0f;
-    #pragma omp unroll partial(4)
+    
     for (int i = 0; i < size; i++) {
         const float difference = input[i] - mean;
         variance += difference * difference;
@@ -347,7 +351,7 @@ Napi::Value LayerNormBackward_CPU(const Napi::CallbackInfo& info) {
     float sumDy = 0.0f;
     float sumDyXhat = 0.0f;
 
-    #pragma omp unroll partial(4)
+    
     for (int i = 0; i < size; i++) {
         normalized[i] = (input[i] - mean) * stdInv;
         
@@ -364,7 +368,7 @@ Napi::Value LayerNormBackward_CPU(const Napi::CallbackInfo& info) {
     // 3. Compute Input Gradient (dX) using closed-form formula
     const float invSize = 1.0f / static_cast<float>(size);
 
-    #pragma omp unroll partial(4)
+    
     for (int i = 0; i < size; i++) {
         const float dyGamma = dY[i] * gamma[i];
         dX[i] = stdInv * (dyGamma - sumDy * invSize - normalized[i] * sumDyXhat * invSize);

@@ -69,7 +69,7 @@ Napi::Value MatMul_CPU(const Napi::CallbackInfo& info) {
     float* output = outputVector.Data();
 
 
-    #pragma omp unroll partial(4)
+    
     for (int i = 0; i < outputSize; i++) {
         output[i] = b[i];
     }
@@ -79,7 +79,7 @@ Napi::Value MatMul_CPU(const Napi::CallbackInfo& info) {
         float v = in[i];
         int offset = i * outputSize;
 
-        #pragma omp unroll partial(4)
+        
         for (int j = 0; j < outputSize; j++) {
             output[j] += v * w[offset + j];
         }
@@ -144,7 +144,7 @@ Napi::Value DeltaMatMul_CPU(const Napi::CallbackInfo& info) {
         float sum = 0.0f;
         size_t offset = i * outputSize;
 
-        #pragma omp unroll partial(4)
+        
         for (size_t j = 0; j < outputSize; j++) {
             sum += w[offset + j] * d[j];
         }

@@ -35,9 +35,9 @@ Napi::Value GetEmbeddings_GPU(const Napi::CallbackInfo& info) {
     cl_kernel kernel = gpu.kernel("getEmbeddings");
 
     cl_mem tokenBuffer = gpu.getOrCreate_Input(modelID, layerID, static_cast<size_t>(totalSize));
-    clEnqueueWriteBuffer(queue, tokenBuffer, CL_FALSE, 0, sizeof(int) * sequence_length, tokenArray.Data(), 0, nullptr, nullptr);
+    clEnqueueWriteBuffer(queue, tokenBuffer, CL_FALSE, 0, sizeof(int) * sequence_length, tokenArray.data(), 0, nullptr, nullptr);
     cl_mem lookup = gpu.getWeights(modelID, pointer);
-    cl_mem output = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_forward_embeddings", static_cast<size_t>(totalSize));
+    cl_mem output = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_forward_embeddings", static_cast<size_t>(totalSize));
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &tokenBuffer);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &lookup);
@@ -50,9 +50,7 @@ Napi::Value GetEmbeddings_GPU(const Napi::CallbackInfo& info) {
         (size_t)embeddingDim
     };
 
-    clEnqueueNDRangeKernel(queue, kernel, 2, 0, globalSize, nullptr, 0, nullptr, nullptr)
-    // Read result back from GPU output buffer
-    
+    clEnqueueNDRangeKernel(queue, kernel, 2, 0, globalSize, nullptr, 0, nullptr, nullptr);
     clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float) * totalSize, result.Data(), 0, nullptr, nullptr);
 
     return result;
@@ -77,7 +75,7 @@ Napi::Value GetEmbeddings_CPU(const Napi::CallbackInfo& info) {
         int tokenID = tokenArray[i];
         int startIdx = tokenID * embeddingDim;
         
-        #pragma omp unroll partial(4)
+        
         // Copy the embedding row into the output at the correct offset
         for (int j = 0; j < embeddingDim; j++) {
             output[i * embeddingDim + j] = lookup[startIdx + j];
@@ -150,7 +148,7 @@ Napi::Value ReturnEmbeddings_CPU(const Napi::CallbackInfo& info) {
         int gradOffset = tokenId * embeddingDim;
         int deltaOffset = i * embeddingDim;
 
-        #pragma omp unroll partial(4)
+        
         for (int d = 0; d < embeddingDim; d++) {
             gradsData[gradOffset + d] += deltaData[deltaOffset + d];
         }

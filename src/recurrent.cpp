@@ -48,12 +48,12 @@ Napi::Value recurrentMatMul_CPU(const Napi::CallbackInfo& info) {
     for (int j = 0; j < units; j++) {
         float z = biases[j];
 
-        #pragma omp unroll partial(4)
+        
         for (size_t i = 0; i < inputSize; i++) {
             z += input[i] * input_weights[i * units + j];
         }
 
-        #pragma omp unroll partial(4)
+        
         for (size_t h = 0; h < units; h++) {
             z += prevHiddenState[h] * recurrent_weights[h * units + j];
         }
@@ -93,7 +93,7 @@ Napi::Value recurrentTimeDelta_CPU(const Napi::CallbackInfo& info) {
         float sum = 0.0f;
         int offset = i * c;
 
-        #pragma omp unroll partial(4)
+        
         for (size_t j = 0; j < d; j++) {
             sum += weights[offset + j]  * delta[j];
         }

@@ -65,7 +65,7 @@ Napi::Value MSE_CPU(const Napi::CallbackInfo& info) {
     float* p = preds.Data();
     float* a = acts.Data();
 
-    #pragma omp unroll partial(4)
+    
     for (int i = 0; i < occurrence; i++) {
         float difference = p[i] - a[i];
         sum += difference * difference;
@@ -102,7 +102,7 @@ Napi::Value MAE_GPU(const Napi::CallbackInfo& info) {
 
     float sum = 0.0f;
 
-    #pragma omp unroll partial(4)
+    
     for (size_t i = 0; i < occurrence; i++) {
         sum += results[i];
     }
@@ -124,7 +124,7 @@ Napi::Value MAE_CPU(const Napi::CallbackInfo& info) {
     float* p = preds.Data();
     float* a = acts.Data();
 
-    #pragma omp unroll partial(4)
+    
     for (int i = 0; i < occurrence; i++) {
         sum += std::abs(p[i] - a[i]);
     }
@@ -161,7 +161,7 @@ Napi::Value CCE_GPU(const Napi::CallbackInfo& info) {
     clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float) * occurrence, results.data(), 0, nullptr, nullptr);
 
     float loss = 0.0f;
-    #pragma omp unroll partial(4)
+    
     for (size_t i = 0; i < occurrence; i++) {
         loss -= results[i];
     }
@@ -184,7 +184,7 @@ Napi::Value CCE_CPU(const Napi::CallbackInfo& info) {
     float* p = preds.Data();
     float* a = acts.Data();
 
-    #pragma omp unroll partial(4)
+    
     for (int i = 0; i < length; i++) {
         loss -= a[i] * std::log(std::max(p[i], epsilon));
     }
@@ -234,7 +234,7 @@ Napi::Value BCE_GPU(const Napi::CallbackInfo& info) {
     clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float) * occurrence, results.data(), 0, nullptr, nullptr);
 
     float sum = 0.0f;
-    #pragma omp unroll partial(4)
+    
     for (size_t i = 0; i < occurrence; i++) {
         sum -= results[i];
     }
@@ -257,7 +257,7 @@ Napi::Value BCE_CPU(const Napi::CallbackInfo& info) {
     float* preds = predictions.Data();
     float* a = acts.Data();
 
-    #pragma omp unroll partial(4)
+    
     for (int i = 0; i < length; i++) {
         float p = std::max(std::min(preds[i], 1.0f - epsilon), epsilon);
         sum -= a[i] * std::log(p) + (1.0f - a[i]) * std::log(1.0f - p);

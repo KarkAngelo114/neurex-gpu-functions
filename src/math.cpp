@@ -52,7 +52,7 @@ Napi::Value element_wise_mul_CPU(const Napi::CallbackInfo& info) {
     float* o = output.Data();
 
     #pragma omp parallel for
-    #pragma omp unroll partial(4)
+    
     for (int i = 0; i < arr_length; i++) {
         o[i] = a1[i] * a2[i];
     }
@@ -109,7 +109,7 @@ Napi::Value element_wise_sub_CPU(const Napi::CallbackInfo& info) {
     float* o = output.Data();
 
     #pragma omp parallel for
-    #pragma omp unroll partial(4)
+    
     for (int i = 0; i < arr_length; i++) {
         o[i] = a1[i] - a2[i];
     } 
@@ -175,7 +175,7 @@ Napi::Value scaleDiff_CPU(const Napi::CallbackInfo& info) {
     float* o = output.Data();
 
     #pragma omp parallel for
-    #pragma omp unroll partial(4)
+    
     for (int i = 0; i < arr_length; i++) {
         o[i] = (a1[i] - a2[i]) * a3[i] * scale;
     }
@@ -252,7 +252,7 @@ Napi::Value accumulate_element_wise_mul_CPU(const Napi::CallbackInfo& info) {
     float* arr3 = inputArray3.Data();
 
     #pragma omp parallel for
-    #pragma omp unroll partial(4)
+    
     for (int i = 0; i < size; i++) {
         arr3[i] += arr2[i] * arr1[i];
     }
@@ -273,7 +273,7 @@ Napi::Value element_wise_add_CPU(const Napi::CallbackInfo& info) {
     float* o = output.Data();
 
     #pragma omp parallel for
-    #pragma omp unroll partial(4)
+    
     for (int i = 0; i < size; i++) {
         o[i] = a1[i] + a2[i];
     }

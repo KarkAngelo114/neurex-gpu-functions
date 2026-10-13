@@ -109,7 +109,7 @@ Napi::Value accumulateWeightsAndBiasGradsForConnectedLayer_CPU(const Napi::Callb
 
     // accumulate biasGrads
     #pragma omp parallel for
-    #pragma omp unroll partial(4)
+    
     for (int i = 0; i < deltas.ElementLength(); i++) {
         biasGrads[i] += delta[i];
     }
@@ -119,7 +119,7 @@ Napi::Value accumulateWeightsAndBiasGradsForConnectedLayer_CPU(const Napi::Callb
         float inputVal = activations[i];
         int rowStart = i * outputSize;
 
-        #pragma omp unroll partial(4)
+        
         for (int j = 0; j < outputSize; j++) {
             weightGrads[rowStart + j] += inputVal * delta[j];
         }
@@ -181,22 +181,22 @@ Napi::Value AccumulateWeightAndBiasGradsForConv_GPU(const Napi::CallbackInfo& in
     cl_event biasWriteEvent;
     clEnqueueWriteBuffer(queue, biasGradsBuffer, CL_FALSE, 0, sizeof(float) * biasGradsSize, biasGradsTensor.Data(), 0, nullptr, &biasWriteEvent);
 
-    clSetKernelArg(0, sizeof(cl_mem), &activations);
-    clSetKernelArg(1, sizeof(cl_mem), &delta_input);
-    clSetKernelArg(2, sizeof(cl_mem), &weightGradsBuffer);
-    clSetKernelArg(3, sizeof(cl_mem), &biasGradsBuffer);
-    clSetKernelArg(4, sizeof(int), &inputH);
-    clSetKernelArg(5, sizeof(int), &inputW);
-    clSetKernelArg(6, sizeof(int), &Cin);
-    clSetKernelArg(7, sizeof(int), &H);
-    clSetKernelArg(8, sizeof(int), &W);
-    clSetKernelArg(9, sizeof(int), &Cout);
-    clSetKernelArg(10, sizeof(int), &numFilters);
-    clSetKernelArg(11, sizeof(int), &Kh);
-    clSetKernelArg(12, sizeof(int), &Kw);
-    clSetKernelArg(13, sizeof(int), &padH);
-    clSetKernelArg(14, sizeof(int), &padW);
-    clSetKernelArg(15, sizeof(int), &stride);
+    clSetKernelArg(kernel, 0, sizeof(cl_mem), &activations);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), &delta_input);
+    clSetKernelArg(kernel, 2, sizeof(cl_mem), &weightGradsBuffer);
+    clSetKernelArg(kernel, 3, sizeof(cl_mem), &biasGradsBuffer);
+    clSetKernelArg(kernel, 4, sizeof(int), &inputH);
+    clSetKernelArg(kernel, 5, sizeof(int), &inputW);
+    clSetKernelArg(kernel, 6, sizeof(int), &Cin);
+    clSetKernelArg(kernel, 7, sizeof(int), &H);
+    clSetKernelArg(kernel, 8, sizeof(int), &W);
+    clSetKernelArg(kernel, 9, sizeof(int), &Cout);
+    clSetKernelArg(kernel, 10, sizeof(int), &numFilters);
+    clSetKernelArg(kernel, 11, sizeof(int), &Kh);
+    clSetKernelArg(kernel, 12, sizeof(int), &Kw);
+    clSetKernelArg(kernel, 13, sizeof(int), &padH);
+    clSetKernelArg(kernel, 14, sizeof(int), &padW);
+    clSetKernelArg(kernel, 15, sizeof(int), &stride);
 
     size_t globalSize = static_cast<size_t>(numFilters);
     cl_event writeWaitList[] = { weightWriteEvent, biasWriteEvent };
@@ -209,8 +209,8 @@ Napi::Value AccumulateWeightAndBiasGradsForConv_GPU(const Napi::CallbackInfo& in
     cl_event kernelWaitList[] = { kernelEvent };
     cl_event readEvents[2];
 
-    clEnqueueReadBuffer(queue, weightGradsBuffer, CL_FALSE, 0, sizeof(float) * weightGradsSize, weightGradsTensor.Data(), 1, kernelWaitList, readWaitList[0]);
-    clEnqueueReadBuffer(queue, biasGradsBuffer, CL_FALSE, 0, sizeof(float) * biasGradsSize, biasGradsTensor.Data(), 1, kernelWaitList, kernelWaitList[1]);
+    clEnqueueReadBuffer(queue, weightGradsBuffer, CL_FALSE, 0, sizeof(float) * weightGradsSize, weightGradsTensor.Data(), 1, kernelWaitList, &readEvents[0]);
+    clEnqueueReadBuffer(queue, biasGradsBuffer, CL_FALSE, 0, sizeof(float) * biasGradsSize, biasGradsTensor.Data(), 1, kernelWaitList, &readEvents[1]);
     
     clWaitForEvents(2, readEvents);
     clReleaseEvent(readEvents[0]);
@@ -369,7 +369,7 @@ Napi::Value recurrentWeightGradsAccumulation_CPU(const Napi::CallbackInfo& info)
             float xi = x_t[i];
             size_t rowOffset = i * units;
 
-            #pragma omp unroll partial(4)
+            
             for (uint32_t j = 0; j < units; ++j) {
                 output[rowOffset + j] += xi * delta_t[j];
             }
@@ -380,7 +380,7 @@ Napi::Value recurrentWeightGradsAccumulation_CPU(const Napi::CallbackInfo& info)
             float hi = h_prev[i];
             size_t rowOffset = totalInputWeights + (i * units);
 
-            #pragma omp unroll partial(4)
+            
             for (uint32_t j = 0; j < units; ++j) {
                 output[rowOffset + j] += hi * delta_t[j];
             }
@@ -403,7 +403,7 @@ Napi::Value recurrentBiasGradsAccumulation_CPU(const Napi::CallbackInfo& info) {
     for (int t = 0; t < sequenceLength; t++) {
         const float* delta_time_step = deltaTs[t];
 
-        #pragma omp unroll partial(4)
+        
         for (int j = 0; j < units; j++) {
             biasGrads[j] += delta_time_step[j];
         }
@@ -561,7 +561,7 @@ Napi::Value accumulateWeightandBiasGradsForTransConv_CPU(const Napi::CallbackInf
                         float deltaVal = deltaData[deltaBase + filter];
                         int gradBase = ((filter * kh + ky) * kw + kx) * iD;
 
-                        #pragma omp unroll partial(4)
+                        
                         for (int c = 0; c < iD; c++) {
                             weightGradsData[gradBase + c] += activationData[inputBase + c] * deltaVal;
                         }
@@ -827,7 +827,7 @@ Napi::Value AccumulateGammaAndBetaGrads_CPU(const Napi::CallbackInfo& info) {
 
     int length = gammaGrads.ElementLength();
 
-    #pragma omp unroll partial(4)
+    
     for (int i = 0; i < length; i++) {
         g[i] += dG[i];
         b[i] += dB[i];
