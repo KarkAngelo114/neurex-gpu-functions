@@ -13,50 +13,7 @@ static IntArray Vectorize(const Napi::Array& arr) {
     return vectorArray;
 }
 
-
-Napi::Value DilateInput_CPU(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-
-    Napi::Float32Array input_arr = info[0].As<Napi::Float32Array>();
-    IntArray shape = Vectorize(info[1].As<Napi::Array>());
-    size_t stride = info[2].As<Napi::Number>().Int32Value();
-
-    size_t H = shape[0];
-    size_t W = shape[1];
-    size_t C = shape[2];
-
-    size_t dilatedH = (H - 1) * stride + 1;
-    size_t dilatedW = (W - 1) * stride + 1;
-    
-    int dilatedSize = dilatedH * dilatedW * C;
-
-    Napi::Float32Array dilatedOutput = Napi::Float32Array::New(env, dilatedSize);
-
-    float* input = input_arr.Data();
-    float* dilated = dilatedOutput.Data();
-
-    for (size_t c = 0; c < C; c++) {
-        for (size_t h = 0; h < H; h++) {
-            for (size_t w = 0; w < W; w++) {
-                size_t srcIdx = (h * W + w) * C + c;
-                size_t dilatedHIdx = h * stride;
-                size_t dilatedWIdx = w * stride;
-                size_t dstIdx = (dilatedHIdx * dilatedW + dilatedWIdx) * C + c;
-                dilated[dstIdx] = input[srcIdx];
-            }
-        }
-    }
-
-    Napi::Object output = Napi::Object::New(env);
-
-    output.Set("data", dilatedOutput);
-    output.Set("dilatedHeight", dilatedH);
-    output.Set("dilatedWidth", dilatedW);
-
-    return output;
-}
-
-Napi::Value ApplyPadding_CPU(const Napi::CallbackInfo& info) {
+pi::Value ApplyPadding_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     Napi::Float32Array input_arr = info[0].As<Napi::Float32Array>();
@@ -113,23 +70,13 @@ Napi::Value cacheOutputLayerDelta(const Napi::CallbackInfo& info) {
     cl_command_queue queue = gpu.queue();
     cl_mem outputDeltaBuffer = gpu.getOrCreate_Delta(modelID, layerID, static_cast<size_t>(size));
 
-    clEnqueueWriteBuffer(queue, outputDeltaBuffer, CL_FALSE, 0, sizeof(float)* size, hostOutputDeltaBuffer.Data(), 0, nullptr, nullptr);
+    clEnqueueWriteBuffer(queue, outputDeltaBuffer, CL_TRUE, 0, sizeof(float)* size, hostOutputDeltaBuffer.Data(), 0, nullptr, nullptr);
 
 
     return env.Undefined();
 }
 
 // ================ wrappers ==================
-
-Napi::Value ApplyPadding_Wrapper(const Napi::CallbackInfo& info) {
-    return ApplyPadding_CPU(info);
-}
-
-Napi::Value DilateInputWrapper(const Napi::CallbackInfo& info) {
-
-    return DilateInput_CPU(info);
-}
-
 Napi::Value cacheOutputLayerDeltaWrapper(const Napi::CallbackInfo& info) {
     if (getComputeBackendType() == "opencl") {
         return cacheOutputLayerDelta(info);
@@ -139,7 +86,5 @@ Napi::Value cacheOutputLayerDeltaWrapper(const Napi::CallbackInfo& info) {
 }
 
 void utils(Napi::Env env, Napi::Object exports) {
-    exports.Set("DilateInput", Napi::Function::New(env, DilateInputWrapper));
-    exports.Set("ApplyPadding", Napi::Function::New(env, ApplyPadding_Wrapper));
     exports.Set("cacheOutputLayerDelta", Napi::Function::New(env, cacheOutputLayerDeltaWrapper));
 }

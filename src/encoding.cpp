@@ -13,7 +13,11 @@ Napi::Value SPE_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array inputArray = info[0].As<Napi::Float32Array>();
     int embeddingDim = info[1].As<Napi::Number>().Int32Value();
     int sequenceLength = info[2].As<Napi::Number>().Int32Value();
-    int size = static_cast<int>(inputArray.ElementLength());
+    std::string modelID = info[3].As<Napi::String>().Utf8Value();
+    std::string layerID = info[4].As<Napi::String>().Utf8Value();
+
+    int size = static_cast<size_t>(inputArray.ElementLength());
+    
 
     int expectedSize = embeddingDim * sequenceLength;
 
@@ -39,8 +43,9 @@ Napi::Value SPE_GPU(const Napi::CallbackInfo& info) {
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("spe");
 
-    cl_mem input = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * size, inputArray.Data(), nullptr);
-    cl_mem output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * size, nullptr, nullptr);
+    cl_mem input = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_spe_incoming_data", size);
+    clEnqueueWriteBuffer(queue, input, CL_FALSE, 0, sizeof(float) * size, inputArray.Data(), 0, nullptr, nullptr);
+    cl_mem output = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_spe_incoming_data", size);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &input);
     clSetKernelArg(kernel, 1, sizeof(int), &embeddingDim);
@@ -51,10 +56,7 @@ Napi::Value SPE_GPU(const Napi::CallbackInfo& info) {
     size_t globalSize = static_cast<size_t>(size);
     clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
 
-    clEnqueueReadBuffer(queue, output, CL_FALSE, 0, sizeof(float) * size, outputArray.Data(), 0, nullptr, nullptr);
-
-    clReleaseMemObject(input);
-    clReleaseMemObject(output);
+    clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float) * size, outputArray.Data(), 0, nullptr, nullptr);
 
     return outputArray;
 }
@@ -126,6 +128,9 @@ Napi::Value SPE_CPU(const Napi::CallbackInfo& info) {
 
 
 Napi::Value SPE_wrapper(const Napi::CallbackInfo& info) {
+    if (getComputeBackendType() == "opencl") {
+        return SPE_GPU(info);
+    }
     return SPE_CPU(info);
 }
 

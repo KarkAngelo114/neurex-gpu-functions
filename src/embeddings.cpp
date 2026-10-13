@@ -23,18 +23,21 @@ Napi::Value GetEmbeddings_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array params = info[2].As<Napi::Float32Array>();
     int pointer = info[3].As<Napi::Number>().Int32Value();
     std::string modelID = info[4].As<Napi::String>().Utf8Value();
+    std::string layerID = info[5].As<Napi::String>().Utf8Value();
 
     int sequence_length = tokenArray.size();
     int totalSize = sequence_length * embeddingDim; // token array length * embeddingDim = output size
+    Napi::Float32Array result = Napi::Float32Array::New(env, totalSize);
 
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("getEmbeddings");
 
-    cl_mem tokenBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(int) * sequence_length, tokenArray.data(), nullptr);
+    cl_mem tokenBuffer = gpu.getOrCreate_Input(modelID, layerID, static_cast<size_t>(totalSize));
+    clEnqueueWriteBuffer(queue, tokenBuffer, CL_FALSE, 0, sizeof(int) * sequence_length, tokenArray.Data(), 0, nullptr, nullptr);
     cl_mem lookup = gpu.getWeights(modelID, pointer);
-    cl_mem output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float)* totalSize, nullptr, nullptr); 
+    cl_mem output = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_forward_embeddings", static_cast<size_t>(totalSize));
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &tokenBuffer);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &lookup);
@@ -46,15 +49,11 @@ Napi::Value GetEmbeddings_GPU(const Napi::CallbackInfo& info) {
         (size_t)sequence_length,
         (size_t)embeddingDim
     };
-    clEnqueueNDRangeKernel(queue, kernel, 2, 0, globalSize, nullptr, 0, nullptr, nullptr);
 
+    clEnqueueNDRangeKernel(queue, kernel, 2, 0, globalSize, nullptr, 0, nullptr, nullptr)
     // Read result back from GPU output buffer
-    Napi::Float32Array result = Napi::Float32Array::New(env, totalSize);
-    clEnqueueReadBuffer(queue, output, CL_FALSE, 0, sizeof(float) * totalSize, result.Data(), 0, nullptr, nullptr);
-
-    clReleaseMemObject(output);
-    clReleaseMemObject(tokenBuffer);
-
+    
+    clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float) * totalSize, result.Data(), 0, nullptr, nullptr);
 
     return result;
 
@@ -96,16 +95,23 @@ Napi::Value ReturnEmbeddings_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array delta = info[1].As<Napi::Float32Array>();
     Napi::Float32Array weightGrads = info[2].As<Napi::Float32Array>();
     int embeddingDim = info[3].As<Napi::Number>().Int32Value();
+    std::string modelID = info[4].As<Napi::String>().Utf8Value();
+    std::string layerID = info[5].As<Napi::String>().Utf8Value();
+
     int sequence_length = activation_outputs.size();
+    int deltaSize = delta.ElementLength();
+    int weightGradSize = weightGrads.ElementLength();
 
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("returnEmbeddings");
 
-    cl_mem tokenBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(int)* sequence_length, activation_outputs.data(), nullptr);
-    cl_mem delta_input = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)* delta.ElementLength(), delta.Data(), nullptr);
-    cl_mem gradients = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float)* weightGrads.ElementLength(), weightGrads.Data(), nullptr);
+    cl_mem tokenBuffer = gpu.getInput(modelID, layerID);
+    cl_mem delta_input = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_embeddings_incoming_delta", static_cast<size_t>(deltaSize));
+    clEnqueueWriteBuffer(queue, delta_input, CL_FALSE, 0, sizeof(float) * deltaSize, delta.Data(), 0, nullptr, nullptr);
+    cl_mem gradients = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_embeddings_gradients", static_cast<size_t>(weightGradSize));
+    clEnqueueWriteBuffer(queue, gradients, CL_FALSE, 0, sizeof(float) * weightGradSize, weightGrads.Data(), 0, nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &tokenBuffer);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &delta_input);
@@ -119,10 +125,8 @@ Napi::Value ReturnEmbeddings_GPU(const Napi::CallbackInfo& info) {
     };
 
     clEnqueueNDRangeKernel(queue, kernel, 2, 0, globalSize, nullptr, 0, nullptr,nullptr);
-    clEnqueueReadBuffer(queue, gradients, CL_FALSE, 0, sizeof(float)* weightGrads.ElementLength(), weightGrads.Data(), 0, nullptr, nullptr);
-    clReleaseMemObject(tokenBuffer);
-    clReleaseMemObject(delta_input);
-    clReleaseMemObject(gradients);
+    clEnqueueReadBuffer(queue, gradients, CL_TRUE, 0, sizeof(float)* weightGradSize, weightGrads.Data(), 0, nullptr, nullptr);
+
 
     return weightGrads;
 }

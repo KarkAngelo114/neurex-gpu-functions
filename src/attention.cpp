@@ -652,6 +652,8 @@ Napi::Value CoreMultiHeadAttention_GPU(const Napi::CallbackInfo& info) {
     bool causal = info[8].As<Napi::Boolean>().Value();
     int pointer = info[9].As<Napi::Number>().Int32Value();
     std::string modelID = info[10].As<Napi::String>().Utf8Value();
+    std::string layerID = info[11].As<Napi::String>().Utf8Value();
+    int causalInt = causal ? 1 : 0;
 
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
@@ -661,6 +663,7 @@ Napi::Value CoreMultiHeadAttention_GPU(const Napi::CallbackInfo& info) {
     cl_mem packedB = gpu.getBiases(modelID, pointer);
     size_t matrixBytes = sizeof(float) * embedDim * embedDim;
     size_t biasBytes = sizeof(float) * embedDim;
+
     cl_mem qW = _attention_subBuffer(context, packedW, 0, matrixBytes);
     cl_mem kW = _attention_subBuffer(context, packedW, matrixBytes, matrixBytes);
     cl_mem vW = _attention_subBuffer(context, packedW, matrixBytes * 2, matrixBytes);
@@ -669,26 +672,35 @@ Napi::Value CoreMultiHeadAttention_GPU(const Napi::CallbackInfo& info) {
     cl_mem kB = _attention_subBuffer(context, packedB, biasBytes, biasBytes);
     cl_mem vB = _attention_subBuffer(context, packedB, biasBytes * 2, biasBytes);
     cl_mem oB = _attention_subBuffer(context, packedB, biasBytes * 3, biasBytes);
+    
     size_t tensorBytes = sizeof(float) * seqLen * embedDim;
     size_t scoreBytes = sizeof(float) * numHeads * seqLen * seqLen;
+
     cl_mem q = clCreateBuffer(context, CL_MEM_WRITE_ONLY, tensorBytes, nullptr, nullptr);
     cl_mem k = clCreateBuffer(context, CL_MEM_WRITE_ONLY, tensorBytes, nullptr, nullptr);
     cl_mem v = clCreateBuffer(context, CL_MEM_WRITE_ONLY, tensorBytes, nullptr, nullptr);
     cl_mem mha = clCreateBuffer(context, CL_MEM_WRITE_ONLY, tensorBytes, nullptr, nullptr);
     cl_mem scores = clCreateBuffer(context, CL_MEM_WRITE_ONLY, scoreBytes, nullptr, nullptr);
     cl_mem output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, tensorBytes, nullptr, nullptr);
+
     cl_kernel kernel = gpu.kernel("multi_head_attention");
     cl_mem args[] = {inputBuffer, qW, kW, vW, oW, qB, kB, vB, oB, q, k, v, mha, scores, output};
+
     for (int i = 0; i < 15; ++i) clSetKernelArg(kernel, i, sizeof(cl_mem), &args[i]);
     clSetKernelArg(kernel, 15, sizeof(int), &embedDim);
     clSetKernelArg(kernel, 16, sizeof(int), &seqLen);
     clSetKernelArg(kernel, 17, sizeof(int), &numHeads);
     clSetKernelArg(kernel, 18, sizeof(int), &headDim);
     clSetKernelArg(kernel, 19, sizeof(float), &dkRoot);
-    int causalInt = causal ? 1 : 0;
     clSetKernelArg(kernel, 20, sizeof(int), &causalInt);
-    size_t global[2] = {static_cast<size_t>(seqLen), static_cast<size_t>(embedDim)};
+
+    size_t global[2] = {
+        static_cast<size_t>(seqLen), 
+        static_cast<size_t>(embedDim)
+    };
+
     clEnqueueNDRangeKernel(queue, kernel, 2, nullptr, global, nullptr, 0, nullptr, nullptr);
+
     cl_kernel projection = gpu.kernel("multi_head_attention_projection");
     clSetKernelArg(projection, 0, sizeof(cl_mem), &mha);
     clSetKernelArg(projection, 1, sizeof(cl_mem), &oW);
@@ -696,6 +708,7 @@ Napi::Value CoreMultiHeadAttention_GPU(const Napi::CallbackInfo& info) {
     clSetKernelArg(projection, 3, sizeof(cl_mem), &output);
     clSetKernelArg(projection, 4, sizeof(int), &embedDim);
     clSetKernelArg(projection, 5, sizeof(int), &seqLen);
+
     clEnqueueNDRangeKernel(queue, projection, 2, nullptr, global, nullptr, 0, nullptr, nullptr);
 
     Napi::Float32Array Q = Napi::Float32Array::New(env, seqLen * embedDim);
@@ -704,17 +717,26 @@ Napi::Value CoreMultiHeadAttention_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array mhaOutput = Napi::Float32Array::New(env, seqLen * embedDim);
     Napi::Float32Array S = Napi::Float32Array::New(env, numHeads * seqLen * seqLen);
     Napi::Float32Array finalOutput = Napi::Float32Array::New(env, seqLen * embedDim);
+
     clEnqueueReadBuffer(queue, q, CL_FALSE, 0, tensorBytes, Q.Data(), 0, nullptr, nullptr);
     clEnqueueReadBuffer(queue, k, CL_FALSE, 0, tensorBytes, K.Data(), 0, nullptr, nullptr);
     clEnqueueReadBuffer(queue, v, CL_FALSE, 0, tensorBytes, V.Data(), 0, nullptr, nullptr);
     clEnqueueReadBuffer(queue, mha, CL_FALSE, 0, tensorBytes, mhaOutput.Data(), 0, nullptr, nullptr);
     clEnqueueReadBuffer(queue, scores, CL_FALSE, 0, scoreBytes, S.Data(), 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, output, CL_FALSE, 0, tensorBytes, finalOutput.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, output, CL_TRUE, 0, tensorBytes, finalOutput.Data(), 0, nullptr, nullptr);
+
     cl_mem temporary[] = {inputBuffer, qW, kW, vW, oW, qB, kB, vB, oB, q, k, v, mha, scores, output};
+    
     for (cl_mem buffer : temporary) clReleaseMemObject(buffer);
+    
     Napi::Object result = Napi::Object::New(env);
-    result.Set("X", input); result.Set("Q", Q); result.Set("K", K); result.Set("V", V);
-    result.Set("mhaOutput", mhaOutput); result.Set("S_perHead", S); result.Set("finalOutput", finalOutput);
+    result.Set("X", input); 
+    result.Set("Q", Q); 
+    result.Set("K", K); 
+    result.Set("V", V);
+    result.Set("mhaOutput", mhaOutput); 
+    result.Set("S_perHead", S); 
+    result.Set("finalOutput", finalOutput);
     return result;
 }
 
@@ -734,6 +756,8 @@ Napi::Value CoreMultiHeadAttentionBackward_GPU(const Napi::CallbackInfo& info) {
     bool causal = info[11].As<Napi::Boolean>().Value();
     int pointer = info[12].As<Napi::Number>().Int32Value();
     std::string modelID = info[13].As<Napi::String>().Utf8Value();
+    std::string layerID = info[14].As<Napi::String>().Utf8Value();
+    int causalInt = causal ? 1 : 0; 
 
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
@@ -741,6 +765,8 @@ Napi::Value CoreMultiHeadAttentionBackward_GPU(const Napi::CallbackInfo& info) {
 
     cl_mem packedW = gpu.getWeights(modelID, pointer);
     size_t matrixBytes = sizeof(float) * embedDim * embedDim;
+    size_t tensorBytes = sizeof(float) * seqLen * embedDim;
+
     cl_mem qW = _attention_subBuffer(context, packedW, 0, matrixBytes);
     cl_mem kW = _attention_subBuffer(context, packedW, matrixBytes, matrixBytes);
     cl_mem vW = _attention_subBuffer(context, packedW, matrixBytes * 2, matrixBytes);
@@ -750,29 +776,40 @@ Napi::Value CoreMultiHeadAttentionBackward_GPU(const Napi::CallbackInfo& info) {
     cl_mem kBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, K.ByteLength(), K.Data(), nullptr);
     cl_mem vBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, V.ByteLength(), V.Data(), nullptr);
     cl_mem sBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, S.ByteLength(), S.Data(), nullptr);
-    size_t tensorBytes = sizeof(float) * seqLen * embedDim;
+    
     cl_mem dQ = clCreateBuffer(context, CL_MEM_READ_WRITE, tensorBytes, nullptr, nullptr);
     cl_mem dK = clCreateBuffer(context, CL_MEM_READ_WRITE, tensorBytes, nullptr, nullptr);
     cl_mem dV = clCreateBuffer(context, CL_MEM_READ_WRITE, tensorBytes, nullptr, nullptr);
     cl_mem dMha = clCreateBuffer(context, CL_MEM_READ_WRITE, tensorBytes, nullptr, nullptr);
     cl_mem dX = clCreateBuffer(context, CL_MEM_WRITE_ONLY, tensorBytes, nullptr, nullptr);
-    
+
     cl_kernel kernel = gpu.kernel("multi_head_attention_backward");
     cl_mem args[] = {inputBuffer, qW, kW, vW, oW, qW, kW, vW, qBuffer, kBuffer, vBuffer, sBuffer, dQ, dK, dV, dMha, dX};
     for (int i = 0; i < 17; ++i) clSetKernelArg(kernel, i, sizeof(cl_mem), &args[i]);
-    clSetKernelArg(kernel, 17, sizeof(int), &embedDim); clSetKernelArg(kernel, 18, sizeof(int), &seqLen);
-    clSetKernelArg(kernel, 19, sizeof(int), &numHeads); clSetKernelArg(kernel, 20, sizeof(int), &headDim);
-    clSetKernelArg(kernel, 21, sizeof(float), &dkRoot); int causalInt = causal ? 1 : 0; clSetKernelArg(kernel, 22, sizeof(int), &causalInt);
-    size_t global[2] = {static_cast<size_t>(seqLen), static_cast<size_t>(embedDim)};
+    clSetKernelArg(kernel, 17, sizeof(int), &embedDim); 
+    clSetKernelArg(kernel, 18, sizeof(int), &seqLen);
+    clSetKernelArg(kernel, 19, sizeof(int), &numHeads); 
+    clSetKernelArg(kernel, 20, sizeof(int), &headDim);
+    clSetKernelArg(kernel, 21, sizeof(float), &dkRoot); 
+    clSetKernelArg(kernel, 22, sizeof(int), &causalInt);
+
+    size_t global[2] = {
+        static_cast<size_t>(seqLen), 
+        static_cast<size_t>(embedDim)
+    };
+
     cl_kernel dmhaKernel = gpu.kernel("multi_head_attention_backward_dmha");
     clSetKernelArg(dmhaKernel, 0, sizeof(cl_mem), &inputBuffer);
     clSetKernelArg(dmhaKernel, 1, sizeof(cl_mem), &oW);
     clSetKernelArg(dmhaKernel, 2, sizeof(cl_mem), &dMha);
     clSetKernelArg(dmhaKernel, 3, sizeof(int), &embedDim);
     clSetKernelArg(dmhaKernel, 4, sizeof(int), &seqLen);
+
     clEnqueueNDRangeKernel(queue, dmhaKernel, 2, nullptr, global, nullptr, 0, nullptr, nullptr);
     clEnqueueNDRangeKernel(queue, kernel, 2, nullptr, global, nullptr, 0, nullptr, nullptr);
+
     cl_kernel dxKernel = gpu.kernel("multi_head_attention_backward_dx");
+
     clSetKernelArg(dxKernel, 0, sizeof(cl_mem), &dQ);
     clSetKernelArg(dxKernel, 1, sizeof(cl_mem), &dK);
     clSetKernelArg(dxKernel, 2, sizeof(cl_mem), &dV);
@@ -781,11 +818,27 @@ Napi::Value CoreMultiHeadAttentionBackward_GPU(const Napi::CallbackInfo& info) {
     clSetKernelArg(dxKernel, 5, sizeof(cl_mem), &vW);
     clSetKernelArg(dxKernel, 6, sizeof(cl_mem), &dX);
     clSetKernelArg(dxKernel, 7, sizeof(int), &embedDim);
+
     clEnqueueNDRangeKernel(queue, dxKernel, 2, nullptr, global, nullptr, 0, nullptr, nullptr);
+    
     Napi::Float32Array outDQ = Napi::Float32Array::New(env, seqLen * embedDim), outDK = Napi::Float32Array::New(env, seqLen * embedDim), outDV = Napi::Float32Array::New(env, seqLen * embedDim), outDMha = Napi::Float32Array::New(env, seqLen * embedDim), outDX = Napi::Float32Array::New(env, seqLen * embedDim);
-    clEnqueueReadBuffer(queue, dQ, CL_FALSE, 0, tensorBytes, outDQ.Data(), 0, nullptr, nullptr); clEnqueueReadBuffer(queue, dK, CL_FALSE, 0, tensorBytes, outDK.Data(), 0, nullptr, nullptr); clEnqueueReadBuffer(queue, dV, CL_FALSE, 0, tensorBytes, outDV.Data(), 0, nullptr, nullptr); clEnqueueReadBuffer(queue, dMha, CL_FALSE, 0, tensorBytes, outDMha.Data(), 0, nullptr, nullptr); clEnqueueReadBuffer(queue, dX, CL_FALSE, 0, tensorBytes, outDX.Data(), 0, nullptr, nullptr);
-    cl_mem temporary[] = {inputBuffer, qW, kW, vW, oW, qBuffer, kBuffer, vBuffer, sBuffer, dQ, dK, dV, dMha, dX}; for (cl_mem buffer : temporary) clReleaseMemObject(buffer);
-    Napi::Object result = Napi::Object::New(env); result.Set("dQ", outDQ); result.Set("dK", outDK); result.Set("dV", outDV); result.Set("dMhaOutput", outDMha); result.Set("dX", outDX); return result;
+    
+    clEnqueueReadBuffer(queue, dQ, CL_FALSE, 0, tensorBytes, outDQ.Data(), 0, nullptr, nullptr); 
+    clEnqueueReadBuffer(queue, dK, CL_FALSE, 0, tensorBytes, outDK.Data(), 0, nullptr, nullptr); 
+    clEnqueueReadBuffer(queue, dV, CL_FALSE, 0, tensorBytes, outDV.Data(), 0, nullptr, nullptr); 
+    clEnqueueReadBuffer(queue, dMha, CL_FALSE, 0, tensorBytes, outDMha.Data(), 0, nullptr, nullptr); 
+    clEnqueueReadBuffer(queue, dX, CL_TRUE, 0, tensorBytes, outDX.Data(), 0, nullptr, nullptr);
+
+    cl_mem temporary[] = {inputBuffer, qW, kW, vW, oW, qBuffer, kBuffer, vBuffer, sBuffer, dQ, dK, dV, dMha, dX}; 
+    for (cl_mem buffer : temporary) clReleaseMemObject(buffer);
+    Napi::Object result = Napi::Object::New(env); 
+    result.Set("dQ", outDQ); 
+    result.Set("dK", outDK); 
+    result.Set("dV", outDV); 
+    result.Set("dMhaOutput", outDMha); 
+    result.Set("dX", outDX); 
+    
+    return result;
 }
 
 // ============ wrappers ==================
@@ -809,8 +862,6 @@ Napi::Value CoreMultiHeadBackward_wrapper(const Napi::CallbackInfo& info) {
     if (getComputeBackendType() == "opencl") return CoreMultiHeadAttentionBackward_GPU(info);
     return CoreMultiHeadAttentionBackward_CPU(info);
 }
-
-
 
 void attentionFunctions(Napi::Env env, Napi::Object exports) {
     exports.Set("CoreAttention", Napi::Function::New(env, CoreAttention_Wrapper));

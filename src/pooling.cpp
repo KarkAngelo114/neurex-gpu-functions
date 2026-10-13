@@ -83,7 +83,7 @@ Napi::Value MaxPooling_GPU(const Napi::CallbackInfo& info) {
     Napi::Int32Array maxArray = Napi::Int32Array::New(env, outputSize);
 
     clEnqueueReadBuffer(queue, outputTensor, CL_FALSE, 0, sizeof(float) * outputSize, outArray.Data(), 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, maxIndexTensor, CL_FALSE, 0, sizeof(int) * outputSize, maxArray.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, maxIndexTensor, CL_TRUE, 0, sizeof(int) * outputSize, maxArray.Data(), 0, nullptr, nullptr);
 
 
     Napi::Object objectOutput = Napi::Object::New(env);
@@ -201,7 +201,7 @@ Napi::Value MaxPoolDelta_GPU(const Napi::CallbackInfo& info) {
     clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
     
     // READ BACK RESULTS
-    clEnqueueReadBuffer(queue, outputTensor, CL_FALSE, 0, sizeof(float) * size, output.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, outputTensor, CL_TRUE, 0, sizeof(float) * size, output.Data(), 0, nullptr, nullptr);
 
     return output;
 }

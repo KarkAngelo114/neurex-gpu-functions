@@ -144,8 +144,7 @@ Napi::Value LayerNorm_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array outputTensor = Napi::Float32Array::New(env, size);
     clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
     
-    clEnqueueReadBuffer(queue, output, CL_FALSE, 0, sizeof(float)* size, outputTensor.Data(), 0, nullptr, nullptr);
-
+    clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float)* size, outputTensor.Data(), 0, nullptr, nullptr);
 
     return outputTensor;
 }
@@ -271,11 +270,11 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
     size_t globalSize = localSize;
 
     cl_int err = CL_SUCCESS;
-    err = clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, &localSize, 0, nullptr, nullptr);
+    cl_event kernelEvent = nullptr;
+    cl_int err = clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, &localSize, 0, nullptr, &kernelEvent);
 
     if (err != CL_SUCCESS) {
         Napi::Error::New(env, "Failed to enqueue layer norm backward kernel").ThrowAsJavaScriptException();
-
         return env.Null();
     }
 
@@ -283,18 +282,21 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array dgamma = Napi::Float32Array::New(env, size);
     Napi::Float32Array dbeta = Napi::Float32Array::New(env, size);
 
-    // Blocking reads also wait for the kernel to finish.
-    clEnqueueReadBuffer(queue, dxBuffer, CL_FALSE, 0, sizeof(float) * size, dx.Data(), 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, dgammaBuffer, CL_FALSE, 0, sizeof(float) * size, dgamma.Data(), 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, dbetaBuffer, CL_FALSE, 0, sizeof(float) * size, dbeta.Data(), 0, nullptr, nullptr);
+    cl_event kernelWaitList[] = { kernelEvent };
+    cl_event readEvents[3];
 
+    clEnqueueReadBuffer(queue, dxBuffer, CL_FALSE, 0, sizeof(float) * size, dx.Data(), 1, kernelWaitList, &readEvents[0]);
+    clEnqueueReadBuffer(queue, dgammaBuffer, CL_FALSE, 0, sizeof(float) * size, dgamma.Data(), 1, kernelWaitList, &readEvents[1]);
+    clEnqueueReadBuffer(queue, dbetaBuffer, CL_FALSE, 0, sizeof(float) * size, dbeta.Data(), 1, kernelWaitList, &readEvents[2]);
 
-    Napi::Object output = Napi::Object::New(env);
-    output.Set("dX", dx);
-    output.Set("dGamma", dgamma);
-    output.Set("dBeta", dbeta);
+    // Needed because this function returns the arrays synchronously.
+    clWaitForEvents(3, readEvents);
 
-    return output;
+    for (cl_event event : readEvents) {
+        clReleaseEvent(event);
+    }
+
+    clReleaseEvent(kernelEvent);
 }
 
 Napi::Value LayerNormBackward_CPU(const Napi::CallbackInfo& info) {

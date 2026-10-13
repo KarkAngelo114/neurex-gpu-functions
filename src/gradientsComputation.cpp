@@ -46,10 +46,12 @@ Napi::Value accumulateWeightsAndBiasGradsForConnectedLayer_GPU(const Napi::Callb
     cl_mem deltaInput = gpu.getDelta(modelID, layerID);
 
     cl_mem weight_grads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_dense_weight_grads", static_cast<size_t>(weightGrads_size));
-    clEnqueueWriteBuffer(queue, weight_grads, CL_FALSE, 0, sizeof(float) * weightGrads_size, weightGrads_tensor.Data(), 0, nullptr, nullptr);
+    cl_event weightWriteEvent;
+    clEnqueueWriteBuffer(queue, weight_grads, CL_FALSE, 0, sizeof(float) * weightGrads_size, weightGrads_tensor.Data(), 0, nullptr, &weightWriteEvent);
 
     cl_mem bias_grads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_dense_bias_grads", static_cast<size_t>(biasGrads_size));
-    clEnqueueWriteBuffer(queue, bias_grads, CL_FALSE, 0, sizeof(float) * biasGrads_size, biasGrads_tensor.Data(), 0, nullptr, nullptr);
+    cl_event biasWriteEvent;
+    clEnqueueWriteBuffer(queue, bias_grads, CL_FALSE, 0, sizeof(float) * biasGrads_size, biasGrads_tensor.Data(), 0, nullptr, &biasWriteEvent);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &activations);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &deltaInput);
@@ -63,10 +65,22 @@ Napi::Value accumulateWeightsAndBiasGradsForConnectedLayer_GPU(const Napi::Callb
         (size_t)outputSize,
     };
 
-    clEnqueueNDRangeKernel(queue, kernel, 2, nullptr, globalSize, nullptr, 0, nullptr, nullptr);
+    cl_event writeWaitList[] = { weightWriteEvent, biasWriteEvent };
+    cl_event kernelEvent;
+    clEnqueueNDRangeKernel(queue, kernel, 2, nullptr, globalSize, nullptr, 2, writeWaitList, &kernelEvent);
+    clReleaseEvent(weightWriteEvent);
+    clReleaseEvent(biasWriteEvent);
 
-    clEnqueueReadBuffer(queue, weight_grads, CL_FALSE, 0, sizeof(float) * weightGrads_size, weightGrads_tensor.Data(), 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, bias_grads, CL_FALSE, 0, sizeof(float) * biasGrads_size, biasGrads_tensor.Data(), 0, nullptr, nullptr);
+    cl_event kernelWaitList[] = { kernelEvent };
+    cl_event readEvents[2];
+
+    clEnqueueReadBuffer(queue, weight_grads, CL_FALSE, 0, sizeof(float) * weightGrads_size, weightGrads_tensor.Data(), 1, kernelWaitList, &readEvents[0]);
+    clEnqueueReadBuffer(queue, bias_grads, CL_FALSE, 0, sizeof(float) * biasGrads_size, biasGrads_tensor.Data(), 1, kernelWaitList, &readEvents[1]);
+    
+    clWaitForEvents(2, readEvents);
+    clReleaseEvent(readEvents[0]);
+    clReleaseEvent(readEvents[1]);
+    clReleaseEvent(kernelEvent);
 
     Napi::Object output = Napi::Object::New(env);
     output.Set("weightGrads", weightGrads_tensor);
@@ -158,45 +172,51 @@ Napi::Value AccumulateWeightAndBiasGradsForConv_GPU(const Napi::CallbackInfo& in
 
     cl_mem activations = gpu.getInput(modelID, layerID);
     cl_mem delta_input = gpu.getDelta(modelID, layerID);
+
     cl_mem weightGradsBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_conv_weight_grads", weightGradsSize);
+    cl_event weightWriteEvent;
+    clEnqueueWriteBuffer(queue, weightGradsBuffer, CL_FALSE, 0, sizeof(float) * weightGradsSize, weightGradsTensor.Data(), 0, nullptr, &weightWriteEvent);
+    
     cl_mem biasGradsBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_conv_bias_grads", biasGradsSize);
+    cl_event biasWriteEvent;
+    clEnqueueWriteBuffer(queue, biasGradsBuffer, CL_FALSE, 0, sizeof(float) * biasGradsSize, biasGradsTensor.Data(), 0, nullptr, &biasWriteEvent);
 
-    auto checkOpenCLError = [](cl_int error, const char* operation) {
-        if (error != CL_SUCCESS) {
-            throw std::runtime_error(std::string(operation) +
-                " failed with OpenCL error " + std::to_string(error));
-        }
-    };
-
-    auto setKernelArg = [&](cl_uint index, size_t size, const void* value) {
-        checkOpenCLError(clSetKernelArg(kernel, index, size, value), "clSetKernelArg");
-    };
-
-    checkOpenCLError(clEnqueueWriteBuffer(queue, weightGradsBuffer, CL_FALSE, 0, sizeof(float) * weightGradsSize, weightGradsTensor.Data(), 0, nullptr, nullptr), "clEnqueueWriteBuffer(convolution weight gradients)");
-    checkOpenCLError(clEnqueueWriteBuffer(queue, biasGradsBuffer, CL_FALSE, 0, sizeof(float) * biasGradsSize, biasGradsTensor.Data(), 0, nullptr, nullptr), "clEnqueueWriteBuffer(convolution bias gradients)");
-
-    setKernelArg(0, sizeof(cl_mem), &activations);
-    setKernelArg(1, sizeof(cl_mem), &delta_input);
-    setKernelArg(2, sizeof(cl_mem), &weightGradsBuffer);
-    setKernelArg(3, sizeof(cl_mem), &biasGradsBuffer);
-    setKernelArg(4, sizeof(int), &inputH);
-    setKernelArg(5, sizeof(int), &inputW);
-    setKernelArg(6, sizeof(int), &Cin);
-    setKernelArg(7, sizeof(int), &H);
-    setKernelArg(8, sizeof(int), &W);
-    setKernelArg(9, sizeof(int), &Cout);
-    setKernelArg(10, sizeof(int), &numFilters);
-    setKernelArg(11, sizeof(int), &Kh);
-    setKernelArg(12, sizeof(int), &Kw);
-    setKernelArg(13, sizeof(int), &padH);
-    setKernelArg(14, sizeof(int), &padW);
-    setKernelArg(15, sizeof(int), &stride);
+    clSetKernelArg(0, sizeof(cl_mem), &activations);
+    clSetKernelArg(1, sizeof(cl_mem), &delta_input);
+    clSetKernelArg(2, sizeof(cl_mem), &weightGradsBuffer);
+    clSetKernelArg(3, sizeof(cl_mem), &biasGradsBuffer);
+    clSetKernelArg(4, sizeof(int), &inputH);
+    clSetKernelArg(5, sizeof(int), &inputW);
+    clSetKernelArg(6, sizeof(int), &Cin);
+    clSetKernelArg(7, sizeof(int), &H);
+    clSetKernelArg(8, sizeof(int), &W);
+    clSetKernelArg(9, sizeof(int), &Cout);
+    clSetKernelArg(10, sizeof(int), &numFilters);
+    clSetKernelArg(11, sizeof(int), &Kh);
+    clSetKernelArg(12, sizeof(int), &Kw);
+    clSetKernelArg(13, sizeof(int), &padH);
+    clSetKernelArg(14, sizeof(int), &padW);
+    clSetKernelArg(15, sizeof(int), &stride);
 
     size_t globalSize = static_cast<size_t>(numFilters);
-    checkOpenCLError(clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr),"clEnqueueNDRangeKernel(convolution gradient accumulation)");
+    cl_event writeWaitList[] = { weightWriteEvent, biasWriteEvent };
+    cl_event kernelEvent;
 
-    checkOpenCLError(clEnqueueReadBuffer(queue, weightGradsBuffer, CL_FALSE, 0, sizeof(float) * weightGradsSize, weightGradsTensor.Data(), 0, nullptr, nullptr), "clEnqueueReadBuffer(convolution weight gradients)");
-    checkOpenCLError(clEnqueueReadBuffer(queue, biasGradsBuffer, CL_FALSE, 0, sizeof(float) * biasGradsSize, biasGradsTensor.Data(), 0, nullptr, nullptr), "clEnqueueReadBuffer(convolution bias gradients)");
+    clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 2, writeWaitList, &kernelEvent);
+    clReleaseEvent(weightWriteEvent);
+    clReleaseEvent(biasWriteEvent);
+
+    cl_event kernelWaitList[] = { kernelEvent };
+    cl_event readEvents[2];
+
+    clEnqueueReadBuffer(queue, weightGradsBuffer, CL_FALSE, 0, sizeof(float) * weightGradsSize, weightGradsTensor.Data(), 1, kernelWaitList, readWaitList[0]);
+    clEnqueueReadBuffer(queue, biasGradsBuffer, CL_FALSE, 0, sizeof(float) * biasGradsSize, biasGradsTensor.Data(), 1, kernelWaitList, kernelWaitList[1]);
+    
+    clWaitForEvents(2, readEvents);
+    clReleaseEvent(readEvents[0]);
+    clReleaseEvent(readEvents[1]);
+    clReleaseEvent(kernelEvent);
+
 
     Napi::Object output = Napi::Object::New(env);
     output.Set("weightGrads", weightGradsTensor);
@@ -430,39 +450,32 @@ Napi::Value accumulateWeightandBiasGradsForTransConv_GPU(const Napi::CallbackInf
     cl_kernel kernel = gpu.kernel("accumulateTransConvWeightAndBiasGrads");
 
     cl_mem activations = gpu.getInput(modelID, layerID);
+    
     cl_mem delta_input = gpu.getDelta(modelID, layerID);
+    
+    cl_event weightWriteEvent;
     cl_mem weightGradsBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_trans_conv_weight_grads", weightGradsSize);
+    clEnqueueWriteBuffer(queue, weightGradsBuffer, CL_FALSE, 0, sizeof(float) * weightGradsSize, weightGrads.Data(), 0, nullptr, &weightWriteEvent);
+
+    cl_event biasWriteEvent;
     cl_mem biasGradsBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_trans_conv_bias_grads", biasGradsSize);
+    clEnqueueWriteBuffer(queue, biasGradsBuffer, CL_FALSE, 0, sizeof(float) * biasGradsSize, biasGrads.Data(), 0, nullptr, &biasWriteEvent);
 
-    auto checkOpenCLError = [](cl_int error, const char* operation) {
-        if (error != CL_SUCCESS) {
-            throw std::runtime_error(std::string(operation) +
-                " failed with OpenCL error " + std::to_string(error));
-        }
-    };
-
-    auto setKernelArg = [&](cl_uint index, size_t size, const void* value) {
-        checkOpenCLError(clSetKernelArg(kernel, index, size, value), "clSetKernelArg(transposed convolution gradients)");
-    };
-
-    checkOpenCLError(clEnqueueWriteBuffer(queue, weightGradsBuffer, CL_FALSE, 0, sizeof(float) * weightGradsSize, weightGrads.Data(), 0, nullptr, nullptr), "clEnqueueWriteBuffer(transposed convolution weight gradients)");
-    checkOpenCLError(clEnqueueWriteBuffer(queue, biasGradsBuffer, CL_FALSE, 0, sizeof(float) * biasGradsSize, biasGrads.Data(), 0, nullptr, nullptr), "clEnqueueWriteBuffer(transposed convolution bias gradients)");
-
-    setKernelArg(0, sizeof(cl_mem), &activations);
-    setKernelArg(1, sizeof(cl_mem), &delta_input);
-    setKernelArg(2, sizeof(cl_mem), &weightGradsBuffer);
-    setKernelArg(3, sizeof(cl_mem), &biasGradsBuffer);
-    setKernelArg(4, sizeof(int), &iH);
-    setKernelArg(5, sizeof(int), &iW);
-    setKernelArg(6, sizeof(int), &iD);
-    setKernelArg(7, sizeof(int), &oH);
-    setKernelArg(8, sizeof(int), &oW);
-    setKernelArg(9, sizeof(int), &filters);
-    setKernelArg(10, sizeof(int), &kh);
-    setKernelArg(11, sizeof(int), &kw);
-    setKernelArg(12, sizeof(int), &strides);
-    setKernelArg(13, sizeof(int), &padTop);
-    setKernelArg(14, sizeof(int), &padLeft);
+    clSetKernelArg(0, sizeof(cl_mem), &activations);
+    clSetKernelArg(1, sizeof(cl_mem), &delta_input);
+    clSetKernelArg(2, sizeof(cl_mem), &weightGradsBuffer);
+    clSetKernelArg(3, sizeof(cl_mem), &biasGradsBuffer);
+    clSetKernelArg(4, sizeof(int), &iH);
+    clSetKernelArg(5, sizeof(int), &iW);
+    clSetKernelArg(6, sizeof(int), &iD);
+    clSetKernelArg(7, sizeof(int), &oH);
+    clSetKernelArg(8, sizeof(int), &oW);
+    clSetKernelArg(9, sizeof(int), &filters);
+    clSetKernelArg(10, sizeof(int), &kh);
+    clSetKernelArg(11, sizeof(int), &kw);
+    clSetKernelArg(12, sizeof(int), &strides);
+    clSetKernelArg(13, sizeof(int), &padTop);
+    clSetKernelArg(14, sizeof(int), &padLeft);
 
     size_t globalSize[3] = {
         static_cast<size_t>(filters),
@@ -470,10 +483,23 @@ Napi::Value accumulateWeightandBiasGradsForTransConv_GPU(const Napi::CallbackInf
         static_cast<size_t>(kw) * static_cast<size_t>(iD)
     };
 
-    checkOpenCLError(clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, globalSize, nullptr, 0, nullptr, nullptr), "clEnqueueNDRangeKernel(transposed convolution gradients)");
+    cl_event writeWaitList[] = { weightWriteEvent, biasWriteEvent };
+    cl_event kernelEvent;
 
-    checkOpenCLError(clEnqueueReadBuffer( queue, weightGradsBuffer, CL_FALSE, 0, sizeof(float) * weightGradsSize, weightGrads.Data(), 0, nullptr, nullptr), "clEnqueueReadBuffer(transposed convolution weight gradients)");
-    checkOpenCLError(clEnqueueReadBuffer(queue, biasGradsBuffer, CL_FALSE, 0, sizeof(float) * biasGradsSize, biasGrads.Data(), 0, nullptr, nullptr), "clEnqueueReadBuffer(transposed convolution bias gradients)");
+    clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, globalSize, nullptr, 2, writeWaitList, &kernelEvent);
+    clReleaseEvent(weightWriteEvent);
+    clReleaseEvent(biasWriteEvent);
+
+    cl_event kernelWaitList[] = { kernelEvent };
+    cl_event readEvents[2];
+
+    clEnqueueReadBuffer(queue, weightGradsBuffer, CL_FALSE, 0, sizeof(float) * weightGradsSize, weightGrads.Data(), 1, kernelWaitList, &readEvents[0]);
+    clEnqueueReadBuffer(queue, biasGradsBuffer, CL_FALSE, 0, sizeof(float) * biasGradsSize, biasGrads.Data(), 1, kernelWaitList, &readEvents[1]);
+
+    clWaitForEvents(2, readEvents);
+    clReleaseEvent(readEvents[0]);
+    clReleaseEvent(readEvents[1]);
+    clReleaseEvent(kernelEvent);
 
     Napi::Object output = Napi::Object::New(env);
     output.Set("weightGrads", weightGrads);
@@ -752,8 +778,11 @@ Napi::Value AccumulateGammaAndBetaGrads_GPU(const Napi::CallbackInfo& info) {
     cl_mem dBeta = gpu.get_dBeta(modelID, layerID);
     cl_mem gammaGrads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_gamma_grads_input", static_cast<size_t>(size));
     cl_mem betaGrads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_beta_grads_input", static_cast<size_t>(size));
-    clEnqueueWriteBuffer(queue, gammaGrads, CL_FALSE, 0, sizeof(float) * size, gammaGrads_array.Data(), 0, nullptr, nullptr);
-    clEnqueueWriteBuffer(queue, betaGrads, CL_FALSE, 0, sizeof(float) * size, betaGrads_array.Data(), 0, nullptr, nullptr);
+    
+    cl_event weightWriteEvent, biasWriteEvent;
+
+    clEnqueueWriteBuffer(queue, gammaGrads, CL_FALSE, 0, sizeof(float) * size, gammaGrads_array.Data(), 0, nullptr, &weightWriteEvent);
+    clEnqueueWriteBuffer(queue, betaGrads, CL_FALSE, 0, sizeof(float) * size, betaGrads_array.Data(), 0, nullptr, &biasWriteEvent);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &dGamma);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &dBeta);
@@ -762,11 +791,20 @@ Napi::Value AccumulateGammaAndBetaGrads_GPU(const Napi::CallbackInfo& info) {
     clSetKernelArg(kernel, 4, sizeof(int), &size);
 
     size_t globalSize = (size_t)size;
+    cl_event writeWaitList[] = {weightWriteEvent, biasWriteEvent};
+    cl_event kernelEvent;
 
-    clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
+    clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 2, writeWaitList, &kernelEvent);
 
-    clEnqueueReadBuffer(queue, gammaGrads, CL_FALSE, 0, sizeof(float) * size, gammaGrads_array.Data(), 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, betaGrads, CL_FALSE, 0, sizeof(float) * size, betaGrads_array.Data(), 0, nullptr, nullptr);
+    cL_event kernelWaitList[] = { kernelEvent};
+    cl_event readEvents[2];
+    clEnqueueReadBuffer(queue, gammaGrads, CL_FALSE, 0, sizeof(float) * size, gammaGrads_array.Data(), 1, kernelWaitList, &readEvents[0]);
+    clEnqueueReadBuffer(queue, betaGrads, CL_FALSE, 0, sizeof(float) * size, betaGrads_array.Data(), 1, kernelWaitList, &readEvents[1]);
+    
+    clWaitForEvents(2, readEvents);
+    clReleaseEvent(readEvents[0]);
+    clReleaseEvent(readEvents[1]);
+    clReleaseEvent(kernelEvent);
 
     Napi::Object output = Napi::Object::New(env);
     output.Set("gammaGrads", gammaGrads_array);
