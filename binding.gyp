@@ -48,9 +48,10 @@
       ],
       "cflags!": [ "-fno-exceptions" ],
       "cflags_cc!": [ "-fno-exceptions" ],
+      "cflags_cc": [ "-std=c++17", "-fexceptions", "-O3", "-ffast-math" ],
       "conditions": [
         ["OS=='linux'", {
-          "cflags_cc": [ "-std=c++17", "-fexceptions", "-O3", "-ffast-math", "-march=x86-64-v3", "-fopenmp" ],
+          "cflags_cc": [ "-march=x86-64-v3", "-fopenmp" ],
           "ldflags": [ "-fopenmp" ],
           "libraries": [ "-lOpenCL" ],
         }],
@@ -86,21 +87,22 @@
           "msvs_settings": {
             "VCCLCompilerTool": {
               "ExceptionHandling": 1,
-              "AdditionalOptions": [
-                "/O2",
-                "/openmp"
+              "AdditionalOptions": [ 
+                "-std=c++17", 
+                "-O3", 
+                "-mavx2", 
+                "-ffast-math", 
+                "-fopenmp" 
               ],
               "RuntimeLibrary": 2
             },
             "VCLinkerTool": {
               "AdditionalLibraryDirectories": [
-                "<!(node -p \"const fs=require('fs'); const path=require('path'); const candidates=[process.env.OPENCL_LIB_DIR && path.join(process.env.OPENCL_LIB_DIR,'OpenCL.lib'), process.env.OPENCL_LIB, 'C:/Program Files (x86)/Windows Kits/10/Lib', 'C:/Program Files/Windows Kits/10/Lib']; const match = candidates.find(v => !!v && fs.existsSync(v)); match || ''\")"
+                "<!(echo %VCPKG_INSTALLATION_ROOT%)/installed/x64-windows/lib"
               ]
             }
           },
-          "libraries": [
-            "<!(node -p \"const fs=require('fs'); const path=require('path'); const candidates=[process.env.OPENCL_LIB, process.env.OPENCL_LIB_DIR && path.join(process.env.OPENCL_LIB_DIR,'OpenCL.lib'), 'C:/Program Files (x86)/Windows Kits/10/Lib/10.0.26100.0/um/x64/OpenCL.lib', 'C:/Program Files/Windows Kits/10/Lib/10.0.26100.0/um/x64/OpenCL.lib', 'C:/Program Files (x86)/Windows Kits/10/Lib/10.0.19041.0/um/x64/OpenCL.lib', 'C:/Program Files/Windows Kits/10/Lib/10.0.19041.0/um/x64/OpenCL.lib']; const match = candidates.find(v => !!v && fs.existsSync(v)); match || 'OpenCL.lib';\")"
-          ],
+          "libraries": [ "OpenCL.lib" ],
           "defines": [ "_HAS_EXCEPTIONS=1" ]
         }]
       ]
