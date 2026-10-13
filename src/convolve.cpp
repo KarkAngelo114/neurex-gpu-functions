@@ -109,10 +109,6 @@ Napi::Value Convolve_CPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array weightsArray = info[4].As<Napi::Float32Array>();
     Napi::Float32Array biasesArray = info[5].As<Napi::Float32Array>();
 
-    ValidateShape(inputShape, 3, "ConvolveForward inputShape");
-    ValidateShape(outputShape, 3, "ConvolveForward outputShape");
-    ValidateShape(kernelShape, 4, "ConvolveForward kernelShape");
-
     const int inputH = inputShape[0];
     const int inputW = inputShape[1];
     const int inputDepth = inputShape[2];
@@ -266,10 +262,6 @@ Napi::Value ConvolveDelta_CPU(const Napi::CallbackInfo& info) {
     IntArray deltaShape = Vectorize(info[2].As<Napi::Array>());
     IntArray kernelShape = Vectorize(info[3].As<Napi::Array>());
     Napi::Float32Array kernelsArray = info[4].As<Napi::Float32Array>();
-
-    ValidateShape(outputShape, 3, "ConvolveBackward outputShape");
-    ValidateShape(deltaShape, 3, "ConvolveBackward deltaShape");
-    ValidateShape(kernelShape, 4, "ConvolveBackward kernelShape");
 
     const int outputH = outputShape[0];
     const int outputW = outputShape[1];
