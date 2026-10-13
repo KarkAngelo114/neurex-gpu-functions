@@ -796,7 +796,7 @@ Napi::Value AccumulateGammaAndBetaGrads_GPU(const Napi::CallbackInfo& info) {
 
     clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 2, writeWaitList, &kernelEvent);
 
-    cL_event kernelWaitList[] = { kernelEvent};
+    cl_event kernelWaitList[] = { kernelEvent};
     cl_event readEvents[2];
     clEnqueueReadBuffer(queue, gammaGrads, CL_FALSE, 0, sizeof(float) * size, gammaGrads_array.Data(), 1, kernelWaitList, &readEvents[0]);
     clEnqueueReadBuffer(queue, betaGrads, CL_FALSE, 0, sizeof(float) * size, betaGrads_array.Data(), 1, kernelWaitList, &readEvents[1]);
