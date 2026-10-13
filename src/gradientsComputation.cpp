@@ -461,21 +461,21 @@ Napi::Value accumulateWeightandBiasGradsForTransConv_GPU(const Napi::CallbackInf
     cl_mem biasGradsBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_trans_conv_bias_grads", biasGradsSize);
     clEnqueueWriteBuffer(queue, biasGradsBuffer, CL_FALSE, 0, sizeof(float) * biasGradsSize, biasGrads.Data(), 0, nullptr, &biasWriteEvent);
 
-    clSetKernelArg(0, sizeof(cl_mem), &activations);
-    clSetKernelArg(1, sizeof(cl_mem), &delta_input);
-    clSetKernelArg(2, sizeof(cl_mem), &weightGradsBuffer);
-    clSetKernelArg(3, sizeof(cl_mem), &biasGradsBuffer);
-    clSetKernelArg(4, sizeof(int), &iH);
-    clSetKernelArg(5, sizeof(int), &iW);
-    clSetKernelArg(6, sizeof(int), &iD);
-    clSetKernelArg(7, sizeof(int), &oH);
-    clSetKernelArg(8, sizeof(int), &oW);
-    clSetKernelArg(9, sizeof(int), &filters);
-    clSetKernelArg(10, sizeof(int), &kh);
-    clSetKernelArg(11, sizeof(int), &kw);
-    clSetKernelArg(12, sizeof(int), &strides);
-    clSetKernelArg(13, sizeof(int), &padTop);
-    clSetKernelArg(14, sizeof(int), &padLeft);
+    clSetKernelArg(kernel, 0, sizeof(cl_mem), &activations);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), &delta_input);
+    clSetKernelArg(kernel, 2, sizeof(cl_mem), &weightGradsBuffer);
+    clSetKernelArg(kernel, 3, sizeof(cl_mem), &biasGradsBuffer);
+    clSetKernelArg(kernel, 4, sizeof(int), &iH);
+    clSetKernelArg(kernel, 5, sizeof(int), &iW);
+    clSetKernelArg(kernel, 6, sizeof(int), &iD);
+    clSetKernelArg(kernel, 7, sizeof(int), &oH);
+    clSetKernelArg(kernel, 8, sizeof(int), &oW);
+    clSetKernelArg(kernel, 9, sizeof(int), &filters);
+    clSetKernelArg(kernel, 10, sizeof(int), &kh);
+    clSetKernelArg(kernel, 11, sizeof(int), &kw);
+    clSetKernelArg(kernel, 12, sizeof(int), &strides);
+    clSetKernelArg(kernel, 13, sizeof(int), &padTop);
+    clSetKernelArg(kernel, 14, sizeof(int), &padLeft);
 
     size_t globalSize[3] = {
         static_cast<size_t>(filters),
