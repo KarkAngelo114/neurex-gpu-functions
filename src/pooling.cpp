@@ -229,6 +229,11 @@ Napi::Value MaxPoolDelta_CPU(const Napi::CallbackInfo& info) {
     float* o = output.Data();
 
     #pragma omp unroll partial(4)
+    for (int i = 0; i < size; i++) {
+        o[i] = 0.0f;
+    }
+
+    #pragma omp unroll partial(4)
     for (int i = 0; i < elementLength; i++) {
         int idx = indices[i];
         o[idx] += inputData[i]; 

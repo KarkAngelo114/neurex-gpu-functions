@@ -411,7 +411,7 @@ Napi::Value DSigmoid_GPU(const Napi::CallbackInfo& info) {
     std::string layerID = info[2].As<Napi::String>().Utf8Value();
 
     int input_size = input.ElementLength();
-    Napi::Float32Array outputArray = getOrCreateBuffer(env, modelID, layerID+"_sigmoid", input_size);
+    Napi::Float32Array outputArray = getOrCreateBuffer(env, modelID, layerID+"_dsigmoid", input_size);
 
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
@@ -441,7 +441,7 @@ Napi::Value DSigmoid_CPU(const Napi::CallbackInfo& info) {
     std::string layerID = info[2].As<Napi::String>().Utf8Value();
 
     int input_size = input.ElementLength();
-    Napi::Float32Array outputArray = getOrCreateBuffer(env, modelID, layerID+"_sigmoid", input_size);
+    Napi::Float32Array outputArray = getOrCreateBuffer(env, modelID, layerID+"_dsigmoid", input_size);
     
     float* inData = input.Data();
     float* outData = outputArray.Data();
