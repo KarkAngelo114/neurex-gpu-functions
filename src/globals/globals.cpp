@@ -4,11 +4,76 @@
 #include "../gpu/gpu_context.h"
 #include "globals.h"
 #include <iostream>
+#include <unordered_map>
+#include <mutex>
+#include <stdexcept>
 
 static std::string compute_backend_string;
 
+namespace {
+struct BufferStore {
+    napi_env env;
+    std::unordered_map<
+        std::string,
+        std::unordered_map<std::string, Napi::Reference<Napi::Float32Array>>> buffers;
+};
+
+std::mutex buffer_stores_mutex;
+std::unordered_map<napi_env, BufferStore*> buffer_stores;
+
+void cleanupBufferStore(void* data) {
+    auto* store = static_cast<BufferStore*>(data);
+    {
+        std::lock_guard<std::mutex> lock(buffer_stores_mutex);
+        buffer_stores.erase(store->env);
+    }
+    delete store;
+}
+
+BufferStore& getBufferStore(Napi::Env env) {
+    const napi_env rawEnv = env;
+    std::lock_guard<std::mutex> lock(buffer_stores_mutex);
+
+    auto found = buffer_stores.find(rawEnv);
+    if (found != buffer_stores.end()) {
+        return *found->second;
+    }
+
+    auto* store = new BufferStore{rawEnv, {}};
+    try {
+        env.AddCleanupHook(cleanupBufferStore, store);
+    } catch (...) {
+        delete store;
+        throw;
+    }
+    buffer_stores.emplace(rawEnv, store);
+    return *store;
+}
+}
+
+
 std::string getComputeBackendType() {
     return compute_backend_string;
+}
+
+Napi::Float32Array getOrCreateBuffer(Napi::Env env, const std::string& global_reference_id, const std::string& local_reference_id, int size) {
+    if (global_reference_id.empty() || local_reference_id.empty()) {
+        throw std::invalid_argument("Buffer reference IDs must not be empty.");
+    }
+    if (size < 0) {
+        throw std::invalid_argument("Buffer size must not be negative.");
+    }
+
+    auto& buffers = getBufferStore(env).buffers[global_reference_id];
+    auto found = buffers.find(local_reference_id);
+    if (found != buffers.end() &&
+        found->second.Value().As<Napi::Float32Array>().ElementLength() == static_cast<size_t>(size)) {
+        return found->second.Value();
+    }
+
+    Napi::Float32Array buffer = Napi::Float32Array::New(env, static_cast<size_t>(size));
+    buffers.insert_or_assign(local_reference_id, Napi::Persistent(buffer));
+    return buffer;
 }
 
 Napi::Value setComputeBackendType(const Napi::CallbackInfo& info) {

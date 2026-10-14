@@ -18,7 +18,6 @@ Napi::Value SPE_GPU(const Napi::CallbackInfo& info) {
 
     int size = static_cast<size_t>(inputArray.ElementLength());
     
-
     int expectedSize = embeddingDim * sequenceLength;
 
     if (size != expectedSize) {
@@ -32,7 +31,7 @@ Napi::Value SPE_GPU(const Napi::CallbackInfo& info) {
         return env.Undefined();
     }
 
-    Napi::Float32Array outputArray = Napi::Float32Array::New(env, size);
+    Napi::Float32Array outputArray = getOrCreateBuffer(env, modelID, layerID+"_spe", size);
 
     if (size == 0) {
         return outputArray;
@@ -66,6 +65,8 @@ Napi::Value SPE_CPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array inputArray = info[0].As<Napi::Float32Array>();
     int embeddingDim = info[1].As<Napi::Number>().Int32Value();
     int sequenceLength = info[2].As<Napi::Number>().Int32Value();
+    std::string modelID = info[3].As<Napi::String>().Utf8Value();
+    std::string layerID = info[4].As<Napi::String>().Utf8Value();
     int size = inputArray.ElementLength();
     Napi::Float32Array outputArray = Napi::Float32Array::New(env, size);
 

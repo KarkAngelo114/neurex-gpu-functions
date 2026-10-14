@@ -47,7 +47,7 @@ Napi::Value transConv_GPU(const Napi::CallbackInfo& info) {
     int inputSize = inputTensor.ElementLength();
 
     size_t outputSize = oH * oW * f;
-    Napi::Float32Array outputTensor = Napi::Float32Array::New(env, outputSize);
+    Napi::Float32Array outputTensor = getOrCreateBuffer(env, modelID, layerID+"_transConv_forward", outputSize);
 
     int padH = std::max(0, (iH - 1) * strides + kh - oH);
     int padW = std::max(0, (iW - 1) * strides + kw - oW);
@@ -105,6 +105,8 @@ Napi::Value transConv_CPU(const Napi::CallbackInfo& info) {
     IntArray weightShape = Vectorize(info[5].As<Napi::Array>());
     Napi::Float32Array weightsArray = info[6].As<Napi::Float32Array>();
     Napi::Float32Array biasesArray = info[7].As<Napi::Float32Array>();
+    std::string modelID = info[9].As<Napi::String>().Utf8Value();
+    std::string layerID = info[10].As<Napi::String>().Utf8Value();
 
     int iH = inputShape[0];
     int iW = inputShape[1];
@@ -118,8 +120,8 @@ Napi::Value transConv_CPU(const Napi::CallbackInfo& info) {
     int kh = weightShape[1];
     int kw = weightShape[2];
     int d = weightShape[3];
-
-    Napi::Float32Array outputTensor = Napi::Float32Array::New(env, oH * oW * f);
+    int size = oH * oW * f;
+    Napi::Float32Array outputTensor = getOrCreateBuffer(env, modelID, layerID+"_transConv_forward", size);
 
     int padH = std::max(0, (iH - 1) * strides + kh - oH);
     int padW = std::max(0, (iW - 1) * strides + kw - oW);
@@ -232,7 +234,8 @@ Napi::Value transConvBackward_GPU(const Napi::CallbackInfo& info) {
     int padW = std::max(0, (iW - 1) * strides + kw - oW);
     int padTop = std::floor(padH / 2);
     int padLeft = std::floor(padW / 2);
-    Napi::Float32Array outputTensor = Napi::Float32Array::New(env, iH * iW * iD);
+    int size = iH * iW * iD;
+    Napi::Float32Array outputTensor = getOrCreateBuffer(env, modelID, layerID+"transConv_backward", size);
 
     int deltaSize = deltaTensor.ElementLength();
     int outputSize = outputTensor.ElementLength();
@@ -286,6 +289,8 @@ Napi::Value transConvBackward_CPU(const Napi::CallbackInfo& info) {
     int filters = info[4].As<Napi::Number>().Int32Value();
     IntArray weightShape = Vectorize(info[5].As<Napi::Array>());
     Napi::Float32Array weightsArray = info[6].As<Napi::Float32Array>();
+    std::string modelID = info[8].As<Napi::String>().Utf8Value();
+    std::string layerID = info[9].As<Napi::String>().Utf8Value();
 
     int iH = inputShape[0];
     int iW = inputShape[1];
@@ -304,8 +309,8 @@ Napi::Value transConvBackward_CPU(const Napi::CallbackInfo& info) {
     int padW = std::max(0, (iW - 1) * strides + kw - oW);
     int padTop = std::floor(padH / 2);
     int padLeft = std::floor(padW / 2);
-
-    Napi::Float32Array outputTensor = Napi::Float32Array::New(env, iH * iW * iD);
+    int size = iH * iW * iD;
+    Napi::Float32Array outputTensor = getOrCreateBuffer(env, modelID ,layerID+"_transConv_backward" ,size);
 
     // helper function
     auto deltaOutputIndex = [&](int y, int x, int f) {

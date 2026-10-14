@@ -23,7 +23,7 @@ Napi::Value MatMul_GPU(const Napi::CallbackInfo& info) {
     int pointer = info[5].As<Napi::Number>().Int32Value();
     std::string modelID = info[6].As<Napi::String>().Utf8Value();
     std::string layerID = info[7].As<Napi::String>().Utf8Value();
-    Napi::Float32Array outputTensor = Napi::Float32Array::New(env, outputSize);
+    Napi::Float32Array outputTensor = getOrCreateBuffer(env, modelID, layerID+"_matmul_forward", outputSize);
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
@@ -60,16 +60,17 @@ Napi::Value MatMul_CPU(const Napi::CallbackInfo& info) {
     int outputSize = info[2].As<Napi::Number>().Int32Value();
     Napi::Float32Array weights = info[3].As<Napi::Float32Array>();
     Napi::Float32Array biases = info[4].As<Napi::Float32Array>();
+    std::string modelID = info[6].As<Napi::String>().Utf8Value();
+    std::string layerID = info[7].As<Napi::String>().Utf8Value();
 
-    Napi::Float32Array outputVector = Napi::Float32Array::New(env, outputSize);
+    Napi::Float32Array outputVector = getOrCreateBuffer(env modelID, layerID+"_matmul_forward", outputSize);
 
     float* in = input.Data();
     float* w = weights.Data();
     float* b = biases.Data();
     float* output = outputVector.Data();
 
-
-    
+    #pragma omp unroll partial(4)    
     for (int i = 0; i < outputSize; i++) {
         output[i] = b[i];
     }
@@ -79,7 +80,7 @@ Napi::Value MatMul_CPU(const Napi::CallbackInfo& info) {
         float v = in[i];
         int offset = i * outputSize;
 
-        
+        #pragma omp unroll partial(4)
         for (int j = 0; j < outputSize; j++) {
             output[j] += v * w[offset + j];
         }
@@ -98,7 +99,7 @@ Napi::Value DeltaMatMul_GPU(const Napi::CallbackInfo& info) {
     std::string modelID = info[5].As<Napi::String>().Utf8Value();
     std::string layerID = info[6].As<Napi::String>().Utf8Value();
 
-    Napi::Float32Array output = Napi::Float32Array::New(env, inputSize);
+    Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID+"_matmul_backward", inputSize);
 
     auto& gpu = GpuContext::instance();
     cl_context ctx = gpu.context();
@@ -133,23 +134,27 @@ Napi::Value DeltaMatMul_CPU(const Napi::CallbackInfo& info) {
     int inputSize  = info[1].As<Napi::Number>().Int32Value();
     size_t outputSize = info[2].As<Napi::Number>().Int32Value();
     Napi::Float32Array weights = info[3].As<Napi::Float32Array>();
-    Napi::Float32Array output = Napi::Float32Array::New(env, inputSize);
+    std::string modelID = info[5].As<Napi::String>().Utf8Value();
+    std::string layerID = info[6].As<Napi::String>().Utf8Value();
+
+    Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID+"_matmul_backward", inputSize);
 
     float* d = delta.Data();
     const float* w = weights.Data();
     float* o = output.Data();
-
     
     for (int i = 0; i < inputSize; i++) {
         float sum = 0.0f;
         size_t offset = i * outputSize;
 
-        
+        #pragma omp unroll partial(4)        
         for (size_t j = 0; j < outputSize; j++) {
             sum += w[offset + j] * d[j];
         }
+
         o[i] = sum;
     }
+
     return output;
 }
 

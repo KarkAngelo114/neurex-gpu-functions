@@ -27,7 +27,8 @@ Napi::Value GetEmbeddings_GPU(const Napi::CallbackInfo& info) {
 
     int sequence_length = tokenArray.size();
     int totalSize = sequence_length * embeddingDim; // token array length * embeddingDim = output size
-    Napi::Float32Array result = Napi::Float32Array::New(env, totalSize);
+
+    Napi::Float32Array result = getOrCreateBuffer(env, modelID, layerID+"_embeddings", totalSize);
 
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
@@ -62,10 +63,12 @@ Napi::Value GetEmbeddings_CPU(const Napi::CallbackInfo& info) {
     IntArray tokenArray = Vectorize(info[0].As<Napi::Array>());
     int embeddingDim = info[1].As<Napi::Number>().Int32Value();
     Napi::Float32Array params = info[2].As<Napi::Float32Array>();
+    std::string modelID = info[4].As<Napi::String>().Utf8Value();
+    std::string layerID = info[5].As<Napi::String>().Utf8Value();
     int sequenceLength = tokenArray.size();
     int totalSize = sequenceLength * embeddingDim;
 
-    Napi::Float32Array outputVector = Napi::Float32Array::New(env, totalSize);
+    Napi::Float32Array outputVector = getOrCreateBuffer(env, modelID, laeyrID+"_emeddings", totalSize);
 
     float* lookup = params.Data();
     float* output = outputVector.Data();
@@ -77,6 +80,7 @@ Napi::Value GetEmbeddings_CPU(const Napi::CallbackInfo& info) {
         
         
         // Copy the embedding row into the output at the correct offset
+        #pragma omp unroll partial(4)
         for (int j = 0; j < embeddingDim; j++) {
             output[i * embeddingDim + j] = lookup[startIdx + j];
         }
@@ -148,7 +152,7 @@ Napi::Value ReturnEmbeddings_CPU(const Napi::CallbackInfo& info) {
         int gradOffset = tokenId * embeddingDim;
         int deltaOffset = i * embeddingDim;
 
-        
+        #pragma omp unroll partial(4)        
         for (int d = 0; d < embeddingDim; d++) {
             gradsData[gradOffset + d] += deltaData[deltaOffset + d];
         }

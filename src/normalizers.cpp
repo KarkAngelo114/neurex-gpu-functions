@@ -101,6 +101,7 @@ Napi::Value LayerNorm_GPU(const Napi::CallbackInfo& info) {
     // compute mean
     float mean = 0.0f;
     
+    #pragma omp unroll partial(4)
     for (int i = 0; i < size; i++) {
         mean += input[i];
     }
@@ -111,6 +112,7 @@ Napi::Value LayerNorm_GPU(const Napi::CallbackInfo& info) {
     // compute variance
     float variance = 0.0f;
     
+    #pragma omp unroll partial(4)
     for (int i = 0; i < size; i++) {
         float diff = input[i] - mean;
         variance += diff * diff;
@@ -139,7 +141,7 @@ Napi::Value LayerNorm_GPU(const Napi::CallbackInfo& info) {
 
     size_t globalSize = (size_t)size;
 
-    Napi::Float32Array outputTensor = Napi::Float32Array::New(env, size);
+    Napi::Float32Array outputTensor = getOrCreateBuffer(env, modelID, layerID+"_layerNorm_forward", size);
     clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
     
     clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float)* size, outputTensor.Data(), 0, nullptr, nullptr);
@@ -155,8 +157,10 @@ Napi::Value LayerNorm_CPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array gammaTensor = info[2].As<Napi::Float32Array>();
     Napi::Float32Array betaTensor = info[3].As<Napi::Float32Array>();
     float eps = info[4].As<Napi::Number>().FloatValue();
+    std::string modelID = info[6].As<Napi::String>().Utf8Value();
+    std::string layerID = info[7].As<Napi::String>().Utf8Value();
 
-    Napi::Float32Array outputTensor = Napi::Float32Array::New(env, size);
+    Napi::Float32Array outputTensor = getOrCreateBuffer(env, modelID, layerID+"_layerNorm_forward", size);
 
     float* input = inputTensor.Data();
     float* gamma = gammaTensor.Data();
@@ -165,6 +169,7 @@ Napi::Value LayerNorm_CPU(const Napi::CallbackInfo& info) {
 
     float mean = 0.0f;
     
+    #pragma omp unroll partial(4)
     for (int i = 0; i < size; i++) {
         mean += input[i];
     }
@@ -172,7 +177,7 @@ Napi::Value LayerNorm_CPU(const Napi::CallbackInfo& info) {
     mean /= size;
 
     float variance = 0.0f;
-    
+    #pragma omp unroll partial(4)
     for (int i = 0; i < size; i++) {
         float diff = input[i] - mean;
         variance += diff * diff;
@@ -183,7 +188,7 @@ Napi::Value LayerNorm_CPU(const Napi::CallbackInfo& info) {
     float std = std::sqrt(variance + eps);
 
     #pragma omp parallel for
-    
+    #pragma omp unroll partial(4)
     for (int i = 0; i < size; i++) {
         float xHat = (input[i] - mean) / std;
         output[i] = gamma[i] * xHat + beta[i];
@@ -276,9 +281,9 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
         return env.Null();
     }
 
-    Napi::Float32Array dx = Napi::Float32Array::New(env, size);
-    Napi::Float32Array dgamma = Napi::Float32Array::New(env, size);
-    Napi::Float32Array dbeta = Napi::Float32Array::New(env, size);
+    Napi::Float32Array dx = getOrCreateBuffer(env, modelID, layerID+"_dx", size);
+    Napi::Float32Array dgamma = getOrCreateBuffer(env, modelID, layerID+"_dgamma", size);
+    Napi::Float32Array dbeta = getOrCreateBuffer(env, modelID, layerID+"_dbeta", size);
 
     cl_event kernelWaitList[] = { kernelEvent };
     cl_event readEvents[3];
@@ -311,12 +316,12 @@ Napi::Value LayerNormBackward_CPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array Gamma = info[2].As<Napi::Float32Array>();
     int size = info[3].As<Napi::Number>().Int32Value();
     float eps = info[4].As<Napi::Number>().FloatValue();
-    int pointer = info[5].As<Napi::Number>().Int32Value();
     std::string modelID = info[6].As<Napi::String>().Utf8Value();
+    std::string layerID = info[7].As<Napi::String>().Utf8Value();
 
-    Napi::Float32Array dx = Napi::Float32Array::New(env, size);
-    Napi::Float32Array dgamma = Napi::Float32Array::New(env, size);
-    Napi::Float32Array dbeta = Napi::Float32Array::New(env, size);
+    Napi::Float32Array dx = getOrCreateBuffer(env, modelID, layerID+"_dx", size);
+    Napi::Float32Array dgamma = getOrCreateBuffer(env, modelID, layerID+"_dgamma", size);
+    Napi::Float32Array dbeta = getOrCreateBuffer(env, modelID, layerID+"_dbeta", size);
 
     float* dY = dy.Data();
     float* input = x.Data();
@@ -328,6 +333,7 @@ Napi::Value LayerNormBackward_CPU(const Napi::CallbackInfo& info) {
     // 1. Recompute forward statistics (Mean & Variance)
     float mean = 0.0f;
     
+    #pragma omp unroll partial(4)
     for (int i = 0; i < size; i++) {
         mean += input[i];
     }
@@ -335,7 +341,7 @@ Napi::Value LayerNormBackward_CPU(const Napi::CallbackInfo& info) {
     mean /= size;
 
     float variance = 0.0f;
-    
+    #pragma omp unroll partial(4)
     for (int i = 0; i < size; i++) {
         const float difference = input[i] - mean;
         variance += difference * difference;
@@ -346,12 +352,12 @@ Napi::Value LayerNormBackward_CPU(const Napi::CallbackInfo& info) {
     const float stdInv = 1.0f / std::sqrt(variance + eps);
 
     // 2. Compute normalized values (xHat) and intermediate parameter gradients
-    Napi::Float32Array xHat = Napi::Float32Array::New(env, size);
+    Napi::Float32Array xHat = getOrCreateBuffer(env, modelID, layerID+"_xHat", size);
     float* normalized = xHat.Data();
     float sumDy = 0.0f;
     float sumDyXhat = 0.0f;
 
-    
+    #pragma omp unroll partial(4)
     for (int i = 0; i < size; i++) {
         normalized[i] = (input[i] - mean) * stdInv;
         
@@ -368,7 +374,7 @@ Napi::Value LayerNormBackward_CPU(const Napi::CallbackInfo& info) {
     // 3. Compute Input Gradient (dX) using closed-form formula
     const float invSize = 1.0f / static_cast<float>(size);
 
-    
+    #pragma omp unroll partial(4)
     for (int i = 0; i < size; i++) {
         const float dyGamma = dY[i] * gamma[i];
         dX[i] = stdInv * (dyGamma - sumDy * invSize - normalized[i] * sumDyXhat * invSize);

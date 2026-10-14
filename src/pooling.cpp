@@ -79,12 +79,11 @@ Napi::Value MaxPooling_GPU(const Napi::CallbackInfo& info) {
     clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, globalSize, nullptr, 0, nullptr, nullptr);
 
 
-    Napi::Float32Array outArray = Napi::Float32Array::New(env, outputSize);
+    Napi::Float32Array outArray = getOrCreateBuffer(env, modelID, layerID+"_maxpool_output_buffer", outputSize);
     Napi::Int32Array maxArray = Napi::Int32Array::New(env, outputSize);
 
     clEnqueueReadBuffer(queue, outputTensor, CL_FALSE, 0, sizeof(float) * outputSize, outArray.Data(), 0, nullptr, nullptr);
     clEnqueueReadBuffer(queue, maxIndexTensor, CL_TRUE, 0, sizeof(int) * outputSize, maxArray.Data(), 0, nullptr, nullptr);
-
 
     Napi::Object objectOutput = Napi::Object::New(env);
     objectOutput.Set("output", outArray);
@@ -101,6 +100,8 @@ Napi::Value MaxPooling_CPU(const Napi::CallbackInfo& info) {
     IntArray inputShape = Vectorize(info[2].As<Napi::Array>());
     IntArray outputShape = Vectorize(info[3].As<Napi::Array>());
     size_t strides = info[4].As<Napi::Number>().Int32Value();
+    std::string modelID = info[5].As<Napi::String>().Utf8Value();
+    std::string layerID = info[6].As<Napi::String>().Utf8Value();
     
     size_t poolH = pool_size[0];
     size_t poolW = pool_size[1];
@@ -112,10 +113,11 @@ Napi::Value MaxPooling_CPU(const Napi::CallbackInfo& info) {
     size_t outputH = outputShape[0];
     size_t outputW = outputShape[1];
     size_t outputD = outputShape[2];
+    int outputSize = outputH * outputW * outputD;
 
     // prepare output
-    Napi::Float32Array output = Napi::Float32Array::New(env, outputH * outputW * outputD);
-    Napi::Int32Array maxArray = Napi::Int32Array::New(env, outputH * outputW * outputD);
+    Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID+"_maxpool_output_buffer", outputSize);
+    Napi::Int32Array maxArray = Napi::Int32Array::New(env, outputShape);
 
     float* arr = input_array.Data();
     int* max = maxArray.Data();
@@ -174,7 +176,7 @@ Napi::Value MaxPoolDelta_GPU(const Napi::CallbackInfo& info) {
     std::string layerID = info[6].As<Napi::String>().Utf8Value();
     int size = H * W * D;
 
-    Napi::Float32Array output = Napi::Float32Array::New(env, size);
+    Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID+"_maxpool_delta", size);
 
     int inputSize = input_arr.ElementLength();
     int indices_Size = indicesArray.ElementLength();
@@ -214,15 +216,19 @@ Napi::Value MaxPoolDelta_CPU(const Napi::CallbackInfo& info) {
     int H = info[2].As<Napi::Number>().Int32Value();
     int W = info[3].As<Napi::Number>().Int32Value();
     int D = info[4].As<Napi::Number>().Int32Value();
+    std::string modelID = info[5].As<Napi::String>().Utf8Value();
+    std::string layerID = info[6].As<Napi::String>().Utf8Value();
+
     int elementLength = indicesArray.ElementLength();
     int size = H * W * D;
 
-    Napi::Float32Array output = Napi::Float32Array::New(env, size);
+    Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID+"_maxpool_delta", size);
 
     float* inputData = input_arr.Data();
     int* indices = indicesArray.Data();
     float* o = output.Data();
 
+    #pragma omp unroll partial(4)
     for (int i = 0; i < elementLength; i++) {
         int idx = indices[i];
         o[idx] += inputData[i]; 

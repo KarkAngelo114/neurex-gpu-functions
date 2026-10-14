@@ -30,8 +30,8 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     int pointer = info[6].As<Napi::Number>().Int32Value();
     std::string modelID = info[7].As<Napi::String>().Utf8Value();
     std::string layerID = info[8].As<Napi::String>().Utf8Value();
-
     size_t inputSize = input.ElementLength();
+
     int numFilters = kernelShape[0];
     int kernelH = kernelShape[1];
     int kernelW = kernelShape[2];
@@ -61,8 +61,8 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
         throw std::invalid_argument("ConvolveForward bias length does not match the number of filters.");
     }
 
-    size_t outputSize = static_cast<size_t>(outputH) * outputW * outputDepth;
-    Napi::Float32Array output = Napi::Float32Array::New(env, outputSize);
+    int outputSize = outputH * outputW * outputDepth;
+    Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID+"_convolve_forward", outputSize);
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
@@ -108,6 +108,9 @@ Napi::Value Convolve_CPU(const Napi::CallbackInfo& info) {
     IntArray kernelShape = Vectorize(info[3].As<Napi::Array>());
     Napi::Float32Array weightsArray = info[4].As<Napi::Float32Array>();
     Napi::Float32Array biasesArray = info[5].As<Napi::Float32Array>();
+    int pointer = info[6].As<Napi::Number>().Int32Value();
+    std::string modelID = info[7].As<Napi::String>().Utf8Value();
+    std::string layerID = info[8].As<Napi::String>().Utf8Value();
 
     const int inputH = inputShape[0];
     const int inputW = inputShape[1];
@@ -133,8 +136,9 @@ Napi::Value Convolve_CPU(const Napi::CallbackInfo& info) {
         throw std::invalid_argument("ConvolveForward bias length does not match the number of filters.");
     }
 
-    const size_t outputSize = static_cast<size_t>(outputH) * outputW * outputDepth;
-    Napi::Float32Array outputTensor = Napi::Float32Array::New(env, outputSize);
+    int outputSize = outputH * outputW * outputDepth;
+    Napi::Float32Array outputTensor = getOrCreateBuffer(env, modelID, layerID+"_convolve_forward", outputSize);
+
     const float* input = inputTensor.Data();
     const float* weights = weightsArray.Data();
     const float* biases = biasesArray.Data();
@@ -217,9 +221,9 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
         throw std::invalid_argument("ConvolveBackward weight length does not match kernelShape.");
     }
 
-    const size_t targetSize = static_cast<size_t>(oH) * oW * outputDepth;
+    int targetSize = oH * oW * outputDepth;
     const size_t deltaSize = static_cast<size_t>(deltaH) * deltaW * deltaDepth;
-    Napi::Float32Array output = Napi::Float32Array::New(env, targetSize);
+    Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID+"_convolve_backward", targetSize);
     
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
@@ -228,7 +232,7 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     cl_mem weights = gpu.getWeights(modelID, pointer);
     cl_mem delta = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_conv_incoming_delta", deltaSize);
     clEnqueueWriteBuffer(queue, delta, CL_FALSE, 0, sizeof(float) * deltaSize, inputTensor.Data(), 0, nullptr, nullptr);
-    cl_mem outputBuf = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_output_conv_backward", targetSize);
+    cl_mem outputBuf = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_output_conv_backward", static_cast<size_t>(targetSize));
 
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &delta);
@@ -262,6 +266,8 @@ Napi::Value ConvolveDelta_CPU(const Napi::CallbackInfo& info) {
     IntArray deltaShape = Vectorize(info[2].As<Napi::Array>());
     IntArray kernelShape = Vectorize(info[3].As<Napi::Array>());
     Napi::Float32Array kernelsArray = info[4].As<Napi::Float32Array>();
+    std::string modelID = info[6].As<Napi::String>().Utf8Value();
+    std::string layerID = info[7].As<Napi::String>().Utf8Value();
 
     const int outputH = outputShape[0];
     const int outputW = outputShape[1];
@@ -284,8 +290,8 @@ Napi::Value ConvolveDelta_CPU(const Napi::CallbackInfo& info) {
         throw std::invalid_argument("ConvolveBackward weight length does not match kernelShape.");
     }
 
-    const size_t outputSize = static_cast<size_t>(outputH) * outputW * outputDepth;
-    Napi::Float32Array outputTensor = Napi::Float32Array::New(env, outputSize);
+    int outputSize = outputH * outputW * outputDepth;
+    Napi::Float32Array outputTensor = getOrCreateBuffer(env, modelID, layerID+"_convolve_backward",  outputSize);
     const float* delta = inputTensor.Data();
     const float* weights = kernelsArray.Data();
     float* output = outputTensor.Data();

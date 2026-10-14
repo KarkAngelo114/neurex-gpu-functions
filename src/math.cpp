@@ -32,7 +32,7 @@ Napi::Value element_wise_mul_GPU(const Napi::CallbackInfo& info) {
     clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
 
     // read result
-    Napi::Float32Array output = Napi::Float32Array::New(env, arr_length);
+    Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID+"_element_wise_mul",  arr_length);
     clEnqueueReadBuffer(queue, output_arr, CL_TRUE, 0, sizeof(float) * arr_length, output.Data(), 0, nullptr, nullptr);
 
     return output;
@@ -43,16 +43,18 @@ Napi::Value element_wise_mul_CPU(const Napi::CallbackInfo& info) {
     
     Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
     Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>();
+    std::string modelID = info[2].As<Napi::String>().Utf8Value();
+    std::string layerID = info[3].As<Napi::String>().Utf8Value();
 
     int arr_length = arr1.ElementLength();
-    Napi::Float32Array output = Napi::Float32Array::New(env, arr_length);
+    Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID+"_element_wise_mul", arr_length);
 
     float* a1 = arr1.Data();
     float* a2 = arr2.Data();
     float* o = output.Data();
 
     #pragma omp parallel for
-    
+    #pragma omp unroll partial(4)
     for (int i = 0; i < arr_length; i++) {
         o[i] = a1[i] * a2[i];
     }
@@ -68,7 +70,7 @@ Napi::Value element_wise_sub_GPU(const Napi::CallbackInfo& info) {
     std::string modelID = info[2].As<Napi::String>().Utf8Value();
     std::string layerID = info[2].As<Napi::String>().Utf8Value();
     int size = arr1.ElementLength();
-    Napi::Float32Array output = Napi::Float32Array::New(env, size);
+    Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID+"_element_wise_sub", size);
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
@@ -101,15 +103,17 @@ Napi::Value element_wise_sub_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
     Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>();
+    std::string modelID = info[2].As<Napi::String>().Utf8Value();
+    std::string layerID = info[2].As<Napi::String>().Utf8Value();
     int arr_length = arr1.ElementLength();
-    Napi::Float32Array output = Napi::Float32Array::New(env, arr_length);
+    Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID+"_element_wise_sub", arr_length);
 
     float* a1 = arr1.Data();
     float* a2 = arr2.Data();
     float* o = output.Data();
 
     #pragma omp parallel for
-    
+    #pragma omp unroll partial(4)
     for (int i = 0; i < arr_length; i++) {
         o[i] = a1[i] - a2[i];
     } 
@@ -126,7 +130,7 @@ Napi::Value scaleDiff_GPU(const Napi::CallbackInfo& info) {
     std::string modelID = info[3].As<Napi::String>().Utf8Value();
     std::string layerID = info[4].As<Napi::String>().Utf8Value();
     int size = arr1.ElementLength();
-    Napi::Float32Array output = Napi::Float32Array::New(env, size);
+    Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID+"_scale_diff", size);
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
@@ -165,8 +169,11 @@ Napi::Value scaleDiff_CPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
     Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>();
     Napi::Float32Array arr3 = info[2].As<Napi::Float32Array>();
+    std::string modelID = info[3].As<Napi::String>().Utf8Value();
+    std::string layerID = info[4].As<Napi::String>().Utf8Value();
     int arr_length = arr1.ElementLength();
-    Napi::Float32Array output = Napi::Float32Array::New(env, arr_length);
+
+    Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID+"_scale_diff", rr_length);
     float scale = 2.0f / arr_length;
 
     float* a1 = arr1.Data();
@@ -175,7 +182,7 @@ Napi::Value scaleDiff_CPU(const Napi::CallbackInfo& info) {
     float* o = output.Data();
 
     #pragma omp parallel for
-    
+    #pragma omp unroll partial(4)
     for (int i = 0; i < arr_length; i++) {
         o[i] = (a1[i] - a2[i]) * a3[i] * scale;
     }
@@ -191,7 +198,7 @@ Napi::Value Scale_GPU(const Napi::CallbackInfo& info) {
     std::string modelID = info[2].As<Napi::String>().Utf8Value();
     std::string layerID = info[3].As<Napi::String>().Utf8Value();
 
-    Napi::Float32Array output = Napi::Float32Array::New(env, size);
+    Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID+"_scale_output", size);
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
@@ -242,9 +249,6 @@ Napi::Value accumulate_element_wise_mul_CPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array inputArray1 = info[0].As<Napi::Float32Array>();
     Napi::Float32Array inputArray2 = info[1].As<Napi::Float32Array>();
     Napi::Float32Array inputArray3 = info[2].As<Napi::Float32Array>();
-    // info[3] (pointer) and info[4] (modelID), once threaded through from JS, will be
-    // accepted here for signature consistency with GPU mode but intentionally unused —
-    // CPU mode has no GPU cache to look anything up in.
     int size = inputArray1.ElementLength();
 
     float* arr1 = inputArray1.Data();

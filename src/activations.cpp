@@ -35,6 +35,7 @@ Napi::Value Linear_GPU(const Napi::CallbackInfo& info) {
     std::string layerID = info[2].As<Napi::String>().Utf8Value();
 
     int input_size = input.ElementLength();
+    Napi::Float32Array outputArray = getOrCreateBuffer(env, modelID, layerID+"_linear", input_size);
 
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
@@ -51,18 +52,14 @@ Napi::Value Linear_GPU(const Napi::CallbackInfo& info) {
 
     size_t globalSize = static_cast<size_t>(input_size);
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
-
-    Napi::Float32Array outputArray = Napi::Float32Array::New(env, input_size);
+    
     clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float)* input_size, outputArray.Data(), 0, nullptr, nullptr);
 
     return outputArray;
 }
 
 Napi::Value Linear_CPU(const Napi::CallbackInfo& info) {
-    // Linear is a pure pass through, return input as output
-
     return info[0].As<Napi::Float32Array>();
-    
 }
 
 Napi::Value Relu_GPU(const Napi::CallbackInfo& info) {
@@ -72,6 +69,7 @@ Napi::Value Relu_GPU(const Napi::CallbackInfo& info) {
     std::string layerID = info[2].As<Napi::String>().Utf8Value();
 
     int input_size = input.ElementLength();
+    Napi::Float32Array outputArray = getOrCreateBuffer(env, modelID, layerID+"_relu", input_size);
     
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
@@ -89,7 +87,6 @@ Napi::Value Relu_GPU(const Napi::CallbackInfo& info) {
     size_t globalSize = static_cast<size_t>(input_size);
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
-    Napi::Float32Array outputArray = Napi::Float32Array::New(env, input_size);
     clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float)* input_size, outputArray.Data(), 0, nullptr, nullptr);
 
     return outputArray;
@@ -99,13 +96,16 @@ Napi::Value Relu_GPU(const Napi::CallbackInfo& info) {
 Napi::Value Relu_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
+    std::string modelID = info[1].As<Napi::String>().Utf8Value();
+    std::string layerID = info[2].As<Napi::String>().Utf8Value();
     int input_size = input.ElementLength();
-    Napi::Float32Array outputArray = Napi::Float32Array::New(env, input_size);
+    Napi::Float32Array outputArray = getOrCreateBuffer(env, modelID, layerID+"_relu", input_size);
 
     float* data = input.Data();
     float* output = outputArray.Data();
 
     #pragma omp parallel for
+    #pragma omp unroll partial(4)
     for (int i = 0; i < input_size; i++) {
         output[i] = data[i] > 0.0f ? data[i] : 0.0f;
     }
@@ -119,6 +119,7 @@ Napi::Value Sigmoid_GPU(const Napi::CallbackInfo& info) {
     std::string layerID = info[2].As<Napi::String>().Utf8Value();
 
     int input_size = input.ElementLength();
+    Napi::Float32Array outputArray = getOrCreateBuffer(env, modelID, layerID+"_sigmoid", input_size);
     
 
     auto& gpu = GpuContext::instance();
@@ -136,7 +137,6 @@ Napi::Value Sigmoid_GPU(const Napi::CallbackInfo& info) {
     size_t globalSize = (size_t)input_size;
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
-    Napi::Float32Array outputArray = Napi::Float32Array::New(env, input_size);
     clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float)* input_size, outputArray.Data(), 0, nullptr, nullptr);
 
     return outputArray;
@@ -145,14 +145,16 @@ Napi::Value Sigmoid_GPU(const Napi::CallbackInfo& info) {
 Napi::Value Sigmoid_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
+    std::string modelID = info[1].As<Napi::String>().Utf8Value();
+    std::string layerID = info[2].As<Napi::String>().Utf8Value();
     int input_size = input.ElementLength();
-    Napi::Float32Array outputArray = Napi::Float32Array::New(env, input_size);
+    Napi::Float32Array outputArray = getOrCreateBuffer(env, modelID, layerID+"_sigmoid", input_size);
 
     float* data = input.Data();
     float* output = outputArray.Data();
 
     #pragma omp parallel for
-    
+    #pragma omp unroll partial(4)
     for (int i = 0; i < input_size; i++) {
         output[i] = 1.0f / (1.0f + exp(-data[i]));
     }
@@ -166,12 +168,12 @@ Napi::Value Tanh_GPU(const Napi::CallbackInfo& info) {
     std::string modelID = info[1].As<Napi::String>().Utf8Value();
     std::string layerID = info[2].As<Napi::String>().Utf8Value();
     int input_size = input.ElementLength();
+    Napi::Float32Array outputArray = getOrCreateBuffer(env, modelID, layerID+"_tanh", input_size);
     
-
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
     cl_command_queue queue = gpu.queue();
-    cl_kernel kernel = gpu.kernel("Tanh");
+    cl_kernel kernel = gpu.kernel("tanh");
 
     cl_mem inputData = gpu.getZ(modelID, layerID);
     cl_mem output = gpu.getOrCreate_ActivationOutput(modelID, layerID, static_cast<size_t>(input_size));
@@ -183,7 +185,6 @@ Napi::Value Tanh_GPU(const Napi::CallbackInfo& info) {
     size_t globalSize = (size_t)input_size;
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
-    Napi::Float32Array outputArray = Napi::Float32Array::New(env, input_size);
     clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float)* input_size, outputArray.Data(), 0, nullptr, nullptr);
 
     return outputArray;
@@ -192,19 +193,21 @@ Napi::Value Tanh_GPU(const Napi::CallbackInfo& info) {
 Napi::Value Tanh_CPU(const Napi::CallbackInfo& info) { 
     Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
+    std::string modelID = info[1].As<Napi::String>().Utf8Value();
+    std::string layerID = info[2].As<Napi::String>().Utf8Value();
 
     float* data = input.Data();
     int input_size = input.ElementLength();
-    Napi::Float32Array outputArray = Napi::Float32Array::New(env, input_size);
+    Napi::Float32Array outputArray = getOrCreateBuffer(env, modelID, layerID+"_tanh", input_size);
     float* output = outputArray.Data();
 
     #pragma omp parallel for
-    
+    #pragma omp unroll partial(4)
     for (int i = 0; i < input_size; i++) {
-           output[i] = tanh(data[i]);
+        output[i] = tanh(data[i]);
     }
 
-       return outputArray;
+    return outputArray;
 }
 
 Napi::Value Softmax_GPU(const Napi::CallbackInfo& info) {
@@ -213,6 +216,7 @@ Napi::Value Softmax_GPU(const Napi::CallbackInfo& info) {
     std::string modelID = info[1].As<Napi::String>().Utf8Value();
     std::string layerID = info[2].As<Napi::String>().Utf8Value();
     int inputSize = input.ElementLength();
+    Napi::Float32Array outputArray = getOrCreateBuffer(env, modelID, layerID+"_softmax", inputSize);
 
     float* data = input.Data();
 
@@ -255,7 +259,6 @@ Napi::Value Softmax_GPU(const Napi::CallbackInfo& info) {
 
     clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
 
-    Napi::Float32Array outputArray = Napi::Float32Array::New(env, inputSize);
     clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float) * inputSize, outputArray.Data(), 0, nullptr, nullptr);
 
     clReleaseMemObject(inputBuffer);
@@ -266,25 +269,28 @@ Napi::Value Softmax_GPU(const Napi::CallbackInfo& info) {
 Napi::Value Softmax_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
+    std::string modelID = info[1].As<Napi::String>().Utf8Value();
+    std::string layerID = info[2].As<Napi::String>().Utf8Value();
     float* data = input.Data();
     size_t input_size = input.ElementLength();
-    Napi::Float32Array outputArray = Napi::Float32Array::New(env, input_size);
+    Napi::Float32Array outputArray = getOrCreateBuffer(env, modelID, layerID+"_softmax", static_cast<int>(input_size));
     float* output = outputArray.Data();
 
     float max_val = data[0];
     
+    #pragma omp unroll partial(4)
     for (size_t i = 1; i < input_size; i++) {
         if (data[i] > max_val) max_val = data[i];
     }
 
     float sum = 0.0f;
-    
+    #pragma omp partial(4)
     for (size_t i = 0; i < input_size; i++) {
         output[i] = std::exp(data[i] - max_val);
         sum += output[i];
     }
 
-    
+    #pragma omp partial(4)
     for (size_t i = 0; i < input_size; i++) {
         output[i] /= sum;
     }
@@ -298,8 +304,8 @@ Napi::Value DLinear_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
     std::string modelID = info[1].As<Napi::String>().Utf8Value();
     std::string layerID = info[2].As<Napi::String>().Utf8Value();
-
     int input_size = input.ElementLength();
+    Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID_"dlinear", input_size);
 
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
@@ -316,7 +322,6 @@ Napi::Value DLinear_GPU(const Napi::CallbackInfo& info) {
     size_t globalSize = (size_t)input_size;
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
-    Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
     clEnqueueReadBuffer(queue, outputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
 
     return output;
@@ -325,8 +330,12 @@ Napi::Value DLinear_GPU(const Napi::CallbackInfo& info) {
 Napi::Value DLinear_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array inputArray = info[0].As<Napi::Float32Array>();
+    std::string modelID = info[1].As<Napi::String>().Utf8Value();
+    std::string layerID = info[2].As<Napi::String>().Utf8Value();
+
     int size = inputArray.ElementLength();
-    Napi::Float32Array outputArray = Napi::Float32Array::New(env, size);
+    Napi::Float32Array outputArray = getOrCreateBuffer(env, modelID, layerID+"_dlinear", size);
+    
     
     float* output = outputArray.Data();
     int i = 0;
@@ -351,7 +360,8 @@ Napi::Value DReLu_GPU(const Napi::CallbackInfo& info) {
     std::string modelID = info[1].As<Napi::String>().Utf8Value();
     std::string layerID = info[2].As<Napi::String>().Utf8Value();
 
-    size_t input_size = input.ElementLength();
+    int input_size = input.ElementLength();
+    Napi::Float32Array outputArray = getOrCreateBuffer(env, modelID, layerID+"_drelu", input_size);
 
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
@@ -368,27 +378,30 @@ Napi::Value DReLu_GPU(const Napi::CallbackInfo& info) {
     size_t globalSize = (size_t)input_size;
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
-    Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
-    clEnqueueReadBuffer(queue, outputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, outputData, CL_TRUE, 0, sizeof(float)* input_size, outputArray.Data(), 0, nullptr, nullptr);
 
-    return output;
+    return outputArray;
 }
 
 Napi::Value DReLu_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
+    std::string modelID = info[1].As<Napi::String>().Utf8Value();
+    std::string layerID = info[2].As<Napi::String>().Utf8Value();
+
     int input_size = input.ElementLength();
+    Napi::Float32Array outputArray = getOrCreateBuffer(env, modelID, layerID+"_drelu", input_size);
     
-    Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
     float* inData = input.Data();
-    float* outData = output.Data();
+    float* outData = outputArray.Data();
 
     #pragma omp parallel for
-    
+    #pragma omp unroll partial(4)
     for (int i = 0; i < input_size; i++) {
         outData[i] = inData[i] > 0.0f ? 1.0f : 0.0f;
     }
-    return output;
+
+    return outputArray;
 }
 
 Napi::Value DSigmoid_GPU(const Napi::CallbackInfo& info) {
@@ -397,7 +410,8 @@ Napi::Value DSigmoid_GPU(const Napi::CallbackInfo& info) {
     std::string modelID = info[1].As<Napi::String>().Utf8Value();
     std::string layerID = info[2].As<Napi::String>().Utf8Value();
 
-    size_t input_size = input.ElementLength();
+    int input_size = input.ElementLength();
+    Napi::Float32Array outputArray = getOrCreateBuffer(env, modelID, layerID+"_sigmoid", input_size);
 
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
@@ -415,28 +429,31 @@ Napi::Value DSigmoid_GPU(const Napi::CallbackInfo& info) {
     size_t globalSize = (size_t)input_size;
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
-    Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
-    clEnqueueReadBuffer(queue, outputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, outputData, CL_TRUE, 0, sizeof(float)* input_size, outputArray.Data(), 0, nullptr, nullptr);
 
-    return output;
+    return outputArray;
 }
 
 Napi::Value DSigmoid_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
+    std::string modelID = info[1].As<Napi::String>().Utf8Value();
+    std::string layerID = info[2].As<Napi::String>().Utf8Value();
+
     int input_size = input.ElementLength();
+    Napi::Float32Array outputArray = getOrCreateBuffer(env, modelID, layerID+"_sigmoid", input_size);
     
-    Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
     float* inData = input.Data();
-    float* outData = output.Data();
+    float* outData = outputArray.Data();
 
     #pragma omp parallel for
-    
+    #pragma omp unroll partial(4)
     for (int i = 0; i < input_size; i++) {
         float s = 1.0f / (1.0f + std::exp(-inData[i]));
         outData[i] = s * (1.0f - s);
     }
-    return output;
+
+    return outputArray;
 }
 
 Napi::Value DTanh_GPU(const Napi::CallbackInfo& info) {
@@ -445,7 +462,8 @@ Napi::Value DTanh_GPU(const Napi::CallbackInfo& info) {
     std::string modelID = info[1].As<Napi::String>().Utf8Value();
     std::string layerID = info[2].As<Napi::String>().Utf8Value();
 
-    size_t input_size = input.ElementLength();
+    int input_size = input.ElementLength();
+    Napi::Float32Array outputArray = getOrCreateBuffer(env, modelID, layerID+"_dtanh", input_size);
 
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
@@ -462,28 +480,31 @@ Napi::Value DTanh_GPU(const Napi::CallbackInfo& info) {
     size_t globalSize = (size_t)input_size;
     clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
 
-    Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
-    clEnqueueReadBuffer(queue, outputData, CL_TRUE, 0, sizeof(float)* input_size, output.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, outputData, CL_TRUE, 0, sizeof(float)* input_size, outputArray.Data(), 0, nullptr, nullptr);
     
-    return output;
+    return outputArray;
 }
 
 Napi::Value DTanh_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
+    std::string modelID = info[1].As<Napi::String>().Utf8Value();
+    std::string layerID = info[2].As<Napi::String>().Utf8Value();
+
     int input_size = input.ElementLength();
-    
-    Napi::Float32Array output = Napi::Float32Array::New(env, input_size);
+    Napi::Float32Array outputArray = getOrCreateBuffer(env, modelID, layerID+"_dtanh", input_size);
+
     float* inData = input.Data();
-    float* outData = output.Data();
+    float* outData = outputArray.Data();
 
     #pragma omp parallel for
-    
+    #pragma omp unroll partial(4)
     for (int i = 0; i < input_size; i++) {
         float t = std::tanh(inData[i]);
         outData[i] = 1.0f - (t * t);
     }
-    return output;
+
+    return outputArray;
 }
 
 // =============== wrappers ====================
@@ -543,12 +564,15 @@ Napi::Value DSigmoidWrapper(const Napi::CallbackInfo& info) {
 
 Napi::Value DSoftmaxWrapper(const Napi::CallbackInfo& info) {
     // TODO: implement dsoftmax GPU branch
+    
     Napi::Env env = info.Env();
     Napi::Float32Array arr1_input = info[0].As<Napi::Float32Array>();
     Napi::Float32Array arr2_input = info[1].As<Napi::Float32Array>();
+    std::string modelID = info[2].As<Napi::String>().Utf8Value();
+    std::string layerID = info[3].As<Napi::String>().Utf8Value();
     int arr_size = arr1_input.ElementLength();
 
-    Napi::Float32Array outputArr = Napi::Float32Array::New(env, arr_size);
+    Napi::Float32Array outputArr = getOrCreateBuffer(env, modelID, layerID+"_dsoftmax", arr_size);
 
     float* arr1 = arr1_input.Data();
     float* arr2 = arr2_input.Data();
@@ -556,12 +580,12 @@ Napi::Value DSoftmaxWrapper(const Napi::CallbackInfo& info) {
 
     float dot_product = 0.0f;
     
-    
+    #pragma omp unroll partial(4)
     for (int i = 0; i < arr_size; i++) {
         dot_product += arr2[i] * arr1[i];
     }
 
-    
+    #pragma omp unroll partial(4)
     for (int i = 0; i < arr_size; i++) {
         output[i] = arr1[i] * (arr2[i] - dot_product);
     }
