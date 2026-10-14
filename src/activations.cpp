@@ -284,13 +284,13 @@ Napi::Value Softmax_CPU(const Napi::CallbackInfo& info) {
     }
 
     float sum = 0.0f;
-    #pragma omp partial(4)
+    #pragma omp unroll partial(4)
     for (size_t i = 0; i < input_size; i++) {
         output[i] = std::exp(data[i] - max_val);
         sum += output[i];
     }
 
-    #pragma omp partial(4)
+    #pragma omp unroll partial(4)
     for (size_t i = 0; i < input_size; i++) {
         output[i] /= sum;
     }
@@ -305,7 +305,7 @@ Napi::Value DLinear_GPU(const Napi::CallbackInfo& info) {
     std::string modelID = info[1].As<Napi::String>().Utf8Value();
     std::string layerID = info[2].As<Napi::String>().Utf8Value();
     int input_size = input.ElementLength();
-    Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID_"dlinear", input_size);
+    Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID+"dlinear", input_size);
 
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
