@@ -68,7 +68,7 @@ Napi::Value GetEmbeddings_CPU(const Napi::CallbackInfo& info) {
     int sequenceLength = tokenArray.size();
     int totalSize = sequenceLength * embeddingDim;
 
-    Napi::Float32Array outputVector = getOrCreateBuffer(env, modelID, laeyrID+"_emeddings", totalSize);
+    Napi::Float32Array outputVector = getOrCreateBuffer(env, modelID, layerID+"_embeddings", totalSize);
 
     float* lookup = params.Data();
     float* output = outputVector.Data();
