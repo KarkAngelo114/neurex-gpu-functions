@@ -173,7 +173,7 @@ Napi::Value scaleDiff_CPU(const Napi::CallbackInfo& info) {
     std::string layerID = info[4].As<Napi::String>().Utf8Value();
     int arr_length = arr1.ElementLength();
 
-    Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID+"_scale_diff", rr_length);
+    Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID+"_scale_diff", arr_length);
     float scale = 2.0f / arr_length;
 
     float* a1 = arr1.Data();
