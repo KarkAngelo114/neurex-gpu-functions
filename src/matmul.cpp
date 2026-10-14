@@ -63,7 +63,7 @@ Napi::Value MatMul_CPU(const Napi::CallbackInfo& info) {
     std::string modelID = info[6].As<Napi::String>().Utf8Value();
     std::string layerID = info[7].As<Napi::String>().Utf8Value();
 
-    Napi::Float32Array outputVector = getOrCreateBuffer(env modelID, layerID+"_matmul_forward", outputSize);
+    Napi::Float32Array outputVector = getOrCreateBuffer(env, modelID, layerID+"_matmul_forward", outputSize);
 
     float* in = input.Data();
     float* w = weights.Data();
