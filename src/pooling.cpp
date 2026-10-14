@@ -117,7 +117,7 @@ Napi::Value MaxPooling_CPU(const Napi::CallbackInfo& info) {
 
     // prepare output
     Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID+"_maxpool_output_buffer", outputSize);
-    Napi::Int32Array maxArray = Napi::Int32Array::New(env, outputShape);
+    Napi::Int32Array maxArray = Napi::Int32Array::New(env, outputSize);
 
     float* arr = input_array.Data();
     int* max = maxArray.Data();
