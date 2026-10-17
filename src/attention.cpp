@@ -6,52 +6,57 @@
 #include "functions/functions.h"
 #include "gpu/gpu_context.h"
 #include "globals/globals.h"
-
 using FloatArray = std::vector<float>;
 using String = std::string;
 
-
-// row-vector [inputSize] times row-major matrix [inputSize x outputSize] -> [outputSize]
 static void _helper_dotProduct(const float* arr1, const float* mat, int inputSize, int outputSize, float* output) {
-
-    
+    #pragma omp unroll partial(4)
     for (int j = 0; j < outputSize; j++) {
         output[j] = 0.0f;
     }
+
 
     for (int i = 0; i < inputSize; i++) {
         float v = arr1[i];
         int rowStart = i * outputSize;
 
-        
+        #pragma omp unroll partial(4)
         for (int j = 0; j < outputSize; j++) {
             output[j] += v * mat[rowStart + j];
         }
     }
+
 }
 
 // mirrors JS scale(input, scalingValue): in-place divide
 static void _helper_scale(float* data, int length, float scalingValue) {
-    
+    #pragma omp unroll partial(4)
     for (int i = 0; i < length; i++) {
         data[i] /= scalingValue;
     }
 }
 
+static cl_mem _attention_subBuffer(cl_context context, cl_mem source, size_t offset, size_t size) {
+    cl_buffer_region region{ offset, size };
+    return clCreateSubBuffer(source, CL_MEM_READ_ONLY, CL_BUFFER_CREATE_TYPE_REGION, &region, nullptr);
+}
+
 // mirrors JS Softmax(arr): numerically-stable softmax over one row
 static void _helper_softmax(const float* input, int length, float* output) {
     float maxVal = input[0];
+    #pragma omp unroll partial(4)
     for (int i = 1; i < length; i++) {
         maxVal = std::max(maxVal, input[i]);
     }
 
     float sum = 0.0f;
+    #pragma omp unroll partial(4)
     for (int i = 0; i < length; i++) {
         output[i] = std::exp(input[i] - maxVal);
         sum += output[i];
     }
 
-    
+    #pragma omp unroll partial(4)
     for (int i = 0; i < length; i++) {
         output[i] /= sum;
     }
@@ -60,11 +65,13 @@ static void _helper_softmax(const float* input, int length, float* output) {
 // mirrors JS DSoftmax(arr1, arr2): arr1 = softmax output row (S), arr2 = incoming dS row
 static void _helper_dsoftmax(const float* s, const float* dS, int length, float* output) {
     float dot = 0.0f;
+
+    #pragma omp unroll partial(4)
     for (int i = 0; i < length; i++) {
         dot += dS[i] * s[i];
     }
 
-    
+    #pragma omp unroll partial(4)
     for (int i = 0; i < length; i++) {
         output[i] = s[i] * (dS[i] - dot);
     }
@@ -76,6 +83,8 @@ static void _helper_extractHeadSlice(const float* full, int seqLen, int embedDim
     for (int t = 0; t < seqLen; t++) {
         const float* src = full + t * embedDim + headOffset;
         float* dst = output + t * headDim;
+
+        #pragma omp unroll partial(4)
         for (int d = 0; d < headDim; d++) {
             dst[d] = src[d];
         }
@@ -88,6 +97,8 @@ static void _helper_writeHeadSlice(const float* headBuf, int seqLen, int embedDi
     for (int t = 0; t < seqLen; t++) {
         const float* src = headBuf + t * headDim;
         float* dst = full + t * embedDim + headOffset;
+
+        #pragma omp unroll partial(4)
         for (int d = 0; d < headDim; d++) {
             dst[d] = src[d];
         }
@@ -98,6 +109,7 @@ static void _helper_writeHeadSlice(const float* headBuf, int seqLen, int embedDi
 // maskValue is -1e9 for forward scores (pre-softmax), 0 for backward dScores (post-softmax-derivative)
 static void _helper_applyCausalMask(float* scores, int seqLen, float maskValue) {
     for (int i = 0; i < seqLen; i++) {
+        #pragma omp unroll partial(4)
         for (int j = i + 1; j < seqLen; j++) {
             scores[i * seqLen + j] = maskValue;
         }
@@ -108,7 +120,7 @@ static void _helper_applyCausalMask(float* scores, int seqLen, float maskValue) 
 static void _helper_transpose2D(const float* matrix, int rows, int cols, float* output) {
     for (int r = 0; r < rows; r++) {
 
-        
+        #pragma omp unroll partial(4)
         for (int c = 0; c < cols; c++) {
             output[c * rows + r] = matrix[r * cols + c];
         }
@@ -117,16 +129,17 @@ static void _helper_transpose2D(const float* matrix, int rows, int cols, float* 
 
 void _helper_matMul(const float* input, int inputSize, int outputSize, const float* weights, const float* biases, float* output) {
     
+    #pragma omp unroll partial(4)
     for (int j = 0; j < outputSize; j++) {
         output[j] = biases[j];
     }
 
-    
+    #pragma omp unroll partial(4)
     for (int i = 0; i < inputSize; i++) {
         float inputVal = input[i];
         int rowStart = i * outputSize;
 
-        
+        #pragma omp unroll partial(4)
         for (int j = 0; j < outputSize; j++) {
             output[j] += inputVal * weights[rowStart + j];
         }
@@ -634,11 +647,6 @@ Napi::Value CoreMultiHeadAttentionBackward_CPU(const Napi::CallbackInfo& info) {
     return result;
 }
 
-static cl_mem _attention_subBuffer(cl_context context, cl_mem source, size_t offset, size_t size) {
-    cl_buffer_region region{ offset, size };
-    return clCreateSubBuffer(source, CL_MEM_READ_ONLY, CL_BUFFER_CREATE_TYPE_REGION, &region, nullptr);
-}
-
 Napi::Value CoreMultiHeadAttention_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     auto input = info[0].As<Napi::Float32Array>();
@@ -654,13 +662,19 @@ Napi::Value CoreMultiHeadAttention_GPU(const Napi::CallbackInfo& info) {
     std::string modelID = info[10].As<Napi::String>().Utf8Value();
     std::string layerID = info[11].As<Napi::String>().Utf8Value();
     int causalInt = causal ? 1 : 0;
+    const float zero = 0.0f;
 
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
     cl_command_queue queue = gpu.queue();
-    cl_mem inputBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, input.ByteLength(), input.Data(), nullptr);
+
+    int inputSize = input.ElementLength();
+    cl_mem inputBuffer = gpu.getOrCreate_Input(modelID, layerID+"_mha_incoming_input", static_cast<size_t>(inputSize));
+    clEnqueueWriteBuffer(queue, inputBuffer, CL_FALSE, 0, sizeof(float) * input.inputSize(), input.Data(), 0, nullptr, nullptr);
+
     cl_mem packedW = gpu.getWeights(modelID, pointer);
     cl_mem packedB = gpu.getBiases(modelID, pointer);
+
     size_t matrixBytes = sizeof(float) * embedDim * embedDim;
     size_t biasBytes = sizeof(float) * embedDim;
 
@@ -675,13 +689,16 @@ Napi::Value CoreMultiHeadAttention_GPU(const Napi::CallbackInfo& info) {
     
     size_t tensorBytes = sizeof(float) * seqLen * embedDim;
     size_t scoreBytes = sizeof(float) * numHeads * seqLen * seqLen;
+    size_t tensorSize = seqLen * embedDim;
+    size_t scoreSize = numHeads * seqLen * seqLen;
 
-    cl_mem q = clCreateBuffer(context, CL_MEM_WRITE_ONLY, tensorBytes, nullptr, nullptr);
-    cl_mem k = clCreateBuffer(context, CL_MEM_WRITE_ONLY, tensorBytes, nullptr, nullptr);
-    cl_mem v = clCreateBuffer(context, CL_MEM_WRITE_ONLY, tensorBytes, nullptr, nullptr);
-    cl_mem mha = clCreateBuffer(context, CL_MEM_WRITE_ONLY, tensorBytes, nullptr, nullptr);
-    cl_mem scores = clCreateBuffer(context, CL_MEM_WRITE_ONLY, scoreBytes, nullptr, nullptr);
-    cl_mem output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, tensorBytes, nullptr, nullptr);
+    // create Q, K, V, mha, scores and output (Note: these buffers might have old data. Ensure that in the kernel level ops, it doesn't use `+=`. Instead, use `=` to ensure overwrite)
+    cl_mem q = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_q", tensorSize);
+    cl_mem k = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_k", tensorSize);
+    cl_mem v = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_v", tensorSize);
+    cl_mem mha = gpu.getOrCreate_Input(modelID, layerID+"_mha", tensorSize);
+    cl_mem scores = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_scores", scoreSize);
+    cl_mem output = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_output", tensorSize);
 
     cl_kernel kernel = gpu.kernel("multi_head_attention");
     cl_mem args[] = {inputBuffer, qW, kW, vW, oW, qB, kB, vB, oB, q, k, v, mha, scores, output};
@@ -711,12 +728,13 @@ Napi::Value CoreMultiHeadAttention_GPU(const Napi::CallbackInfo& info) {
 
     clEnqueueNDRangeKernel(queue, projection, 2, nullptr, global, nullptr, 0, nullptr, nullptr);
 
-    Napi::Float32Array Q = Napi::Float32Array::New(env, seqLen * embedDim);
-    Napi::Float32Array K = Napi::Float32Array::New(env, seqLen * embedDim);
-    Napi::Float32Array V = Napi::Float32Array::New(env, seqLen * embedDim);
-    Napi::Float32Array mhaOutput = Napi::Float32Array::New(env, seqLen * embedDim);
-    Napi::Float32Array S = Napi::Float32Array::New(env, numHeads * seqLen * seqLen);
-    Napi::Float32Array finalOutput = Napi::Float32Array::New(env, seqLen * embedDim);
+    // prepare output buffers
+    Napi::Float32Array Q = getOrCreateBuffer(env, modelID, layerID+"_output_Q", tensorSize);
+    Napi::Float32Array K = getOrCreateBuffer(env, modelID, layerID+"_output_K", tensorSize);
+    Napi::Float32Array V = getOrCreateBuffer(env, modelID, layerID+"_output_V", tensorSize);
+    Napi::Float32Array mhaOutput = getOrCreateBuffer(env, modelID, layerID+"_mhaOutput", tensorSize);
+    Napi::Float32Array finalOutput = getOrCreateBuffer(env, modelID, layerID+"_finalOutput", tensorSize);
+    Napi::Float32Array S = getOrCreateBuffer(env, modelID, layerID+"_S_perHead", scoreSize);
 
     clEnqueueReadBuffer(queue, q, CL_FALSE, 0, tensorBytes, Q.Data(), 0, nullptr, nullptr);
     clEnqueueReadBuffer(queue, k, CL_FALSE, 0, tensorBytes, K.Data(), 0, nullptr, nullptr);
@@ -725,7 +743,7 @@ Napi::Value CoreMultiHeadAttention_GPU(const Napi::CallbackInfo& info) {
     clEnqueueReadBuffer(queue, scores, CL_FALSE, 0, scoreBytes, S.Data(), 0, nullptr, nullptr);
     clEnqueueReadBuffer(queue, output, CL_TRUE, 0, tensorBytes, finalOutput.Data(), 0, nullptr, nullptr);
 
-    cl_mem temporary[] = {inputBuffer, qW, kW, vW, oW, qB, kB, vB, oB, q, k, v, mha, scores, output};
+    cl_mem temporary[] = {qW, kW, vW, oW, qB, kB, vB, oB};
     
     for (cl_mem buffer : temporary) clReleaseMemObject(buffer);
     
@@ -767,23 +785,34 @@ Napi::Value CoreMultiHeadAttentionBackward_GPU(const Napi::CallbackInfo& info) {
     size_t matrixBytes = sizeof(float) * embedDim * embedDim;
     size_t tensorBytes = sizeof(float) * seqLen * embedDim;
 
+    size_t tensorSize = seqLen * embedDim;
+    size_t scoreSize = numHeads * seqLen * seqLen;
+
     cl_mem qW = _attention_subBuffer(context, packedW, 0, matrixBytes);
     cl_mem kW = _attention_subBuffer(context, packedW, matrixBytes, matrixBytes);
     cl_mem vW = _attention_subBuffer(context, packedW, matrixBytes * 2, matrixBytes);
     cl_mem oW = _attention_subBuffer(context, packedW, matrixBytes * 3, matrixBytes);
-    cl_mem inputBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, incoming.ByteLength(), incoming.Data(), nullptr);
-    cl_mem qBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, Q.ByteLength(), Q.Data(), nullptr);
-    cl_mem kBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, K.ByteLength(), K.Data(), nullptr);
-    cl_mem vBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, V.ByteLength(), V.Data(), nullptr);
-    cl_mem sBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, S.ByteLength(), S.Data(), nullptr);
+
+    int incomingDeltaSize = incoming.ElementLength();
+
+    cl_mem inputBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_mha_incoming_delta", static_cast<size_t>(incomingDeltaSize));
+    clEnqueueWriteBuffer(queue, inputBuffer, CL_FALSE, 0, sizeof(float) * incomingDeltaSize, incoming.Data(), 0, nullptr, nullptr);
+
+    // fetch q, k, v and s_perHead indexed using the `layerID+"_<key_prefix>"`. No need to call `clEnqueueWriteBuffer` since the forward pass already wrote and cache here.
+    cl_mem qBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_q", tensorSize);
+    cl_mem kBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_k", tensorSize);
+    cl_mem vBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_v", tensorSize);
+    cl_mem sBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_scores", scoreSize);
     
-    cl_mem dQ = clCreateBuffer(context, CL_MEM_READ_WRITE, tensorBytes, nullptr, nullptr);
-    cl_mem dK = clCreateBuffer(context, CL_MEM_READ_WRITE, tensorBytes, nullptr, nullptr);
-    cl_mem dV = clCreateBuffer(context, CL_MEM_READ_WRITE, tensorBytes, nullptr, nullptr);
-    cl_mem dMha = clCreateBuffer(context, CL_MEM_READ_WRITE, tensorBytes, nullptr, nullptr);
-    cl_mem dX = clCreateBuffer(context, CL_MEM_WRITE_ONLY, tensorBytes, nullptr, nullptr);
+    // cache dQ, dK, dV, dMha because they'll be used by the gradient accumulation function of MHA. Again, in the kernel level, don't use `+=`, instead use `=` safely overwrite to an existing data in these buffers.
+    cl_mem dQ = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_dQ", tensorSize);
+    cl_mem dK = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_dK", tensorSize);
+    cl_mem dV = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_dV", tensorSize);
+    cl_mem dMha = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_dMha", tensorSize);
+    cl_mem dX = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_dX", tensorSize);
 
     cl_kernel kernel = gpu.kernel("multi_head_attention_backward");
+
     cl_mem args[] = {inputBuffer, qW, kW, vW, oW, qW, kW, vW, qBuffer, kBuffer, vBuffer, sBuffer, dQ, dK, dV, dMha, dX};
     for (int i = 0; i < 17; ++i) clSetKernelArg(kernel, i, sizeof(cl_mem), &args[i]);
     clSetKernelArg(kernel, 17, sizeof(int), &embedDim); 
@@ -799,6 +828,7 @@ Napi::Value CoreMultiHeadAttentionBackward_GPU(const Napi::CallbackInfo& info) {
     };
 
     cl_kernel dmhaKernel = gpu.kernel("multi_head_attention_backward_dmha");
+
     clSetKernelArg(dmhaKernel, 0, sizeof(cl_mem), &inputBuffer);
     clSetKernelArg(dmhaKernel, 1, sizeof(cl_mem), &oW);
     clSetKernelArg(dmhaKernel, 2, sizeof(cl_mem), &dMha);
@@ -821,7 +851,11 @@ Napi::Value CoreMultiHeadAttentionBackward_GPU(const Napi::CallbackInfo& info) {
 
     clEnqueueNDRangeKernel(queue, dxKernel, 2, nullptr, global, nullptr, 0, nullptr, nullptr);
     
-    Napi::Float32Array outDQ = Napi::Float32Array::New(env, seqLen * embedDim), outDK = Napi::Float32Array::New(env, seqLen * embedDim), outDV = Napi::Float32Array::New(env, seqLen * embedDim), outDMha = Napi::Float32Array::New(env, seqLen * embedDim), outDX = Napi::Float32Array::New(env, seqLen * embedDim);
+    Napi::Float32Array outDQ = getOrCreateBuffer(env, modelID, layerID+"_outDQ", seqLen * embedDim);
+    Napi::Float32Array outDK = getOrCreateBuffer(env, modelID, layerID+"_outDK", seqLen * embedDim);
+    Napi::Float32Array outDV = getOrCreateBuffer(env, modelID, layerID+"_outDV", seqLen * embedDim);
+    Napi::Float32Array outDMha = getOrCreateBuffer(env, modelID, layerID+"_outDMha", seqLen * embedDim);
+    Napi::Float32Array outDX = getOrCreateBuffer(env, modelID, layerID+"_outDX", seqLen * embedDim);
     
     clEnqueueReadBuffer(queue, dQ, CL_FALSE, 0, tensorBytes, outDQ.Data(), 0, nullptr, nullptr); 
     clEnqueueReadBuffer(queue, dK, CL_FALSE, 0, tensorBytes, outDK.Data(), 0, nullptr, nullptr); 
@@ -829,8 +863,9 @@ Napi::Value CoreMultiHeadAttentionBackward_GPU(const Napi::CallbackInfo& info) {
     clEnqueueReadBuffer(queue, dMha, CL_FALSE, 0, tensorBytes, outDMha.Data(), 0, nullptr, nullptr); 
     clEnqueueReadBuffer(queue, dX, CL_TRUE, 0, tensorBytes, outDX.Data(), 0, nullptr, nullptr);
 
-    cl_mem temporary[] = {inputBuffer, qW, kW, vW, oW, qBuffer, kBuffer, vBuffer, sBuffer, dQ, dK, dV, dMha, dX}; 
+    cl_mem temporary[] = {qW, kW, vW, oW}; 
     for (cl_mem buffer : temporary) clReleaseMemObject(buffer);
+
     Napi::Object result = Napi::Object::New(env); 
     result.Set("dQ", outDQ); 
     result.Set("dK", outDK); 

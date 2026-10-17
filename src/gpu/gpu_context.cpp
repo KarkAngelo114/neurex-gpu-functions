@@ -65,8 +65,7 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"attention.cl", "multi_head_attention_backward"},
     {"attention.cl", "multi_head_attention_backward_dmha"},
     {"attention.cl", "multi_head_attention_backward_dx"},
-    {"attention.cl", "accumulate_attention_weight_grads"},
-    {"attention.cl", "accumulate_attention_bias_grads"},
+    {"attention.cl", "accumulate_attention_weight_and_bias_grads"},
     {"gamma_and_beta_grads.cl", "accumulate_gamma_beta_grads"},
 };
 
