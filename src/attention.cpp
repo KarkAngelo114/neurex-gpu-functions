@@ -670,7 +670,7 @@ Napi::Value CoreMultiHeadAttention_GPU(const Napi::CallbackInfo& info) {
 
     int inputSize = input.ElementLength();
     cl_mem inputBuffer = gpu.getOrCreate_Input(modelID, layerID+"_mha_incoming_input", static_cast<size_t>(inputSize));
-    clEnqueueWriteBuffer(queue, inputBuffer, CL_FALSE, 0, sizeof(float) * input.inputSize(), input.Data(), 0, nullptr, nullptr);
+    clEnqueueWriteBuffer(queue, inputBuffer, CL_FALSE, 0, sizeof(float) * input.ElementLength(), input.Data(), 0, nullptr, nullptr);
 
     cl_mem packedW = gpu.getWeights(modelID, pointer);
     cl_mem packedB = gpu.getBiases(modelID, pointer);
