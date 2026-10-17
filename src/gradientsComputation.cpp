@@ -828,11 +828,6 @@ Napi::Value accumulate_MHA_WeightsAndBiasGrads_Wrapper(const Napi::CallbackInfo&
     return accumulate_MHA_WeightsAndBiasGrads_CPU(info);
 }
 
-Napi::Value AccumulateAttentionBiasGrads_Wrapper(const Napi::CallbackInfo& info) {
-    // if (getComputeBackendType() == "opencl") return AccumulateAttentionBiasGrads_GPU(info);
-    return AccumulateAttentionBiasGrads_CPU(info);
-}
-
 Napi::Value AccumulateGammaAndBetaGrads_wrapper(const Napi::CallbackInfo& info) {
     if (getComputeBackendType() == "opencl") {
         return AccumulateGammaAndBetaGrads_GPU(info);
