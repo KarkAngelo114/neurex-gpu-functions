@@ -286,6 +286,43 @@ Napi::Value element_wise_add_CPU(const Napi::CallbackInfo& info) {
     
 }
 
+Napi::Value element_wise_add_GPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    Napi::Float32Array arr1 = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array arr2 = info[1].As<Napi::Float32Array>();
+    std::string globalReferenceID = info[2].As<Napi::String>().Utf8Value();
+    std::string localReferenceID = info[2].As<Napi::String>().Utf8Value();
+
+    size_t size = arr1.ElementLength();
+    Napi::Float32Array output = getOrCreateBuffer(env, globalReferenceID, localReferenceID, size);
+
+    auto& gpu = GpuContext::instance();
+    cl_command_queue queue = gpu.queue();
+    cl_context context = gpu.context();
+    cl_kernel kernel = gpu.kernel("element_wise_add");
+
+    cl_mem input1 = gpu.getOrCreate_SomethingToWriteOn(globalReferenceID, localReferenceID+"_element_wise_add_input_1", size);
+    cl_mem input2 = gpu.getOrCreate_SomethingToWriteOn(globalReferenceID, localReferenceID+"_element_wise_add_input_2", size);
+    cl_mem outputTensor = gpu.getOrCreate_SomethingToWriteOn(globalReferenceID, localReferenceID+"_element_wise_add_output", size);
+    clEnqueueWriteBuffer(queue, input1, CL_FALSE, 0, sizeof(float) * size, arr1.Data(), 0, nullptr, nullptr);
+    clEnqueueWriteBuffer(queue, input2, CL_FALSE, 0, sizeof(float) * size, arr2.Data(), 0, nullptr, nullptr);
+
+    clSetKernelArg(kernel, 0, sizeof(cl_mem), &input1);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), &input2);
+    clSetKernelArg(kernel, 2, sizeof(cl_mem), &outputTensor);
+    clSetKernelArg(kernel, 3, sizeof(int), &size);
+
+    size_t globalSize = (size_t)size;
+    clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
+
+    clEnqueueReadBuffer(queue, outputTensor, CL_TRUE, 0, sizeof(float) * size, output.Data(), 0, nullptr, nullptr);
+
+
+    return output;
+    
+}
+
+
 // ====== wrappers ================
 
 Napi::Value element_wise_mul_wrapper(const Napi::CallbackInfo& info) {
@@ -328,6 +365,7 @@ Napi::Value accumulate_element_wise_mul_wrapper(const Napi::CallbackInfo& info) 
 }
 
 Napi::Value element_wise_add_wrapper(const Napi::CallbackInfo& info) {
+    if (getComputeBackendType() == "opencl") return element_wise_add_GPU(info);
     return element_wise_add_CPU(info);
 }
 

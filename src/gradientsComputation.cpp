@@ -792,18 +792,12 @@ Napi::Value AccumulateGammaAndBetaGrads_CPU(const Napi::CallbackInfo& info) {
 // =================== wrappers ===================== //
 
 Napi::Value accumulateWeightsAndBiasGradsForConnectedLayer(const Napi::CallbackInfo& info) {
-    if (getComputeBackendType() == "opencl") {
-        return accumulateWeightsAndBiasGradsForConnectedLayer_GPU(info);
-    }
-
+    // if (getComputeBackendType() == "opencl") return accumulateWeightsAndBiasGradsForConnectedLayer_GPU(info);
     return accumulateWeightsAndBiasGradsForConnectedLayer_CPU(info);
 }
 
 Napi::Value AccumulateWeightAndBiasGradsForConv(const Napi::CallbackInfo& info) {
-    if (getComputeBackendType() == "opencl") {
-        return AccumulateWeightAndBiasGradsForConv_GPU(info);
-    }
-
+    // if (getComputeBackendType() == "opencl") return AccumulateWeightAndBiasGradsForConv_GPU(info);
     return AccumulateWeightAndBiasGradsForConv_CPU(info);
 }
 
@@ -816,22 +810,17 @@ Napi::Value recurrentBiasGradsAccumulationWrapper(const Napi::CallbackInfo& info
 }
 
 Napi::Value accumulateWeightandBiasGradsForTransConv_wrapper(const Napi::CallbackInfo& info) {
-    if (getComputeBackendType() == "opencl") {
-        return accumulateWeightandBiasGradsForTransConv_GPU(info);
-    }
-    
+    // if (getComputeBackendType() == "opencl") return accumulateWeightandBiasGradsForTransConv_GPU(info);
     return accumulateWeightandBiasGradsForTransConv_CPU(info);
 }
 
 Napi::Value accumulate_MHA_WeightsAndBiasGrads_Wrapper(const Napi::CallbackInfo& info) {
-    if (getComputeBackendType() == "opencl") return accumulate_MHA_WeightsAndBiasGrads_GPU(info);
+    // if (getComputeBackendType() == "opencl") return accumulate_MHA_WeightsAndBiasGrads_GPU(info);
     return accumulate_MHA_WeightsAndBiasGrads_CPU(info);
 }
 
 Napi::Value AccumulateGammaAndBetaGrads_wrapper(const Napi::CallbackInfo& info) {
-    if (getComputeBackendType() == "opencl") {
-        return AccumulateGammaAndBetaGrads_GPU(info);
-    }
+    // if (getComputeBackendType() == "opencl")  return AccumulateGammaAndBetaGrads_GPU(info);
     return AccumulateGammaAndBetaGrads_CPU(info);
 }
 

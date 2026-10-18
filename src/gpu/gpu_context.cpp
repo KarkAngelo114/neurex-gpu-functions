@@ -46,6 +46,7 @@ static std::vector<kernelDef> kernel_Definitions = {
     {"math.cl", "scale"},
     {"math.cl", "scale_diff"},
     {"math.cl", "accumulate_element_wise_mul"},
+    {"math.cl", "element_wise_add"},
     {"maxpool.cl","maxpooldelta"},
     {"embedding.cl", "getEmbeddings"},
     {"embedding.cl", "returnEmbeddings"},
