@@ -157,7 +157,7 @@ Napi::Value DenseForward_CPU(const Napi::CallbackInfo& info) {
         }
     }
 
-    activations[activationType](z_values, activated_output);
+    activations[activationType](z_values_vector, activated_output_vector);
     
     Napi::Object output = Napi::Object::New(env);
     output.Set("z_values", z_values_vector);
