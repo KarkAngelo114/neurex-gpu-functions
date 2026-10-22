@@ -40,7 +40,7 @@ Napi::Value Linear_GPU(const Napi::CallbackInfo& info) {
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
     cl_command_queue queue = gpu.queue();
-    cl_kernel kernel = gpu.kernel("linear");
+    cl_kernel kernel = gpu.kernel("linear_op");
 
     cl_mem inputData = gpu.getZ(modelID, layerID);
     cl_mem output = gpu.getOrCreate_ActivationOutput(modelID, layerID, static_cast<size_t>(input_size));
@@ -74,7 +74,7 @@ Napi::Value Relu_GPU(const Napi::CallbackInfo& info) {
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
     cl_command_queue queue = gpu.queue();
-    cl_kernel kernel = gpu.kernel("relu");
+    cl_kernel kernel = gpu.kernel("relu_op");
 
     cl_mem inputData = gpu.getZ(modelID, layerID); // we get the pre-activated outputs cached by layerID and modelID
     cl_mem output = gpu.getOrCreate_ActivationOutput(modelID, layerID, static_cast<size_t>(input_size)); // the final activated output, will be cached by layerID and modelID. This must be cached because it will be use by gradient accumulator operators.
@@ -125,7 +125,7 @@ Napi::Value Sigmoid_GPU(const Napi::CallbackInfo& info) {
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
     cl_command_queue queue = gpu.queue();
-    cl_kernel kernel = gpu.kernel("sigmoid");
+    cl_kernel kernel = gpu.kernel("sigmoid_op");
 
     cl_mem inputData = gpu.getZ(modelID, layerID);
     cl_mem output = gpu.getOrCreate_ActivationOutput(modelID, layerID, static_cast<size_t>(input_size));
@@ -173,7 +173,7 @@ Napi::Value Tanh_GPU(const Napi::CallbackInfo& info) {
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
     cl_command_queue queue = gpu.queue();
-    cl_kernel kernel = gpu.kernel("tanh");
+    cl_kernel kernel = gpu.kernel("tanh_op");
 
     cl_mem inputData = gpu.getZ(modelID, layerID);
     cl_mem output = gpu.getOrCreate_ActivationOutput(modelID, layerID, static_cast<size_t>(input_size));
@@ -244,9 +244,10 @@ Napi::Value Softmax_GPU(const Napi::CallbackInfo& info) {
 
     cl_context context = gpu.context();
     cl_command_queue queue = gpu.queue();
-    cl_kernel kernel = gpu.kernel("softmax");
+    cl_kernel kernel = gpu.kernel("softmax_op");
 
     cl_mem inputBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputSize, data, nullptr);
+    clEnqueueWriteBuffer(queue, inputBuffer, CL_FALSE, 0, sizeof(float)* inputSize, input.Data(), 0, nullptr, nullptr);
     cl_mem output = gpu.getOrCreate_ActivationOutput(modelID, layerID, static_cast<size_t>(inputSize));;
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputBuffer);
@@ -260,8 +261,6 @@ Napi::Value Softmax_GPU(const Napi::CallbackInfo& info) {
     clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
 
     clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float) * inputSize, outputArray.Data(), 0, nullptr, nullptr);
-
-    clReleaseMemObject(inputBuffer);
 
     return outputArray;
 }
@@ -280,7 +279,9 @@ Napi::Value Softmax_CPU(const Napi::CallbackInfo& info) {
     
     #pragma omp unroll partial(4)
     for (size_t i = 1; i < input_size; i++) {
-        if (data[i] > max_val) max_val = data[i];
+        if (data[i] > max_val) {
+            max_val = data[i];
+        }
     }
 
     float sum = 0.0f;

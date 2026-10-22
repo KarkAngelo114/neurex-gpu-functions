@@ -143,6 +143,8 @@ Napi::Value Convolve_CPU(const Napi::CallbackInfo& info) {
     const float* weights = weightsArray.Data();
     const float* biases = biasesArray.Data();
     float* output = outputTensor.Data();
+    const int padTop = outputH == inputH ? (kernelH - 1) / 2 : 0;
+    const int padLeft = outputW == inputW ? (kernelW - 1) / 2 : 0;
 
     for (int h = 0; h < outputH; h++) {
         for (int w = 0; w < outputW; w++) {
@@ -153,12 +155,12 @@ Napi::Value Convolve_CPU(const Napi::CallbackInfo& info) {
                 const size_t filterBase = static_cast<size_t>(filter) * kernelH * kernelW * depth;
 
                 for (int kh = 0; kh < kernelH; kh++) {
-                    const int inputHIndex = h + kh;
-                    if (inputHIndex >= inputH) continue;
+                    const int inputHIndex = h + kh - padTop;
+                    if (inputHIndex < 0 || inputHIndex >= inputH) continue;
 
                     for (int kw = 0; kw < kernelW; kw++) {
-                        const int inputWIndex = w + kw;
-                        if (inputWIndex >= inputW) continue;
+                        const int inputWIndex = w + kw - padLeft;
+                        if (inputWIndex < 0 || inputWIndex >= inputW) continue;
 
                         const size_t inputBase = (static_cast<size_t>(inputHIndex) * inputW + inputWIndex) * inputDepth;
                         const size_t weightBase = filterBase + (static_cast<size_t>(kh) * kernelW + kw) * depth;
@@ -295,47 +297,35 @@ Napi::Value ConvolveDelta_CPU(const Napi::CallbackInfo& info) {
     const float* delta = inputTensor.Data();
     const float* weights = kernelsArray.Data();
     float* output = outputTensor.Data();
+    const int padTop = deltaH == outputH ? (kernelH - 1) / 2 : 0;
+    const int padLeft = deltaW == outputW ? (kernelW - 1) / 2 : 0;
 
-    for (int h = 0; h < outputH; h++) {
-        for (int w = 0; w < outputW; w++) {
-            const size_t outputBase = (static_cast<size_t>(h) * outputW + w) * outputDepth;
+    std::fill(output, output + outputSize, 0.0f);
 
-            for (int channel = 0; channel < outputDepth; channel++) {
-                float sum = 0.0f;
+    for (int h = 0; h < deltaH; h++) {
+        for (int w = 0; w < deltaW; w++) {
+            const size_t deltaBase = (static_cast<size_t>(h) * deltaW + w) * deltaDepth;
+
+            for (int filter = 0; filter < numFilters; filter++) {
+                const float deltaValue = delta[deltaBase + filter];
+
                 for (int kh = 0; kh < kernelH; kh++) {
-                    const int deltaHIndex = h - kh;
-                    if (deltaHIndex < 0 || deltaHIndex >= deltaH) continue;
+                    const int inputHIndex = h + kh - padTop;
+                    if (inputHIndex < 0 || inputHIndex >= outputH) continue;
 
                     for (int kw = 0; kw < kernelW; kw++) {
-                        const int deltaWIndex = w - kw;
-                        if (deltaWIndex < 0 || deltaWIndex >= deltaW) continue;
+                        const int inputWIndex = w + kw - padLeft;
+                        if (inputWIndex < 0 || inputWIndex >= outputW) continue;
 
-                        const size_t deltaBase = (static_cast<size_t>(deltaHIndex) * deltaW + deltaWIndex) * deltaDepth;
-                        const size_t kernelBase = (static_cast<size_t>(kernelH - 1 - kh) * kernelW +
-                            (kernelW - 1 - kw)) * depth + channel;
+                        const size_t outputBase = (static_cast<size_t>(inputHIndex) * outputW + inputWIndex) * outputDepth;
+                        const size_t weightBase = (static_cast<size_t>(filter) * kernelH * kernelW +
+                            static_cast<size_t>(kh) * kernelW + kw) * depth;
 
-                        int filter = 0;
-                        for (; filter <= numFilters - 4; filter += 4) {
-                            const float delta0 = delta[deltaBase + filter];
-                            const float delta1 = delta[deltaBase + filter + 1];
-                            const float delta2 = delta[deltaBase + filter + 2];
-                            const float delta3 = delta[deltaBase + filter + 3];
-                            const size_t weight0 = (static_cast<size_t>(filter) * kernelH * kernelW * depth) + kernelBase;
-                            const size_t weight1 = (static_cast<size_t>(filter + 1) * kernelH * kernelW * depth) + kernelBase;
-                            const size_t weight2 = (static_cast<size_t>(filter + 2) * kernelH * kernelW * depth) + kernelBase;
-                            const size_t weight3 = (static_cast<size_t>(filter + 3) * kernelH * kernelW * depth) + kernelBase;
-                            sum += delta0 * weights[weight0];
-                            sum += delta1 * weights[weight1];
-                            sum += delta2 * weights[weight2];
-                            sum += delta3 * weights[weight3];
-                        }
-                        for (; filter < numFilters; filter++) {
-                            const size_t weight = (static_cast<size_t>(filter) * kernelH * kernelW * depth) + kernelBase;
-                            sum += delta[deltaBase + filter] * weights[weight];
+                        for (int channel = 0; channel < depth; channel++) {
+                            output[outputBase + channel] += deltaValue * weights[weightBase + channel];
                         }
                     }
                 }
-                output[outputBase + channel] = sum;
             }
         }
     }

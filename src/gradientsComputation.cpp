@@ -159,8 +159,8 @@ Napi::Value AccumulateWeightAndBiasGradsForConv_GPU(const Napi::CallbackInfo& in
     int Kh = kernelShape[1];
     int Kw = kernelShape[2];
 
-    int padH = Kh / 2;
-    int padW = Kw / 2;
+    int padH = H == inputH ? (Kh - 1) / 2 : 0;
+    int padW = W == inputW ? (Kw - 1) / 2 : 0;
 
     size_t weightGradsSize = weightGradsTensor.ElementLength();
     size_t biasGradsSize = biasGradsTensor.ElementLength();
@@ -249,8 +249,8 @@ Napi::Value AccumulateWeightAndBiasGradsForConv_CPU(const Napi::CallbackInfo& in
     int Kw = kernelShape[2];
     int d = kernelShape[3];
 
-    int padH = Kh / 2;
-    int padW = Kw / 2;
+    int padH = H == inputH ? (Kh - 1) / 2 : 0;
+    int padW = W == inputW ? (Kw - 1) / 2 : 0;
 
     float* input = inputTensor.Data();
     float* delta = deltaTensor.Data();

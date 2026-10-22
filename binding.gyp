@@ -23,6 +23,7 @@
         "src/gpu/gpu_context.cpp",
         "src/globals/globals.cpp",
         "src/functions/extendedNapiFunc.cpp",
+        "src/global_activations/global_activations.cpp",
         "src/embeddings.cpp",
         "src/recurrent.cpp",
         "src/loss.cpp",
