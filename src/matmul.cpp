@@ -6,6 +6,8 @@
 #include "globals/globals.h"
 #include "global_activations/global_activations.h"
 #include <vector>
+#include <cmath>
+#include <algorithm>
 #include "functions/functions.h"
 #include <unordered_map>
 using IntArray = std::vector<int>;
