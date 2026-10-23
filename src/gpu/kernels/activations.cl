@@ -109,3 +109,19 @@ __kernel void dlinear(
     // write to output buffer
     output[i] = 1.0f;
 }
+
+__kernel void dsoftmax(
+    __global const float* probabilities,
+    __global const float* delta,
+    __global float* output,
+    const float dotProduct_val,
+    const int size
+) {
+
+    int i = get_global_id(0);
+
+    if (i >= size) return;
+
+    output[i] = probabilities[i] * (delta[i] - dotProduct_val);
+
+}

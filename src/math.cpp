@@ -4,6 +4,10 @@
 #include "globals/globals.h"
 #include <omp.h>
 #include <vector>
+#include "global_activations/global_activations.h"
+#include <unordered_map>
+#include <algorithm>
+#include <cmath>
 
 Napi::Value element_wise_mul_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
@@ -322,6 +326,119 @@ Napi::Value element_wise_add_GPU(const Napi::CallbackInfo& info) {
     
 }
 
+Napi::Value fusedFinalDeltaProjector_GPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    Napi::Float32Array zs_array = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array cachedActivated_output = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array incomingDelta = info[2].As<Napi::Float32Array>();
+    std::string activationType = info[3].As<Napi::String>().Utf8Value();
+    std::string modelID = info[4].As<Napi::String>().Utf8Value();
+    std::string layerID = info[5].As<Napi::String>().Utf8Value();
+
+    int size = incomingDelta.ElementLength();
+    Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID + "_final_delta", size);
+
+    auto& gpu = GpuContext::instance();
+    cl_command_queue queue = gpu.queue();
+    cl_context context = gpu.context();
+    cl_kernel activationKernel = gpu.kernel("d"+activationType); // all derivation activation functions has a "d" prefix so that what ever activation type string is passed, it will become like: drelu because "d" + "relu". All activation function kernels has "d" on each function name
+    cl_kernel element_wise_kernel = gpu.kernel("element_wise_mul");
+
+    cl_mem z_values = gpu.getZ(modelID, layerID);
+    cl_mem cachedActivatedVector = gpu.getActivationOutput(modelID, layerID);
+    cl_mem finalDelta = gpu.getOrCreate_Delta(modelID, layerID, static_cast<size_t>(size));
+    cl_mem deltaBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_incoming_delta", static_cast<size_t>(size));
+    clEnqueueWriteBuffer(queue, deltaBuffer, CL_FALSE, 0, sizeof(float) * arr_length, incomingDelta.Data(), 0, nullptr, nullptr);
+    cl_mem dAct = gpu.getOrCreate_DAct(modelID, layerID, static_cast<size_t>(size));
+
+    size_t globalSize = (size_t)size;
+
+    // if the activation function is softmax, then it's derivative is a full Jacobian equation
+    if (activationType == "softmax") {
+
+        const float* probabilities = cachedActivated_output.Data();
+        const float* delta = incomingDelta.Data();
+
+        float dotProduct = 0.0f;
+        #pragma omp unroll partial(4)
+        for (int i = 0; i < size; i++) {
+            dotProduct += probabilities[i] * delta[i];
+        }
+
+        clSetKernelArg(activationKernel, 0, sizeof(cl_mem), &cachedActivatedVector);
+        clSetKernelArg(activationKernel, 1, sizeof(cl_mem), &deltaBuffer);
+        clSetKernelArg(activationKermel, 2, sizeof(cl_mem), &finalDelta);
+        clSetKernelArg(activationKernel, 3, sizeof(float), &dotProduct);
+        clSetKernelArg(activationKernel, 4, sizeof(int), &size);
+
+        
+        clEnqueueNDRangeKernel(queue, activationKernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
+
+        clEnqueueReadBuffer(queue, finalDelta, CL_TRUE, 0, sizeof(float)* size, output.Data(), 0, nullptr, nullptr);
+
+        return output;
+    }
+
+    // if not a softmax activation function, then proceed to applying the derivative of Z and element-wise multiplication to produce final delta
+    clSetKernelArg(activationKernel, 0, sizeof(cl_mem), &z_values);
+    clSetKernelArg(activationKernel, 1, sizeof(cl_mem), &dAct);
+    clSetKernelArg(activationKernel, 2, sizeof(int), &size);
+
+    clEnqueueNDRangeKernel(queue, activationKernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
+
+    // after running the derivative activation kernel, perform the element_wise_mul with dAct and incoming delta to produce the final delta
+    clSetKernelArg(element_wise_kernel, 0, sizeof(cl_mem), &dAct);
+    clSetKernelArg(element_wise_kernel, 1, sizeof(cl_mem), &deltaBuffer);
+    clSetKernelArg(element_wise_kernel, 2, sizeof(cl_mem), &finalDelta);
+    clSetKernelArg(element_wise_kernel, 3, sizeof(int), &size);
+
+    clEnqueueNDRangeKernel(queue, element_wise_kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
+
+    clEnqueueReadBuffer(queue, finalDelta, CL_TRUE, 0, sizeof(float)* size, output.Data(), 0, nullptr, nullptr);
+
+    return output;
+
+}
+
+Napi::Value fusedFinalDeltaProjector_CPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    Napi::Float32Array zs_array = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array cachedActivated_output = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array incomingDelta = info[2].As<Napi::Float32Array>();
+    std::string activationType = info[3].As<Napi::String>().Utf8Value();
+    std::string modelID = info[4].As<Napi::String>().Utf8Value();
+    std::string layerID = info[5].As<Napi::String>().Utf8Value();
+
+    int size = incomingDelta.ElementLength();
+    Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID + "_final_delta", size);
+
+    if (activationType == "softmax") {
+        DSOFTMAX(cachedActivated_output, incomingDelta, output);
+        return output;
+    }
+
+    std::unordered_map<std::string, void(*)(Napi::Float32Array& referenceDataBuffer, Napi::Float32Array& bufferToWriteOn)> activations = {
+        {"linear", DLINEAR},
+        {"relu", DRELU},
+        {"sigmoid", DSIGMOID},
+        {"tanh", DTANH}
+    };
+
+    activations[activationType](zs, output);
+
+    float* derivative = output.Data();
+    const float* delta = incomingDelta.Data();
+
+    // element-wise multiplication
+    #pragma omp parallel for
+    for (int i = 0; i < size; i++) {
+        derivative[i] *= delta[i];
+    }
+
+    return output;
+}
 
 // ====== wrappers ================
 
@@ -369,6 +486,11 @@ Napi::Value element_wise_add_wrapper(const Napi::CallbackInfo& info) {
     return element_wise_add_CPU(info);
 }
 
+Napi::Value fusedFinalDeltaProjector_wrapper(const Napi::CallbackInfo& info) {
+    if (getComputeBackendType() == "opencl") return fusedFinalDeltaProjector_GPU(info);
+    return fusedFinalDeltaProjector_CPU(info);
+}
+
 void Math_OPS(Napi::Env env, Napi::Object exports) {
     exports.Set("element_wise_mul", Napi::Function::New(env, element_wise_mul_wrapper));
     exports.Set("element_wise_sub", Napi::Function::New(env, element_wise_sub_wrapper));
@@ -376,4 +498,5 @@ void Math_OPS(Napi::Env env, Napi::Object exports) {
     exports.Set("scale", Napi::Function::New(env, ScalerWrapper));
     exports.Set("accumulate_element_wise_mul", Napi::Function::New(env, accumulate_element_wise_mul_wrapper));
     exports.Set("element_wise_add", Napi::Function::New(env, element_wise_add_wrapper));
+    exports.Set("fusedFinalDeltaProjector", Napi::Function::New(env, fusedFinalDeltaProjector_wrapper));
 }
