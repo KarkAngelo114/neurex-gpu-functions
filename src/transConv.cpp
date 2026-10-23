@@ -4,6 +4,10 @@
 #include "gpu/gpu_context.h"
 #include <vector>
 #include <cmath>
+#include <algorithm>
+#include "global_activations/global_activations.h"
+#include <unordered_map>
+
 
 using IntArray = std::vector<int>;
 
@@ -17,7 +21,7 @@ static IntArray Vectorize(const Napi::Array& arr) {
     return VectorArray;
 }
 
-Napi::Value transConv_GPU(const Napi::CallbackInfo& info) {
+Napi::Value transConvForward_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     Napi::Float32Array inputTensor = info[0].As<Napi::Float32Array>();
@@ -26,11 +30,10 @@ Napi::Value transConv_GPU(const Napi::CallbackInfo& info) {
     int strides = info[3].As<Napi::Number>().Int32Value();
     int filters = info[4].As<Napi::Number>().Int32Value();
     IntArray weightShape = Vectorize(info[5].As<Napi::Array>());
-    Napi::Float32Array weightsArray = info[6].As<Napi::Float32Array>();
-    Napi::Float32Array biasesArray = info[7].As<Napi::Float32Array>();
-    int pointer = info[8].As<Napi::Number>().Int32Value();
-    std::string modelID = info[9].As<Napi::String>().Utf8Value();
-    std::string layerID = info[10].As<Napi::String>().Utf8Value();
+    std::string activationType = info[6].As<Napi::String>().Utf8Value();
+    int pointer = info[9].As<Napi::Number>().Int32Value();
+    std::string modelID = info[10].As<Napi::String>().Utf8Value();
+    std::string layerID = info[12].As<Napi::String>().Utf8Value()
 
     int iH = inputShape[0];
     int iW = inputShape[1];
@@ -47,7 +50,8 @@ Napi::Value transConv_GPU(const Napi::CallbackInfo& info) {
     int inputSize = inputTensor.ElementLength();
 
     size_t outputSize = oH * oW * f;
-    Napi::Float32Array outputTensor = getOrCreateBuffer(env, modelID, layerID+"_transConv_forward", outputSize);
+    Napi::Float32Array z_values_vector = getOrCreateBuffer(env, modelID, layerID+"_transConv_forward_z_values", outputSize);
+    Napi::Float32Array activated_output_vector = getOrCreateBuffer(env, modelID, layerID+"_transConv_forward_activated_output", outputSize);
 
     int padH = std::max(0, (iH - 1) * strides + kh - oH);
     int padW = std::max(0, (iW - 1) * strides + kw - oW);
@@ -57,30 +61,32 @@ Napi::Value transConv_GPU(const Napi::CallbackInfo& info) {
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
     cl_context context = gpu.context();
-    cl_kernel kernel = gpu.kernel("transConv");
+    cl_kernel transConvKernel = gpu.kernel("transConv");
+    cl_kernel activationKernel = gpu.kernel(activationType+"_op");
 
     cl_mem input = gpu.getOrCreate_Input(modelID, layerID, static_cast<size_t>(inputSize));
     clEnqueueWriteBuffer(queue, input, CL_FALSE, 0, sizeof(float) * inputSize, inputTensor.Data(), 0, nullptr, nullptr);
     cl_mem weights = gpu.getWeights(modelID, pointer);
     cl_mem biases = gpu.getBiases(modelID, pointer);
-    cl_mem output = gpu.getOrCreate_Z(modelID, layerID, static_cast<size_t>(outputSize));
+    cl_mem z_values = gpu.getOrCreate_Z(modelID, layerID, static_cast<size_t>(outputSize));
+    cl_mem activated_output = gpu.getOrCreate_ActivationOutput(modelID, layerID, static_cast<size_t>(outputSize));
 
-    clSetKernelArg(kernel, 0, sizeof(cl_mem), &input);
-    clSetKernelArg(kernel, 1, sizeof(cl_mem), &weights);
-    clSetKernelArg(kernel, 2, sizeof(cl_mem), &biases);
-    clSetKernelArg(kernel, 3, sizeof(cl_mem), &output);
-    clSetKernelArg(kernel, 4, sizeof(int), &iH);
-    clSetKernelArg(kernel, 5, sizeof(int), &iW);
-    clSetKernelArg(kernel, 6, sizeof(int), &iD);
-    clSetKernelArg(kernel, 7, sizeof(int), &oH);
-    clSetKernelArg(kernel, 8, sizeof(int), &oW);
-    clSetKernelArg(kernel, 9, sizeof(int), &f);
-    clSetKernelArg(kernel, 10, sizeof(int), &kh);
-    clSetKernelArg(kernel, 11, sizeof(int), &kw);
-    clSetKernelArg(kernel, 12, sizeof(int), &d);
-    clSetKernelArg(kernel, 13, sizeof(int), &strides);
-    clSetKernelArg(kernel, 14, sizeof(int), &padTop);
-    clSetKernelArg(kernel, 15, sizeof(int), &padLeft);
+    clSetKernelArg(transConvKernel, 0, sizeof(cl_mem), &input);
+    clSetKernelArg(transConvKernel, 1, sizeof(cl_mem), &weights);
+    clSetKernelArg(transConvKernel, 2, sizeof(cl_mem), &biases);
+    clSetKernelArg(transConvKernel, 3, sizeof(cl_mem), &z_values);
+    clSetKernelArg(transConvKernel, 4, sizeof(int), &iH);
+    clSetKernelArg(transConvKernel, 5, sizeof(int), &iW);
+    clSetKernelArg(transConvKernel, 6, sizeof(int), &iD);
+    clSetKernelArg(transConvKernel, 7, sizeof(int), &oH);
+    clSetKernelArg(transConvKernel, 8, sizeof(int), &oW);
+    clSetKernelArg(transConvKernel, 9, sizeof(int), &f);
+    clSetKernelArg(transConvKernel, 10, sizeof(int), &kh);
+    clSetKernelArg(transConvKernel, 11, sizeof(int), &kw);
+    clSetKernelArg(transConvKernel, 12, sizeof(int), &d);
+    clSetKernelArg(transConvKernel, 13, sizeof(int), &strides);
+    clSetKernelArg(transConvKernel, 14, sizeof(int), &padTop);
+    clSetKernelArg(transConvKernel, 15, sizeof(int), &padLeft);
 
     size_t globalSize[3] = {
         (size_t)oH,
@@ -88,13 +94,53 @@ Napi::Value transConv_GPU(const Napi::CallbackInfo& info) {
         (size_t)f
     };
 
-    clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, globalSize, nullptr, 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, output, CL_TRUE, 0, sizeof(float) * outputSize, outputTensor.Data(), 0, nullptr, nullptr);
+    clEnqueueNDRangeKernel(queue, transConvKernel, 3, nullptr, globalSize, nullptr, 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, z_values, CL_TRUE, 0, sizeof(float) * outputSize, z_values_vector.Data(), 0, nullptr, nullptr);
 
-    return outputTensor;
+    if (activationType != "softmax") {
+        clSetKernelArg(activationKernel, 0, sizeof(cl_mem), &z_values);
+        clSetKernelArg(activationKernel, 1, sizeof(cl_mem), &activated_output);
+        clSetKernelArg(activationKernel, 2, sizeof(int), &outputSize);
+
+        // run activation function
+        clEnqueueNDRangeKernel(queue, activationKernel, 1, nullptr, &global, nullptr, 0, nullptr, nullptr);
+        
+        clEnqueueReadBuffer(queue, activated_output, CL_TRUE, 0, sizeof(float) * outputSize, activated_output_vector.Data(), 0, nullptr, nullptr);
+    }
+    else {
+        float* data = z_values_vector.Data();
+
+        float max_val = data[0];
+        for (int i = 1; i < outputSize; i++) {
+            max_val = std::max(max_val, data[i]);
+        }
+
+        float sum = 0.0f;
+        for (int i = 0; i < outputSize; i++) {
+            sum += std::exp(data[i] - max_val);
+        }
+
+        clSetKernelArg(activationKernel, 0, sizeof(cl_mem), &z_values);
+        clSetKernelArg(activationKernel, 1, sizeof(cl_mem), &activated_output);
+        clSetKernelArg(activationKernel, 2, sizeof(float), &max_val);
+        clSetKernelArg(activationKernel, 3, sizeof(float), &sum);
+        clSetKernelArg(activationKernel, 4, sizeof(int), &outputSize);
+
+        size_t softmax_branch_global_work_size = (size_t)outputSize;
+
+        clEnqueueNDRangeKernel(queue, activationKernel, 1, nullptr, &softmax_branch_global_work_size, nullptr, 0, nullptr, nullptr);
+
+        clEnqueueReadBuffer(queue, activated_output, CL_TRUE, 0, sizeof(float) * outputSize, activated_output_vector.Data(), 0, nullptr, nullptr);
+    }
+
+    Napi::Object output = Napi::Object::New(env);
+    output.Set("z_values", z_values_vector);
+    output.Set("activated_output",activated_output_vector);
+
+    return output;
 }
 
-Napi::Value transConv_CPU(const Napi::CallbackInfo& info) {
+Napi::Value transConvForward_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     Napi::Float32Array inputTensor = info[0].As<Napi::Float32Array>();
@@ -103,10 +149,12 @@ Napi::Value transConv_CPU(const Napi::CallbackInfo& info) {
     int strides = info[3].As<Napi::Number>().Int32Value();
     int filters = info[4].As<Napi::Number>().Int32Value();
     IntArray weightShape = Vectorize(info[5].As<Napi::Array>());
-    Napi::Float32Array weightsArray = info[6].As<Napi::Float32Array>();
-    Napi::Float32Array biasesArray = info[7].As<Napi::Float32Array>();
-    std::string modelID = info[9].As<Napi::String>().Utf8Value();
-    std::string layerID = info[10].As<Napi::String>().Utf8Value();
+    std::string activationType = info[6].As<Napi::String>().Utf8Value();
+    Napi::Float32Array weightsArray = info[7].As<Napi::Float32Array>();
+    Napi::Float32Array biasesArray = info[8].As<Napi::Float32Array>();
+    int pointer = info[9].As<Napi::Number>().Int32Value();
+    std::string modelID = info[10].As<Napi::String>().Utf8Value();
+    std::string layerID = info[12].As<Napi::String>().Utf8Value();
 
     int iH = inputShape[0];
     int iW = inputShape[1];
@@ -121,7 +169,17 @@ Napi::Value transConv_CPU(const Napi::CallbackInfo& info) {
     int kw = weightShape[2];
     int d = weightShape[3];
     int size = oH * oW * f;
-    Napi::Float32Array outputTensor = getOrCreateBuffer(env, modelID, layerID+"_transConv_forward", size);
+
+    std::unordered_map<std::string, void(*)(Napi::Float32Array& referenceDataBuffer, Napi::Float32Array& bufferToWriteOn)> activations = {
+        {"linear", LINEAR},
+        {"relu", RELU},
+        {"sigmoid", SIGMOID},
+        {"tanh", TANH},
+        {"softmax", SOFTMAX}
+    };
+
+    Napi::Float32Array z_values_vector = getOrCreateBuffer(env, modelID, layerID+"_transConv_forward_z_values", size);
+    Napi::Float32Array activated_output_vector = getOrCreateBuffer(env, modelID, layerID+"_transConv_forward_activated_output", size);
 
     int padH = std::max(0, (iH - 1) * strides + kh - oH);
     int padW = std::max(0, (iW - 1) * strides + kw - oW);
@@ -142,8 +200,7 @@ Napi::Value transConv_CPU(const Napi::CallbackInfo& info) {
     float* input = inputTensor.Data();
     float* weights = weightsArray.Data();
     float* biases = biasesArray.Data(); 
-    float* output = outputTensor.Data();
-    
+    float* output = z_values_vector.Data();
 
     // set biases before hand
     for (int y = 0; y < oH; y++) {
@@ -200,7 +257,13 @@ Napi::Value transConv_CPU(const Napi::CallbackInfo& info) {
         }
     }
 
-    return outputTensor;
+    activations[activationType](z_values_vector, activated_output_vector);
+
+    Napi::Object output = Napi::Object::New(env);
+    output.Set("z_values", z_values_vector);
+    output.Set("activated_output",activated_output_vector);
+
+    return output;
 }
 
 Napi::Value transConvBackward_GPU(const Napi::CallbackInfo& info) {
@@ -354,11 +417,11 @@ Napi::Value transConvBackward_CPU(const Napi::CallbackInfo& info) {
     return outputTensor;
 }
 
-Napi::Value transConvWrapper(const Napi::CallbackInfo& info) {
+Napi::Value transConvForwardWrapper(const Napi::CallbackInfo& info) {
     if (getComputeBackendType() == "opencl") {
-        return transConv_GPU(info);
+        return transConvForward_GPU(info);
     }
-    return transConv_CPU(info);
+    return transConvForward_CPU(info);
 }
 
 Napi::Value transConvBackwardWrapper(const Napi::CallbackInfo& info) {
@@ -369,6 +432,6 @@ Napi::Value transConvBackwardWrapper(const Napi::CallbackInfo& info) {
 }
 
 void transConvFunc(Napi::Env env, Napi::Object exports) {
-    exports.Set("transConv", Napi::Function::New(env, transConvWrapper));
+    exports.Set("transConvForward", Napi::Function::New(env, transConvForwardWrapper));
     exports.Set("transConvBackward", Napi::Function::New(env, transConvBackwardWrapper));
 }

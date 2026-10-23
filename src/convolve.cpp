@@ -2,9 +2,12 @@
 #include <CL/cl.h>
 #include <vector>
 #include <cstring>
+#include <cmath>
 #include <algorithm>
+#include <unordered_map>
 #include "gpu/gpu_context.h"
 #include "globals/globals.h"
+#include "global_activations/global_activations.h"
 using IntArray = std::vector<int>;
 using FloatArray = std::vector<float>;
 
@@ -23,13 +26,14 @@ static IntArray Vectorize(const Napi::Array& arr) {
 Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
-    Napi::Float32Array input = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array inputTensor = info[0].As<Napi::Float32Array>();
     IntArray inputShape = Vectorize(info[1].As<Napi::Array>());
     IntArray outputShape = Vectorize(info[2].As<Napi::Array>());
     IntArray kernelShape = Vectorize(info[3].As<Napi::Array>());
-    int pointer = info[6].As<Napi::Number>().Int32Value();
-    std::string modelID = info[7].As<Napi::String>().Utf8Value();
-    std::string layerID = info[8].As<Napi::String>().Utf8Value();
+    std::string activationType = info[4].As<Napi::String>().Utf8Value();
+    int pointer = info[7].As<Napi::Number>().Int32Value();
+    std::string modelID = info[8].As<Napi::String>().Utf8Value();
+    std::string layerID = info[9].As<Napi::String>().Utf8Value();
     size_t inputSize = input.ElementLength();
 
     int numFilters = kernelShape[0];
@@ -44,49 +48,36 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     int outputW = outputShape[1];
     int outputDepth = outputShape[2];
 
-    if (depth != inputDepth || numFilters != outputDepth) {
-        throw std::invalid_argument("ConvolveForward input, output, and kernel depths do not match.");
-    }
-
-    const size_t expectedInputSize = static_cast<size_t>(inputH) * inputW * inputDepth;
-    const size_t expectedKernelSize = static_cast<size_t>(numFilters) * kernelH * kernelW * depth;
-
-    if (input.ElementLength() != expectedInputSize) {
-        throw std::invalid_argument("ConvolveForward input length does not match inputShape.");
-    }
-    if (info[4].As<Napi::Float32Array>().ElementLength() != expectedKernelSize) {
-        throw std::invalid_argument("ConvolveForward weight length does not match kernelShape.");
-    }
-    if (info[5].As<Napi::Float32Array>().ElementLength() != static_cast<size_t>(numFilters)) {
-        throw std::invalid_argument("ConvolveForward bias length does not match the number of filters.");
-    }
 
     int outputSize = outputH * outputW * outputDepth;
-    Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID+"_convolve_forward", outputSize);
+    Napi::Float32Array z_values_vector = getOrCreateBuffer(env, modelID, layerID+"_convolve_forward_z_values", outputSize);
+    Napi::Float32Array activated_output_vector = getOrCreateBuffer(env, modelID, layerID+"_convolve_forward_activated_output_vector", outputSize);
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
-    cl_kernel kernel = gpu.kernel("convolve");
+    cl_kernel convolveKernel = gpu.kernel("convolve");
+    cl_kernel activationKernel = gpu.kernel(activationType+"_op");
 
     cl_mem inputTensor = gpu.getOrCreate_Input(modelID, layerID, static_cast<size_t>(inputSize));
     clEnqueueWriteBuffer(queue, inputTensor, CL_FALSE, 0, sizeof(float) * inputSize, input.Data(), 0, nullptr, nullptr);
     cl_mem weights = gpu.getWeights(modelID, pointer);
     cl_mem biases = gpu.getBiases(modelID, pointer);
-    cl_mem output_tensor = gpu.getOrCreate_Z(modelID, layerID, static_cast<size_t>(outputSize));
+    cl_mem z_values = gpu.getOrCreate_Z(modelID, layerID, static_cast<size_t>(outputSize));
+    cl_mem activated_output = gpu.getOrCreate_ActivationOutput(modelID, layerID, static_cast<size_t>(outputSize));
 
 
-    clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputTensor);
-    clSetKernelArg(kernel, 1, sizeof(cl_mem), &weights);
-    clSetKernelArg(kernel, 2, sizeof(cl_mem), &biases);
-    clSetKernelArg(kernel, 3, sizeof(cl_mem), &output_tensor);
-    clSetKernelArg(kernel, 4, sizeof(int), &outputH);
-    clSetKernelArg(kernel, 5, sizeof(int), &outputW);
-    clSetKernelArg(kernel, 6, sizeof(int), &numFilters);
-    clSetKernelArg(kernel, 7, sizeof(int), &kernelH);
-    clSetKernelArg(kernel, 8, sizeof(int), &kernelW);
-    clSetKernelArg(kernel, 9, sizeof(int), &depth);
-    clSetKernelArg(kernel, 10, sizeof(int), &inputH);
-    clSetKernelArg(kernel, 11, sizeof(int), &inputW);
+    clSetKernelArg(convolveKernel, 0, sizeof(cl_mem), &inputTensor);
+    clSetKernelArg(convolveKernel, 1, sizeof(cl_mem), &weights);
+    clSetKernelArg(convolveKernel, 2, sizeof(cl_mem), &biases);
+    clSetKernelArg(convolveKernel, 3, sizeof(cl_mem), &z_values);
+    clSetKernelArg(convolveKernel, 4, sizeof(int), &outputH);
+    clSetKernelArg(convolveKernel, 5, sizeof(int), &outputW);
+    clSetKernelArg(convolveKernel, 6, sizeof(int), &numFilters);
+    clSetKernelArg(convolveKernel, 7, sizeof(int), &kernelH);
+    clSetKernelArg(convolveKernel, 8, sizeof(int), &kernelW);
+    clSetKernelArg(convolveKernel, 9, sizeof(int), &depth);
+    clSetKernelArg(convolveKernel, 10, sizeof(int), &inputH);
+    clSetKernelArg(convolveKernel, 11, sizeof(int), &inputW);
 
     size_t global[3] = {
         (size_t)outputH,
@@ -94,23 +85,73 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
         (size_t)numFilters
     };
 
-    clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, global, nullptr, 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, output_tensor, CL_TRUE, 0, sizeof(float) * outputSize, output.Data(), 0, nullptr, nullptr);
+    clEnqueueNDRangeKernel(queue, convolveKernel, 3, nullptr, global, nullptr, 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, z_values, CL_TRUE, 0, sizeof(float) * outputSize, z_values_vector.Data(), 0, nullptr, nullptr);
+
+    if (activationType != "softmax") {
+        clSetKernelArg(activationKernel, 0, sizeof(cl_mem), &z_values);
+        clSetKernelArg(activationKernel, 1, sizeof(cl_mem), &activated_output);
+        clSetKernelArg(activationKernel, 2, sizeof(int), &outputSize);
+
+        // run activation function
+        clEnqueueNDRangeKernel(queue, activationKernel, 1, nullptr, &global, nullptr, 0, nullptr, nullptr);
+        
+        clEnqueueReadBuffer(queue, activated_output, CL_TRUE, 0, sizeof(float) * outputSize, activated_output_vector.Data(), 0, nullptr, nullptr);
+    }
+    else {
+        float* data = z_values_vector.Data();
+
+        float max_val = data[0];
+        for (int i = 1; i < outputSize; i++) {
+            max_val = std::max(max_val, data[i]);
+        }
+
+        float sum = 0.0f;
+        for (int i = 0; i < outputSize; i++) {
+            sum += std::exp(data[i] - max_val);
+        }
+
+        clSetKernelArg(activationKernel, 0, sizeof(cl_mem), &z_values);
+        clSetKernelArg(activationKernel, 1, sizeof(cl_mem), &activated_output);
+        clSetKernelArg(activationKernel, 2, sizeof(float), &max_val);
+        clSetKernelArg(activationKernel, 3, sizeof(float), &sum);
+        clSetKernelArg(activationKernel, 4, sizeof(int), &outputSize);
+
+        size_t softmax_branch_global_work_size = (size_t)outputSize;
+
+        clEnqueueNDRangeKernel(queue, activationKernel, 1, nullptr, &softmax_branch_global_work_size, nullptr, 0, nullptr, nullptr);
+
+        clEnqueueReadBuffer(queue, activated_output, CL_TRUE, 0, sizeof(float) * outputSize, activated_output_vector.Data(), 0, nullptr, nullptr);
+    }
+
+    Napi::Object output = Napi::Object::New(env);
+    output.Set("z_values", z_values_vector);
+    output.Set("activated_output",activated_output_vector);
 
     return output;
 }
 
 Napi::Value Convolve_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
+
     Napi::Float32Array inputTensor = info[0].As<Napi::Float32Array>();
     IntArray inputShape = Vectorize(info[1].As<Napi::Array>());
     IntArray outputShape = Vectorize(info[2].As<Napi::Array>());
     IntArray kernelShape = Vectorize(info[3].As<Napi::Array>());
-    Napi::Float32Array weightsArray = info[4].As<Napi::Float32Array>();
-    Napi::Float32Array biasesArray = info[5].As<Napi::Float32Array>();
-    int pointer = info[6].As<Napi::Number>().Int32Value();
-    std::string modelID = info[7].As<Napi::String>().Utf8Value();
-    std::string layerID = info[8].As<Napi::String>().Utf8Value();
+    std::string activationType = info[4].As<Napi::String>().Utf8Value();
+    Napi::Float32Array weightsArray = info[5].As<Napi::Float32Array>();
+    Napi::Float32Array biasesArray = info[6].As<Napi::Float32Array>();
+    int pointer = info[7].As<Napi::Number>().Int32Value();
+    std::string modelID = info[8].As<Napi::String>().Utf8Value();
+    std::string layerID = info[9].As<Napi::String>().Utf8Value();
+
+    std::unordered_map<std::string, void(*)(Napi::Float32Array& referenceDataBuffer, Napi::Float32Array& bufferToWriteOn)> activations = {
+        {"linear", LINEAR},
+        {"relu", RELU},
+        {"sigmoid", SIGMOID},
+        {"tanh", TANH},
+        {"softmax", SOFTMAX}
+    };
 
     const int inputH = inputShape[0];
     const int inputW = inputShape[1];
@@ -123,26 +164,14 @@ Napi::Value Convolve_CPU(const Napi::CallbackInfo& info) {
     const int kernelW = kernelShape[2];
     const int depth = kernelShape[3];
 
-    if (depth != inputDepth || numFilters != outputDepth) {
-        throw std::invalid_argument("ConvolveForward input, output, and kernel depths do not match.");
-    }
-    if (inputTensor.ElementLength() != static_cast<size_t>(inputH) * inputW * inputDepth) {
-        throw std::invalid_argument("ConvolveForward input length does not match inputShape.");
-    }
-    if (weightsArray.ElementLength() != static_cast<size_t>(numFilters) * kernelH * kernelW * depth) {
-        throw std::invalid_argument("ConvolveForward weight length does not match kernelShape.");
-    }
-    if (biasesArray.ElementLength() != static_cast<size_t>(numFilters)) {
-        throw std::invalid_argument("ConvolveForward bias length does not match the number of filters.");
-    }
-
     int outputSize = outputH * outputW * outputDepth;
-    Napi::Float32Array outputTensor = getOrCreateBuffer(env, modelID, layerID+"_convolve_forward", outputSize);
+    Napi::Float32Array z_values_vector = getOrCreateBuffer(env, modelID, layerID+"_convolve_forward_z_values", outputSize);
+    Napi::Float32Array activated_output_vector = getOrCreateBuffer(env, modelID, layerID+"_convolve_forward_activated_output", outputSize);
 
     const float* input = inputTensor.Data();
     const float* weights = weightsArray.Data();
     const float* biases = biasesArray.Data();
-    float* output = outputTensor.Data();
+    float* output = z_values_vector.Data();
     const int padTop = outputH == inputH ? (kernelH - 1) / 2 : 0;
     const int padLeft = outputW == inputW ? (kernelW - 1) / 2 : 0;
 
@@ -188,7 +217,14 @@ Napi::Value Convolve_CPU(const Napi::CallbackInfo& info) {
             }
         }
     }
-    return outputTensor;
+
+    activations[activationType](z_values_vector, activated_output_vector);
+
+    Napi::Object output = Napi::Object::New(env);
+    output.Set("z_values", z_values_vector);
+    output.Set("activated_output",activated_output_vector);
+
+    return output;
 }
 
 Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
