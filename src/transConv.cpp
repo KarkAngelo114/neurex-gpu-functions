@@ -133,11 +133,11 @@ Napi::Value transConvForward_GPU(const Napi::CallbackInfo& info) {
         clEnqueueReadBuffer(queue, activated_output, CL_TRUE, 0, sizeof(float) * outputSize, activated_output_vector.Data(), 0, nullptr, nullptr);
     }
 
-    Napi::Object output = Napi::Object::New(env);
-    output.Set("z_values", z_values_vector);
-    output.Set("activated_output",activated_output_vector);
+    Napi::Object output_obj = Napi::Object::New(env);
+    output_obj.Set("z_values", z_values_vector);
+    output_obj.Set("activated_output",activated_output_vector);
 
-    return output;
+    return output_obj;
 }
 
 Napi::Value transConvForward_CPU(const Napi::CallbackInfo& info) {
@@ -259,11 +259,11 @@ Napi::Value transConvForward_CPU(const Napi::CallbackInfo& info) {
 
     activations[activationType](z_values_vector, activated_output_vector);
 
-    Napi::Object output = Napi::Object::New(env);
-    output.Set("z_values", z_values_vector);
-    output.Set("activated_output",activated_output_vector);
+    Napi::Object output_obj = Napi::Object::New(env);
+    output_obj.Set("z_values", z_values_vector);
+    output_obj.Set("activated_output",activated_output_vector);
 
-    return output;
+    return output_obj;
 }
 
 Napi::Value transConvBackward_GPU(const Napi::CallbackInfo& info) {
