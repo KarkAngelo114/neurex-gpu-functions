@@ -349,7 +349,7 @@ Napi::Value fusedFinalDeltaProjector_GPU(const Napi::CallbackInfo& info) {
     cl_mem cachedActivatedVector = gpu.getActivationOutput(modelID, layerID);
     cl_mem finalDelta = gpu.getOrCreate_Delta(modelID, layerID, static_cast<size_t>(size));
     cl_mem deltaBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_incoming_delta", static_cast<size_t>(size));
-    clEnqueueWriteBuffer(queue, deltaBuffer, CL_FALSE, 0, sizeof(float) * arr_length, incomingDelta.Data(), 0, nullptr, nullptr);
+    clEnqueueWriteBuffer(queue, deltaBuffer, CL_FALSE, 0, sizeof(float) * size, incomingDelta.Data(), 0, nullptr, nullptr);
     cl_mem dAct = gpu.getOrCreate_DAct(modelID, layerID, static_cast<size_t>(size));
 
     size_t globalSize = (size_t)size;
@@ -368,7 +368,7 @@ Napi::Value fusedFinalDeltaProjector_GPU(const Napi::CallbackInfo& info) {
 
         clSetKernelArg(activationKernel, 0, sizeof(cl_mem), &cachedActivatedVector);
         clSetKernelArg(activationKernel, 1, sizeof(cl_mem), &deltaBuffer);
-        clSetKernelArg(activationKermel, 2, sizeof(cl_mem), &finalDelta);
+        clSetKernelArg(activationKernel, 2, sizeof(cl_mem), &finalDelta);
         clSetKernelArg(activationKernel, 3, sizeof(float), &dotProduct);
         clSetKernelArg(activationKernel, 4, sizeof(int), &size);
 
@@ -426,7 +426,7 @@ Napi::Value fusedFinalDeltaProjector_CPU(const Napi::CallbackInfo& info) {
         {"tanh", DTANH}
     };
 
-    activations[activationType](zs, output);
+    activations[activationType](zs_array, output);
 
     float* derivative = output.Data();
     const float* delta = incomingDelta.Data();
