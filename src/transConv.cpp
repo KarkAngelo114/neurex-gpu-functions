@@ -33,7 +33,7 @@ Napi::Value transConvForward_GPU(const Napi::CallbackInfo& info) {
     std::string activationType = info[6].As<Napi::String>().Utf8Value();
     int pointer = info[9].As<Napi::Number>().Int32Value();
     std::string modelID = info[10].As<Napi::String>().Utf8Value();
-    std::string layerID = info[12].As<Napi::String>().Utf8Value()
+    std::string layerID = info[12].As<Napi::String>().Utf8Value();
 
     int iH = inputShape[0];
     int iW = inputShape[1];
