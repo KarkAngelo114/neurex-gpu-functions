@@ -26,7 +26,7 @@ static IntArray Vectorize(const Napi::Array& arr) {
 Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
-    Napi::Float32Array inputTensor = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array input = info[0].As<Napi::Float32Array>();
     IntArray inputShape = Vectorize(info[1].As<Napi::Array>());
     IntArray outputShape = Vectorize(info[2].As<Napi::Array>());
     IntArray kernelShape = Vectorize(info[3].As<Napi::Array>());
