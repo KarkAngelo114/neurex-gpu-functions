@@ -256,6 +256,6 @@ Napi::Value DeltaMatMulWrapper(const Napi::CallbackInfo& info) {
 
 // =================== MODULE EXPORT ===================
 void MatMulRegister(Napi::Env env, Napi::Object exports) {
-    exports.Set("DesneForward", Napi::Function::New(env, MatMulWrapper));
+    exports.Set("DenseForward", Napi::Function::New(env, MatMulWrapper));
     exports.Set("DeltaMatMul", Napi::Function::New(env, DeltaMatMulWrapper));
 }
