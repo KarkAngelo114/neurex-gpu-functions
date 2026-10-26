@@ -385,6 +385,8 @@ Napi::Value transConvBackward_CPU(const Napi::CallbackInfo& info) {
     float* weights = weightsArray.Data();
     float* deltaInput = outputTensor.Data();
 
+    std::fill(deltaInput, deltaInput + size, 0.0f);
+
     for (int iy = 0; iy < iH; iy++) {
         for (int ix = 0; ix < iW; ix++) {
             for (int ky = 0; ky < kh; ky++) {
