@@ -1,7 +1,7 @@
 #include <napi.h>
 
 void ActivationsRegister(Napi::Env env, Napi::Object exports);
-void MatMulRegister(Napi::Env env, Napi::Object exports);
+void DenseRegister(Napi::Env env, Napi::Object exports);
 void ConvolveRegister(Napi::Env env, Napi::Object exports);
 void GradientCalculationRegister(Napi::Env env, Napi::Object exports);
 void OptimizerInternals(Napi::Env env, Napi::Object exports);
@@ -21,7 +21,7 @@ void encoders(Napi::Env env, Napi::Object exports);
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     ActivationsRegister(env, exports);
-    MatMulRegister(env, exports);
+    DenseRegister(env, exports);
     ConvolveRegister(env, exports);
     GradientCalculationRegister(env, exports);
     OptimizerInternals(env, exports);

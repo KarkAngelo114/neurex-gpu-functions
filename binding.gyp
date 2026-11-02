@@ -10,7 +10,7 @@
       "target_name": "neurex-core-native",
       "sources": [
         "src/main.cpp",
-        "src/matmul.cpp",
+        "src/dense.cpp",
         "src/activations.cpp",
         "src/convolve.cpp",
         "src/gradientsComputation.cpp",

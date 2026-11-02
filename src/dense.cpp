@@ -237,6 +237,188 @@ Napi::Value DeltaMatMul_CPU(const Napi::CallbackInfo& info) {
     return output;
 }
 
+Napi::Value fusedFinalDeltaProjector_ForDense_GPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    Napi::Float32Array zs_array = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array cachedActivated_output = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array incomingDelta = info[2].As<Napi::Float32Array>();
+    Napi::Float32Array weightGrads_array = info[3].As<Napi::Float32Array>();
+    Napi::Float32Array biasGrads_array = info[4].As<Napi::Float32Array>();
+    IntArray weightShape = Vectorize(info[5].As<Napi::Array>());
+    std::string activationType = info[6].As<Napi::String>().Utf8Value();
+    bool applyDerivativeActivation = info[7].As<Napi::Boolean>().Value();
+    std::string modelID = info[8].As<Napi::String>().Utf8Value();
+    std::string layerID = info[9].As<Napi::String>().Utf8Value();
+
+    int inputSize = weightShape[0];
+    int outputSize = weightShape[1];
+
+    int size = incomingDelta.ElementLength();
+    Napi::Float32Array finalDelta = getOrCreateBuffer(env, modelID, layerID + "_final_delta", size);
+
+    auto& gpu = GpuContext::instance();
+    cl_command_queue queue = gpu.queue();
+    cl_kernel gradientAccumulationKernel = gpu.kernel("accumulateWeightsAndBiasGradsDense");
+
+    cl_mem z_values = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_fused_dense_z", static_cast<size_t>(size));
+    cl_mem cachedActivatedVector = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_fused_dense_activation", static_cast<size_t>(size));
+    cl_mem finalDeltaBuffer = gpu.getOrCreate_Delta(modelID, layerID, static_cast<size_t>(size));
+    cl_mem incoming_deltaBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_incoming_delta", static_cast<size_t>(size));
+    clEnqueueWriteBuffer(queue, z_values, CL_FALSE, 0, sizeof(float) * size, zs_array.Data(), 0, nullptr, nullptr);
+    clEnqueueWriteBuffer(queue, cachedActivatedVector, CL_FALSE, 0, sizeof(float) * size, cachedActivated_output.Data(), 0, nullptr, nullptr);
+    clEnqueueWriteBuffer(queue, incoming_deltaBuffer, CL_FALSE, 0, sizeof(float) * size, incomingDelta.Data(), 0, nullptr, nullptr);
+    cl_mem dAct = gpu.getOrCreate_DAct(modelID, layerID, static_cast<size_t>(size));
+
+    size_t weightGradsSize = weightGrads_array.ElementLength();
+    size_t biasGradsSize = biasGrads_array.ElementLength();
+    cl_mem weightGrads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_dense_weight_grads", weightGradsSize);
+    cl_mem biasGrads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_dense_bias_grads", biasGradsSize);
+    clEnqueueWriteBuffer(queue, weightGrads, CL_FALSE, 0, sizeof(float) * weightGradsSize, weightGrads_array.Data(), 0, nullptr, nullptr);
+    clEnqueueWriteBuffer(queue, biasGrads, CL_FALSE, 0, sizeof(float) * biasGradsSize, biasGrads_array.Data(), 0, nullptr, nullptr);
+
+    size_t scalarSize = static_cast<size_t>(size);
+    size_t matrix_size[2] = {
+        static_cast<size_t>(inputSize),
+        static_cast<size_t>(outputSize),
+    };
+
+    if (applyDerivativeActivation && activationType == "softmax") {
+        cl_kernel activationKernel = gpu.kernel("dsoftmax");
+        const float* probabilities = cachedActivated_output.Data();
+        const float* delta = incomingDelta.Data();
+
+        float dotProduct = 0.0f;
+        #pragma omp unroll partial(4)
+        for (int i = 0; i < size; i++) {
+            dotProduct += probabilities[i] * delta[i];
+        }
+
+        clSetKernelArg(activationKernel, 0, sizeof(cl_mem), &cachedActivatedVector);
+        clSetKernelArg(activationKernel, 1, sizeof(cl_mem), &incoming_deltaBuffer);
+        clSetKernelArg(activationKernel, 2, sizeof(cl_mem), &finalDeltaBuffer);
+        clSetKernelArg(activationKernel, 3, sizeof(float), &dotProduct);
+        clSetKernelArg(activationKernel, 4, sizeof(int), &size);
+
+        clEnqueueNDRangeKernel(queue, activationKernel, 1, nullptr, &scalarSize, nullptr, 0, nullptr, nullptr);
+    } else if (applyDerivativeActivation) {
+        cl_kernel activationKernel = gpu.kernel("d" + activationType);
+        cl_kernel elementWiseKernel = gpu.kernel("element_wise_mul");
+        clSetKernelArg(activationKernel, 0, sizeof(cl_mem), &z_values);
+        clSetKernelArg(activationKernel, 1, sizeof(cl_mem), &dAct);
+        clSetKernelArg(activationKernel, 2, sizeof(int), &size);
+        clEnqueueNDRangeKernel(queue, activationKernel, 1, nullptr, &scalarSize, nullptr, 0, nullptr, nullptr);
+
+        clSetKernelArg(elementWiseKernel, 0, sizeof(cl_mem), &dAct);
+        clSetKernelArg(elementWiseKernel, 1, sizeof(cl_mem), &incoming_deltaBuffer);
+        clSetKernelArg(elementWiseKernel, 2, sizeof(cl_mem), &finalDeltaBuffer);
+        clSetKernelArg(elementWiseKernel, 3, sizeof(int), &size);
+        clEnqueueNDRangeKernel(queue, elementWiseKernel, 1, nullptr, &scalarSize, nullptr, 0, nullptr, nullptr);
+    } else {
+        clEnqueueCopyBuffer(queue, incoming_deltaBuffer, finalDeltaBuffer, 0, 0, sizeof(float) * size, 0, nullptr, nullptr);
+    }
+
+    clSetKernelArg(gradientAccumulationKernel, 0, sizeof(cl_mem), &cachedActivatedVector);
+    clSetKernelArg(gradientAccumulationKernel, 1, sizeof(cl_mem), &finalDeltaBuffer);
+    clSetKernelArg(gradientAccumulationKernel, 2, sizeof(cl_mem), &weightGrads);
+    clSetKernelArg(gradientAccumulationKernel, 3, sizeof(cl_mem), &biasGrads);
+    clSetKernelArg(gradientAccumulationKernel, 4, sizeof(int), &inputSize);
+    clSetKernelArg(gradientAccumulationKernel, 5, sizeof(int), &outputSize);
+
+    clEnqueueNDRangeKernel(queue, gradientAccumulationKernel, 2, nullptr, matrix_size, nullptr, 0, nullptr, nullptr);
+
+    clEnqueueReadBuffer(queue, finalDeltaBuffer, CL_TRUE, 0, sizeof(float) * size, finalDelta.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, weightGrads, CL_TRUE, 0, sizeof(float) * weightGradsSize, weightGrads_array.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, biasGrads, CL_TRUE, 0, sizeof(float) * biasGradsSize, biasGrads_array.Data(), 0, nullptr, nullptr);
+
+    Napi::Object output = Napi::Object::New(env);
+    output.Set("delta", finalDelta);
+    output.Set("weightGrads", weightGrads_array);
+    output.Set("biasGrads", biasGrads_array);
+    return output;
+}
+
+Napi::Value fusedFinalDeltaProjector_ForDense_CPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    Napi::Float32Array zs_array = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array cachedActivated_output = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array incomingDelta = info[2].As<Napi::Float32Array>();
+    Napi::Float32Array weightGrads_array = info[3].As<Napi::Float32Array>();
+    Napi::Float32Array biasGrads_array = info[4].As<Napi::Float32Array>();
+    IntArray weightShape = Vectorize(info[5].As<Napi::Array>());
+    std::string activationType = info[6].As<Napi::String>().Utf8Value();
+    bool applyDerivativeActivation = info[7].As<Napi::Boolean>().Value();
+    std::string modelID = info[8].As<Napi::String>().Utf8Value();
+    std::string layerID = info[9].As<Napi::String>().Utf8Value();
+
+    int inputSize = weightShape[0];
+    int outputSize = weightShape[1];
+
+    int size = incomingDelta.ElementLength();
+    Napi::Float32Array finalDelta = getOrCreateBuffer(env, modelID, layerID + "_final_delta", size);
+
+    if (applyDerivativeActivation && activationType == "softmax") {
+        DSOFTMAX(cachedActivated_output, incomingDelta, finalDelta);
+    } else if (applyDerivativeActivation) {
+        std::unordered_map<std::string, void(*)(Napi::Float32Array& referenceDataBuffer, Napi::Float32Array& bufferToWriteOn)> activations = {
+            {"linear", DLINEAR},
+            {"relu", DRELU},
+            {"sigmoid", DSIGMOID},
+            {"tanh", DTANH}
+        };
+        auto activation = activations.find(activationType);
+        if (activation == activations.end()) {
+            Napi::TypeError::New(env, "Unsupported dense activation derivative: " + activationType).ThrowAsJavaScriptException();
+            return env.Null();
+        }
+
+        activation->second(zs_array, finalDelta);
+    } else {
+        const float* incoming_delta = incomingDelta.Data();
+        float* final_delta = finalDelta.Data();
+        #pragma omp parallel for
+        for (int i = 0; i < size; i++) {
+            final_delta[i] = incoming_delta[i];
+        }
+    }
+
+    float* final_delta = finalDelta.Data();
+    float* incoming_delta = incomingDelta.Data();
+    float* activatedOutput = cachedActivated_output.Data();
+    float* biasGrads = biasGrads_array.Data();
+    float* weightGrads = weightGrads_array.Data();
+
+    if (applyDerivativeActivation && activationType != "softmax") {
+        #pragma omp parallel for
+        for (int i = 0; i < size; i++) {
+            final_delta[i] *= incoming_delta[i];
+        }
+    }
+
+    #pragma omp parallel for
+    for (int i = 0; i < size; i++) {
+        biasGrads[i] += final_delta[i];
+    }
+
+    for (int i = 0; i < inputSize; i++) {
+        float inputVal = activatedOutput[i];
+        int rowStart = i * outputSize;
+
+        #pragma omp unroll partial(4)
+        for (int j = 0; j < outputSize; j++) {
+            weightGrads[rowStart + j] += inputVal * final_delta[j];
+        }
+    }
+
+    Napi::Object output = Napi::Object::New(env);
+    output.Set("delta", finalDelta);
+    output.Set("weightGrads", weightGrads_array);
+    output.Set("biasGrads", biasGrads_array);
+
+    return output;
+}
+
 // ================== Wrappers ====================== //
 Napi::Value MatMulWrapper(const Napi::CallbackInfo& info) {
     if (getComputeBackendType() == "opencl") {
@@ -253,9 +435,15 @@ Napi::Value DeltaMatMulWrapper(const Napi::CallbackInfo& info) {
     return DeltaMatMul_CPU(info);
 }
 
+Napi::Value fusedFinalDeltaProjector_ForDense_wrapper(const Napi::CallbackInfo& info) {
+    if (getComputeBackendType() == "opencl") return fusedFinalDeltaProjector_ForDense_GPU(info);
+    return fusedFinalDeltaProjector_ForDense_CPU(info);
+}
+
 
 // =================== MODULE EXPORT ===================
-void MatMulRegister(Napi::Env env, Napi::Object exports) {
+void DenseRegister(Napi::Env env, Napi::Object exports) {
     exports.Set("DenseForward", Napi::Function::New(env, MatMulWrapper));
     exports.Set("DeltaMatMul", Napi::Function::New(env, DeltaMatMulWrapper));
+    exports.Set("fusedFinalDeltaProjector_ForDense", Napi::Function::New(env, fusedFinalDeltaProjector_ForDense_wrapper));
 }
