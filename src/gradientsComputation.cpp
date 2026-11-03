@@ -413,11 +413,6 @@ Napi::Value accumulate_MHA_WeightsAndBiasGrads_Wrapper(const Napi::CallbackInfo&
     return accumulate_MHA_WeightsAndBiasGrads_CPU(info);
 }
 
-Napi::Value AccumulateGammaAndBetaGrads_wrapper(const Napi::CallbackInfo& info) {
-    if (getComputeBackendType() == "opencl")  return AccumulateGammaAndBetaGrads_GPU(info);
-    return AccumulateGammaAndBetaGrads_CPU(info);
-}
-
 /* ================ module exports ===================*/
 void GradientCalculationRegister(Napi::Env env, Napi::Object exports) {
     exports.Set("recurrentWeightGradsAccumulation", Napi::Function::New(env, recurrentWeightGradsAccumulationWrapper));
