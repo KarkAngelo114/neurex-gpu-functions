@@ -202,22 +202,26 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
 
     Napi::Float32Array dy = info[0].As<Napi::Float32Array>();
     Napi::Float32Array x = info[1].As<Napi::Float32Array>();
-    Napi::Float32Array gamma = info[2].As<Napi::Float32Array>();
-    int size = info[3].As<Napi::Number>().Int32Value();
-    float eps = info[4].As<Napi::Number>().FloatValue();
-    int pointer = info[5].As<Napi::Number>().Int32Value();
-    std::string modelID = info[6].As<Napi::String>().Utf8Value();
-    std::string layerID = info[7].As<Napi::String>().Utf8Value();
+    Napi::Float32Array Gamma = info[2].As<Napi::Float32Array>();
+    Napi::Float32Array weight_grads = info[3].As<Napi::Float32Array>();
+    Napi::Float32Array bias_grads = info[4].As<Napi::Float32Array>();
+    int size = info[5].As<Napi::Number>().Int32Value();
+    float eps = info[6].As<Napi::Number>().FloatValue();
+    std::string modelID = info[8].As<Napi::String>().Utf8Value();
+    std::string layerID = info[9].As<Napi::String>().Utf8Value();
 
     if (size <= 0 ||dy.ElementLength() < static_cast<size_t>(size) || x.ElementLength() < static_cast<size_t>(size)) {
         Napi::TypeError::New(env,"Invalid layer normalization input size").ThrowAsJavaScriptException();
         return env.Null();
     }
 
+    Napi::Float32Array dx = getOrCreateBuffer(env, modelID, layerID+"_dx", size);
+
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
     cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("layer_norm_backward_one");
+    cl_kernel gradientAccumulationKernel = gpu.kernel("accumulate_gamma_beta_grads");
 
 
     cl_mem xBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_xBuffer", static_cast<size_t>(size));
@@ -228,6 +232,10 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
     cl_mem dxBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_dxBuffer", static_cast<size_t>(size));
     cl_mem dgammaBuffer = gpu.getOrCreate_dGamma(modelID, layerID, static_cast<size_t>(size)); // create cacheable dGamma
     cl_mem dbetaBuffer = gpu.getOrCreate_dBeta(modelID, layerID, static_cast<size_t>(size)); // create cacheable dBeta
+    cl_mem gammaGrads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_layerNorm_gamma_grads", static_cast<size_t>(size));
+    clEnqueueWriteBuffer(queue, gammaGrads, CL_FALSE, 0, sizeof(float) * size, weight_grads.Data(), 0, nullptr, nullptr); 
+    cl_mem betaGrads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_layerNorm_beta_grads", static_cast<size_t>(size));
+    clEnqueueWriteBuffer(queue, betaGrads, CL_FALSE, 0, sizeof(float) * size, bias_grads.Data(), 0, nullptr, nullptr);
 
     // Find the device and a legal power-of-two workgroup size.
     cl_device_id device = nullptr;
@@ -269,41 +277,28 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
     clSetKernelArg(kernel, 7, sizeof(float), &eps);
 
     // One float per work item in the workgroup.
-    clSetKernelArg(kernel,8, localSize * sizeof(float), nullptr);
+    clSetKernelArg(kernel, 8, localSize * sizeof(float), nullptr);
     size_t globalSize = localSize;
 
-    cl_int err = CL_SUCCESS;
-    cl_event kernelEvent = nullptr;
-    err = clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, &localSize, 0, nullptr, &kernelEvent);
+    clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, &localSize, 0, nullptr);
+    
+    // gradient accumulation kernel
+    clSetKernelArg(gradientAccumulationKernel, 0, sizeof(cl_mem), &dgammaBuffer);
+    clSetKernelArg(gradientAccumulationKernel, 1, sizeof(cl_mem), &dbetaBuffer);
+    clSetKernelArg(gradientAccumulationKernel, 2, sizeof(cl_mem), &gammaGrads);
+    clSetKernelArg(gradientAccumulationKernel, 3, sizeof(cl_mem), &betaGrads);
+    clSetKernelArg(gradientAccumulationKernel, 4, sizeof(int), &size);
 
-    if (err != CL_SUCCESS) {
-        Napi::Error::New(env, "Failed to enqueue layer norm backward kernel").ThrowAsJavaScriptException();
-        return env.Null();
-    }
-
-    Napi::Float32Array dx = getOrCreateBuffer(env, modelID, layerID+"_dx", size);
-    Napi::Float32Array dgamma = getOrCreateBuffer(env, modelID, layerID+"_dgamma", size);
-    Napi::Float32Array dbeta = getOrCreateBuffer(env, modelID, layerID+"_dbeta", size);
-
-    cl_event kernelWaitList[] = { kernelEvent };
-    cl_event readEvents[3];
-
-    clEnqueueReadBuffer(queue, dxBuffer, CL_FALSE, 0, sizeof(float) * size, dx.Data(), 1, kernelWaitList, &readEvents[0]);
-    clEnqueueReadBuffer(queue, dgammaBuffer, CL_FALSE, 0, sizeof(float) * size, dgamma.Data(), 1, kernelWaitList, &readEvents[1]);
-    clEnqueueReadBuffer(queue, dbetaBuffer, CL_FALSE, 0, sizeof(float) * size, dbeta.Data(), 1, kernelWaitList, &readEvents[2]);
-
-    clWaitForEvents(3, readEvents);
-
-    for (cl_event event : readEvents) {
-        clReleaseEvent(event);
-    }
-
-    clReleaseEvent(kernelEvent);
+    clEnqueueNDRangeKernel(queue, gradientAccumulationKernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
+    
+    clEnqueueReadBuffer(queue, gammaGrads, CL_FALSE, 0, sizeof(float) * size, weight_grads.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, betaGrads, CL_FALSE, 0, sizeof(float) * size, bias_grads.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, dxBuffer, CL_TRUE, 0, sizeof(float) * size, dx.Data(), 0, nullptr, nullptr);
 
     Napi::Object output = Napi::Object::New(env);
-    output.Set("dX", dx);
-    output.Set("dGamma", dgamma);
-    output.Set("dBeta", dbeta);
+    output.Set("delta", dx);
+    output.Set("weightGrads", weight_grads);
+    output.Set("biasGrads", bias_grads);
 
     return output;
 }
@@ -314,10 +309,12 @@ Napi::Value LayerNormBackward_CPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array dy = info[0].As<Napi::Float32Array>();
     Napi::Float32Array x = info[1].As<Napi::Float32Array>();
     Napi::Float32Array Gamma = info[2].As<Napi::Float32Array>();
-    int size = info[3].As<Napi::Number>().Int32Value();
-    float eps = info[4].As<Napi::Number>().FloatValue();
-    std::string modelID = info[6].As<Napi::String>().Utf8Value();
-    std::string layerID = info[7].As<Napi::String>().Utf8Value();
+    Napi::Float32Array weight_grads = info[3].As<Napi::Float32Array>();
+    Napi::Float32Array bias_grads = info[4].As<Napi::Float32Array>();
+    int size = info[5].As<Napi::Number>().Int32Value();
+    float eps = info[6].As<Napi::Number>().FloatValue();
+    std::string modelID = info[8].As<Napi::String>().Utf8Value();
+    std::string layerID = info[9].As<Napi::String>().Utf8Value();
 
     Napi::Float32Array dx = getOrCreateBuffer(env, modelID, layerID+"_dx", size);
     Napi::Float32Array dgamma = getOrCreateBuffer(env, modelID, layerID+"_dgamma", size);
@@ -329,6 +326,8 @@ Napi::Value LayerNormBackward_CPU(const Napi::CallbackInfo& info) {
     float* dGamma = dgamma.Data();
     float* dBeta = dbeta.Data();
     float* dX = dx.Data();
+    float* gammaGrads = weight_grads.Data();
+    float* betaGrads = bias_grads.Data();
 
     // 1. Recompute forward statistics (Mean & Variance)
     float mean = 0.0f;
@@ -380,11 +379,17 @@ Napi::Value LayerNormBackward_CPU(const Napi::CallbackInfo& info) {
         dX[i] = stdInv * (dyGamma - sumDy * invSize - normalized[i] * sumDyXhat * invSize);
     }
 
+    // gradient accumulation
+    for (int i = 0; i < size; i++) {
+        gammaGrads[i] += dGamma[i];
+        betaGrads[i] += dBeta[i];
+    }
+
 
     Napi::Object output = Napi::Object::New(env);
-    output.Set("dX", dx);
-    output.Set("dGamma", dgamma);
-    output.Set("dBeta", dbeta);
+    output.Set("delta", dx);
+    output.Set("weightGrads", weight_grads);
+    output.Set("biasGrads", bias_grads);
 
     return output;
 }

@@ -393,87 +393,6 @@ Napi::Value accumulate_MHA_WeightsAndBiasGrads_GPU(const Napi::CallbackInfo& inf
     return output;
 }
 
-Napi::Value AccumulateGammaAndBetaGrads_GPU(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-    Napi::Float32Array gammaGrads_array = info[0].As<Napi::Float32Array>();
-    Napi::Float32Array dGamma_array = info[1].As<Napi::Float32Array>();
-    Napi::Float32Array betaGrads_array = info[2].As<Napi::Float32Array>();
-    Napi::Float32Array dBeta_array = info[3].As<Napi::Float32Array>();
-    std::string modelID = info[4].As<Napi::String>().Utf8Value();
-    std::string layerID = info[5].As<Napi::String>().Utf8Value();
-    int size = gammaGrads_array.ElementLength();
-
-    auto& gpu = GpuContext::instance();
-    cl_context context = gpu.context();
-    cl_command_queue queue = gpu.queue();
-    cl_kernel kernel = gpu.kernel("accumulate_gamma_beta_grads");
-
-    cl_mem dGamma = gpu.get_dGamma(modelID, layerID);
-    cl_mem dBeta = gpu.get_dBeta(modelID, layerID);
-    cl_mem gammaGrads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_gamma_grads_input", static_cast<size_t>(size));
-    cl_mem betaGrads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_beta_grads_input", static_cast<size_t>(size));
-    
-    cl_event weightWriteEvent, biasWriteEvent;
-
-    clEnqueueWriteBuffer(queue, gammaGrads, CL_FALSE, 0, sizeof(float) * size, gammaGrads_array.Data(), 0, nullptr, &weightWriteEvent);
-    clEnqueueWriteBuffer(queue, betaGrads, CL_FALSE, 0, sizeof(float) * size, betaGrads_array.Data(), 0, nullptr, &biasWriteEvent);
-
-    clSetKernelArg(kernel, 0, sizeof(cl_mem), &dGamma);
-    clSetKernelArg(kernel, 1, sizeof(cl_mem), &dBeta);
-    clSetKernelArg(kernel, 2, sizeof(cl_mem), &gammaGrads);
-    clSetKernelArg(kernel, 3, sizeof(cl_mem), &betaGrads);
-    clSetKernelArg(kernel, 4, sizeof(int), &size);
-
-    size_t globalSize = (size_t)size;
-    cl_event writeWaitList[] = {weightWriteEvent, biasWriteEvent};
-    cl_event kernelEvent;
-
-    clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 2, writeWaitList, &kernelEvent);
-
-    cl_event kernelWaitList[] = { kernelEvent};
-    cl_event readEvents[2];
-    clEnqueueReadBuffer(queue, gammaGrads, CL_FALSE, 0, sizeof(float) * size, gammaGrads_array.Data(), 1, kernelWaitList, &readEvents[0]);
-    clEnqueueReadBuffer(queue, betaGrads, CL_FALSE, 0, sizeof(float) * size, betaGrads_array.Data(), 1, kernelWaitList, &readEvents[1]);
-    
-    clWaitForEvents(2, readEvents);
-    clReleaseEvent(readEvents[0]);
-    clReleaseEvent(readEvents[1]);
-    clReleaseEvent(kernelEvent);
-
-    Napi::Object output = Napi::Object::New(env);
-    output.Set("gammaGrads", gammaGrads_array);
-    output.Set("betaGrads", betaGrads_array);
-
-    return output;
-}
-
-Napi::Value AccumulateGammaAndBetaGrads_CPU(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-    Napi::Float32Array gammaGrads = info[0].As<Napi::Float32Array>();
-    Napi::Float32Array dGamma = info[1].As<Napi::Float32Array>();
-    Napi::Float32Array betaGrads = info[2].As<Napi::Float32Array>();
-    Napi::Float32Array dBeta = info[3].As<Napi::Float32Array>();
-
-    float* g = gammaGrads.Data();
-    float* dG = dGamma.Data();
-    float* b = betaGrads.Data();
-    float* dB = dGamma.Data();
-
-    int length = gammaGrads.ElementLength();
-
-    
-    for (int i = 0; i < length; i++) {
-        g[i] += dG[i];
-        b[i] += dB[i];
-    }
-
-    Napi::Object output = Napi::Object::New(env);
-    output.Set("gammaGrads", gammaGrads);
-    output.Set("betaGrads", betaGrads);
-
-    return output;
-}
-
 // =================== wrappers ===================== //
 
 Napi::Value recurrentWeightGradsAccumulationWrapper(const Napi::CallbackInfo& info) {
@@ -505,5 +424,4 @@ void GradientCalculationRegister(Napi::Env env, Napi::Object exports) {
     exports.Set("recurrentBiasGradsAccumulation", Napi::Function::New(env, recurrentBiasGradsAccumulationWrapper));
     exports.Set("accumulateWeightandBiasGradsForTransConv", Napi::Function::New(env, accumulateWeightandBiasGradsForTransConv_wrapper));
     exports.Set("accumulate_MHA_WeightsAndBiasGrads", Napi::Function::New(env, accumulate_MHA_WeightsAndBiasGrads_Wrapper));
-    exports.Set("AccumulateGammaAndBetaGrads", Napi::Function::New(env, AccumulateGammaAndBetaGrads_wrapper));
 }
