@@ -207,6 +207,7 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array bias_grads = info[4].As<Napi::Float32Array>();
     int size = info[5].As<Napi::Number>().Int32Value();
     float eps = info[6].As<Napi::Number>().FloatValue();
+    int pointer = info[7].As<Napi::Number>().Int32Value();
     std::string modelID = info[8].As<Napi::String>().Utf8Value();
     std::string layerID = info[9].As<Napi::String>().Utf8Value();
 
@@ -280,7 +281,7 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
     clSetKernelArg(kernel, 8, localSize * sizeof(float), nullptr);
     size_t globalSize = localSize;
 
-    clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, &localSize, 0, nullptr);
+    clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, &localSize, 0, nullptr, nullptr);
     
     // gradient accumulation kernel
     clSetKernelArg(gradientAccumulationKernel, 0, sizeof(cl_mem), &dgammaBuffer);
