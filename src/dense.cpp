@@ -261,14 +261,14 @@ Napi::Value fusedFinalDeltaProjector_ForDense_GPU(const Napi::CallbackInfo& info
     cl_command_queue queue = gpu.queue();
     cl_kernel gradientAccumulationKernel = gpu.kernel("accumulateWeightsAndBiasGradsDense");
 
-    cl_mem z_values = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_fused_dense_z", static_cast<size_t>(size));
-    cl_mem cachedActivatedVector = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_fused_dense_activation", static_cast<size_t>(size));
+    cl_mem z_values = gpu.getZ(modelID, layerID);
+    cl_mem getInput = gpu.getInput(modelID, layerID);
+    cl_mem cachedActivatedVector = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_dense_cached_activated_input", static_cast<size_t>(size));
     cl_mem finalDeltaBuffer = gpu.getOrCreate_Delta(modelID, layerID, static_cast<size_t>(size));
     cl_mem incoming_deltaBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_incoming_delta", static_cast<size_t>(size));
-    clEnqueueWriteBuffer(queue, z_values, CL_FALSE, 0, sizeof(float) * size, zs_array.Data(), 0, nullptr, nullptr);
-    clEnqueueWriteBuffer(queue, cachedActivatedVector, CL_FALSE, 0, sizeof(float) * size, cachedActivated_output.Data(), 0, nullptr, nullptr);
-    clEnqueueWriteBuffer(queue, incoming_deltaBuffer, CL_FALSE, 0, sizeof(float) * size, incomingDelta.Data(), 0, nullptr, nullptr);
     cl_mem dAct = gpu.getOrCreate_DAct(modelID, layerID, static_cast<size_t>(size));
+    clEnqueueWriteBuffer(queue, incoming_deltaBuffer, CL_FALSE, 0, sizeof(float) * size, incomingDelta.Data(), 0, nullptr, nullptr);
+    clEnqueueWriteBuffer(queue, cachedActivatedVector, CL_FALSE, 0, sizeof(float) * size, cachedActivated_output.Data(), 0, nullptr, nullptr);
 
     size_t weightGradsSize = weightGrads_array.ElementLength();
     size_t biasGradsSize = biasGrads_array.ElementLength();
@@ -307,18 +307,22 @@ Napi::Value fusedFinalDeltaProjector_ForDense_GPU(const Napi::CallbackInfo& info
         clSetKernelArg(activationKernel, 0, sizeof(cl_mem), &z_values);
         clSetKernelArg(activationKernel, 1, sizeof(cl_mem), &dAct);
         clSetKernelArg(activationKernel, 2, sizeof(int), &size);
+
         clEnqueueNDRangeKernel(queue, activationKernel, 1, nullptr, &scalarSize, nullptr, 0, nullptr, nullptr);
 
         clSetKernelArg(elementWiseKernel, 0, sizeof(cl_mem), &dAct);
         clSetKernelArg(elementWiseKernel, 1, sizeof(cl_mem), &incoming_deltaBuffer);
         clSetKernelArg(elementWiseKernel, 2, sizeof(cl_mem), &finalDeltaBuffer);
         clSetKernelArg(elementWiseKernel, 3, sizeof(int), &size);
+        
         clEnqueueNDRangeKernel(queue, elementWiseKernel, 1, nullptr, &scalarSize, nullptr, 0, nullptr, nullptr);
     } else {
         clEnqueueCopyBuffer(queue, incoming_deltaBuffer, finalDeltaBuffer, 0, 0, sizeof(float) * size, 0, nullptr, nullptr);
-    }
+    } 
 
-    clSetKernelArg(gradientAccumulationKernel, 0, sizeof(cl_mem), &cachedActivatedVector);
+
+    // prepare gradient accumulation of weights and biases in connected layer
+    clSetKernelArg(gradientAccumulationKernel, 0, sizeof(cl_mem), &getInput);
     clSetKernelArg(gradientAccumulationKernel, 1, sizeof(cl_mem), &finalDeltaBuffer);
     clSetKernelArg(gradientAccumulationKernel, 2, sizeof(cl_mem), &weightGrads);
     clSetKernelArg(gradientAccumulationKernel, 3, sizeof(cl_mem), &biasGrads);
@@ -410,6 +414,8 @@ Napi::Value fusedFinalDeltaProjector_ForDense_CPU(const Napi::CallbackInfo& info
             weightGrads[rowStart + j] += inputVal * final_delta[j];
         }
     }
+
+    
 
     Napi::Object output = Napi::Object::New(env);
     output.Set("delta", finalDelta);
