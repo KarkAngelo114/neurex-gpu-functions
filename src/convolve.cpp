@@ -668,6 +668,7 @@ Napi::Value ConvolveDeltaWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value fusedFinalDeltaProjector_ForConv_wrapper(const Napi::CallbackInfo& info) {
+    if (getComputeBackendType() == "opencl") return fusedFinalDeltaProjector_ForConv_GPU(info);
     return fusedFinalDeltaProjector_ForConv_CPU(info);
 }
 
