@@ -381,7 +381,7 @@ Napi::Value fusedFinalDeltaProjector_ForConv_GPU(const Napi::CallbackInfo& info)
     IntArray inputShape = Vectorize(info[5].As<Napi::Array>());
     IntArray outputShape = Vectorize(info[6].As<Napi::Array>());
     IntArray kernelShape = Vectorize(info[7].As<Napi::Array>());
-    int strides = info[8].As<Napi::Number>().Int32Value();
+    int stride = info[8].As<Napi::Number>().Int32Value();
     std::string activationType = info[9].As<Napi::String>().Utf8Value();
     bool applyDerivativeActivation = info[10].As<Napi::Boolean>().Value();
     std::string modelID = info[11].As<Napi::String>().Utf8Value();
@@ -480,7 +480,7 @@ Napi::Value fusedFinalDeltaProjector_ForConv_GPU(const Napi::CallbackInfo& info)
     clSetKernelArg(gradientAccumulationKernel, 12, sizeof(int), &Kw);
     clSetKernelArg(gradientAccumulationKernel, 13, sizeof(int), &padH);
     clSetKernelArg(gradientAccumulationKernel, 14, sizeof(int), &padW);
-    clSetKernelArg(gradientAccumulationKernel, 15, sizeof(int), &strides);
+    clSetKernelArg(gradientAccumulationKernel, 15, sizeof(int), &stride);
 
     clEnqueueNDRangeKernel(queue, gradientAccumulationKernel, 1, nullptr, &gradientAccumulationSize, nullptr, 0, nullptr, nullptr);
 
@@ -507,7 +507,7 @@ Napi::Value fusedFinalDeltaProjector_ForConv_CPU(const Napi::CallbackInfo& info)
     IntArray inputShape = Vectorize(info[5].As<Napi::Array>());
     IntArray outputShape = Vectorize(info[6].As<Napi::Array>());
     IntArray kernelShape = Vectorize(info[7].As<Napi::Array>());
-    int strides = info[8].As<Napi::Number>().Int32Value();
+    int stride = info[8].As<Napi::Number>().Int32Value();
     std::string activationType = info[9].As<Napi::String>().Utf8Value();
     bool applyDerivativeActivation = info[10].As<Napi::Boolean>().Value();
     std::string modelID = info[11].As<Napi::String>().Utf8Value();
@@ -571,6 +571,8 @@ Napi::Value fusedFinalDeltaProjector_ForConv_CPU(const Napi::CallbackInfo& info)
         }
     }
 
+
+    // gradient accumulation
     for (int f = 0; f < Cout; f++) {
         for (int kh = 0; kh < Kh; kh++) {
             for (int kw = 0; kw < Kw; kw++) {
