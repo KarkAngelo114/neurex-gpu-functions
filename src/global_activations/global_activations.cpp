@@ -81,7 +81,7 @@ void DLINEAR(Napi::Float32Array& referenceDataBuffer, Napi::Float32Array& buffer
 
     #pragma omp unroll partial(4)
     for (int i = 0; i < outputSize; i++) {
-        output[i] = 0.0f;
+        output[i] = 1.0f;
     }
 }
 

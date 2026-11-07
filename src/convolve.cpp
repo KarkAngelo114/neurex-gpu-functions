@@ -374,18 +374,24 @@ Napi::Value fusedFinalDeltaProjector_ForConv_GPU(const Napi::CallbackInfo& info)
     Napi::Env env = info.Env();
 
     Napi::Float32Array zs_array = info[0].As<Napi::Float32Array>();
-    Napi::Float32Array cachedActivated_output = info[1].As<Napi::Float32Array>();
-    Napi::Float32Array incomingDelta = info[2].As<Napi::Float32Array>();
-    Napi::Float32Array weightGrads_array = info[3].As<Napi::Float32Array>();
-    Napi::Float32Array biasGrads_array = info[4].As<Napi::Float32Array>();
-    IntArray inputShape = Vectorize(info[5].As<Napi::Array>());
-    IntArray outputShape = Vectorize(info[6].As<Napi::Array>());
-    IntArray kernelShape = Vectorize(info[7].As<Napi::Array>());
-    int stride = info[8].As<Napi::Number>().Int32Value();
-    std::string activationType = info[9].As<Napi::String>().Utf8Value();
-    bool applyDerivativeActivation = info[10].As<Napi::Boolean>().Value();
-    std::string modelID = info[11].As<Napi::String>().Utf8Value();
-    std::string layerID = info[12].As<Napi::String>().Utf8Value();
+    Napi::Float32Array layerInput = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array layerOutput = info[2].As<Napi::Float32Array>();
+    Napi::Float32Array incomingDelta = info[3].As<Napi::Float32Array>();
+    Napi::Float32Array weightGrads_array = info[4].As<Napi::Float32Array>();
+    Napi::Float32Array biasGrads_array = info[5].As<Napi::Float32Array>();
+    IntArray inputShape = Vectorize(info[6].As<Napi::Array>());
+    IntArray outputShape = Vectorize(info[7].As<Napi::Array>());
+    IntArray kernelShape = Vectorize(info[8].As<Napi::Array>());
+    int stride = info[9].As<Napi::Number>().Int32Value();
+    std::string activationType = info[10].As<Napi::String>().Utf8Value();
+    bool applyDerivativeActivation = info[11].As<Napi::Boolean>().Value();
+    std::string modelID = info[12].As<Napi::String>().Utf8Value();
+    std::string layerID = info[13].As<Napi::String>().Utf8Value();
+
+    if (inputShape.size() != 3 || outputShape.size() != 3 || kernelShape.size() != 4) {
+        Napi::TypeError::New(env, "Convolution gradient shapes must have 3, 3, and 4 dimensions").ThrowAsJavaScriptException();
+        return env.Null();
+    }
 
     int size = incomingDelta.ElementLength();
 
@@ -400,6 +406,17 @@ Napi::Value fusedFinalDeltaProjector_ForConv_GPU(const Napi::CallbackInfo& info)
     int W = outputShape[1];
     int Cout = outputShape[2];
 
+    if (inputH <= 0 || inputW <= 0 || Cin <= 0 || H <= 0 || W <= 0 ||
+        numFilters <= 0 || Kh <= 0 || Kw <= 0 || stride <= 0 ||
+        d != Cin || Cout != numFilters || size != H * W * Cout ||
+        zs_array.ElementLength() != size || layerOutput.ElementLength() != size ||
+        layerInput.ElementLength() != inputH * inputW * Cin ||
+        weightGrads_array.ElementLength() != numFilters * Kh * Kw * Cin ||
+        biasGrads_array.ElementLength() != numFilters) {
+        Napi::RangeError::New(env, "Convolution gradient inputs do not match the provided shapes").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
     int padH = H == inputH ? (Kh - 1) / 2 : 0;
     int padW = W == inputW ? (Kw - 1) / 2 : 0;
 
@@ -410,12 +427,13 @@ Napi::Value fusedFinalDeltaProjector_ForConv_GPU(const Napi::CallbackInfo& info)
     cl_kernel gradientAccumulationKernel = gpu.kernel("accumulateConvWeightandBiasGrads");
 
     cl_mem z_values = gpu.getZ(modelID, layerID);
-    cl_mem getInput = gpu.getInput(modelID, layerID);
-    cl_mem cachedActivatedVector = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_conv_cached_activated_input", static_cast<size_t>(size));
+    cl_mem layerInputBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_conv_gradient_input", layerInput.ElementLength());
+    cl_mem layerOutputBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_conv_gradient_output", layerOutput.ElementLength());
     cl_mem finalDeltaBuffer = gpu.getOrCreate_Delta(modelID, layerID, static_cast<size_t>(size));
     cl_mem incoming_deltaBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_incoming_delta", static_cast<size_t>(size));
+    clEnqueueWriteBuffer(queue, layerInputBuffer, CL_FALSE, 0, sizeof(float) * layerInput.ElementLength(), layerInput.Data(), 0, nullptr, nullptr);
+    clEnqueueWriteBuffer(queue, layerOutputBuffer, CL_FALSE, 0, sizeof(float) * layerOutput.ElementLength(), layerOutput.Data(), 0, nullptr, nullptr);
     clEnqueueWriteBuffer(queue, incoming_deltaBuffer, CL_FALSE, 0, sizeof(float) * size, incomingDelta.Data(), 0, nullptr, nullptr);
-    clEnqueueWriteBuffer(queue, cachedActivatedVector, CL_FALSE, 0, sizeof(float) * size, cachedActivated_output.Data(), 0, nullptr, nullptr);
     cl_mem dAct = gpu.getOrCreate_DAct(modelID, layerID, static_cast<size_t>(size));
 
     size_t weightGradsSize = weightGrads_array.ElementLength();
@@ -430,7 +448,7 @@ Napi::Value fusedFinalDeltaProjector_ForConv_GPU(const Napi::CallbackInfo& info)
 
     if (applyDerivativeActivation && activationType == "softmax") {
         cl_kernel activationKernel = gpu.kernel("dsoftmax");
-        const float* probabilities = cachedActivated_output.Data();
+        const float* probabilities = layerOutput.Data();
         const float* delta = incomingDelta.Data();
 
         float dotProduct = 0.0f;
@@ -439,7 +457,7 @@ Napi::Value fusedFinalDeltaProjector_ForConv_GPU(const Napi::CallbackInfo& info)
             dotProduct += probabilities[i] * delta[i];
         }
 
-        clSetKernelArg(activationKernel, 0, sizeof(cl_mem), &cachedActivatedVector);
+        clSetKernelArg(activationKernel, 0, sizeof(cl_mem), &layerOutputBuffer);
         clSetKernelArg(activationKernel, 1, sizeof(cl_mem), &incoming_deltaBuffer);
         clSetKernelArg(activationKernel, 2, sizeof(cl_mem), &finalDeltaBuffer);
         clSetKernelArg(activationKernel, 3, sizeof(float), &dotProduct);
@@ -447,6 +465,11 @@ Napi::Value fusedFinalDeltaProjector_ForConv_GPU(const Napi::CallbackInfo& info)
 
         clEnqueueNDRangeKernel(queue, activationKernel, 1, nullptr, &scalarSize, nullptr, 0, nullptr, nullptr);
     } else if (applyDerivativeActivation) {
+        if (activationType != "linear" && activationType != "relu" &&
+            activationType != "sigmoid" && activationType != "tanh") {
+            Napi::TypeError::New(env, "Unsupported convolution activation derivative: " + activationType).ThrowAsJavaScriptException();
+            return env.Null();
+        }
         cl_kernel activationKernel = gpu.kernel("d" + activationType);
         cl_kernel elementWiseKernel = gpu.kernel("element_wise_mul");
 
@@ -465,7 +488,7 @@ Napi::Value fusedFinalDeltaProjector_ForConv_GPU(const Napi::CallbackInfo& info)
         clEnqueueCopyBuffer(queue, incoming_deltaBuffer, finalDeltaBuffer, 0, 0, sizeof(float) * size, 0, nullptr, nullptr);
     }
 
-    clSetKernelArg(gradientAccumulationKernel, 0, sizeof(cl_mem), &getInput);
+    clSetKernelArg(gradientAccumulationKernel, 0, sizeof(cl_mem), &layerInputBuffer);
     clSetKernelArg(gradientAccumulationKernel, 1, sizeof(cl_mem), &finalDeltaBuffer);
     clSetKernelArg(gradientAccumulationKernel, 2, sizeof(cl_mem), &weightGrads);
     clSetKernelArg(gradientAccumulationKernel, 3, sizeof(cl_mem), &biasGrads);
@@ -500,18 +523,24 @@ Napi::Value fusedFinalDeltaProjector_ForConv_CPU(const Napi::CallbackInfo& info)
     Napi::Env env = info.Env();
 
     Napi::Float32Array zs_array = info[0].As<Napi::Float32Array>();
-    Napi::Float32Array cachedActivated_output = info[1].As<Napi::Float32Array>();
-    Napi::Float32Array incomingDelta = info[2].As<Napi::Float32Array>();
-    Napi::Float32Array weightGrads_array = info[3].As<Napi::Float32Array>();
-    Napi::Float32Array biasGrads_array = info[4].As<Napi::Float32Array>();
-    IntArray inputShape = Vectorize(info[5].As<Napi::Array>());
-    IntArray outputShape = Vectorize(info[6].As<Napi::Array>());
-    IntArray kernelShape = Vectorize(info[7].As<Napi::Array>());
-    int stride = info[8].As<Napi::Number>().Int32Value();
-    std::string activationType = info[9].As<Napi::String>().Utf8Value();
-    bool applyDerivativeActivation = info[10].As<Napi::Boolean>().Value();
-    std::string modelID = info[11].As<Napi::String>().Utf8Value();
-    std::string layerID = info[12].As<Napi::String>().Utf8Value();
+    Napi::Float32Array layerInput = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array layerOutput = info[2].As<Napi::Float32Array>();
+    Napi::Float32Array incomingDelta = info[3].As<Napi::Float32Array>();
+    Napi::Float32Array weightGrads_array = info[4].As<Napi::Float32Array>();
+    Napi::Float32Array biasGrads_array = info[5].As<Napi::Float32Array>();
+    IntArray inputShape = Vectorize(info[6].As<Napi::Array>());
+    IntArray outputShape = Vectorize(info[7].As<Napi::Array>());
+    IntArray kernelShape = Vectorize(info[8].As<Napi::Array>());
+    int stride = info[9].As<Napi::Number>().Int32Value();
+    std::string activationType = info[10].As<Napi::String>().Utf8Value();
+    bool applyDerivativeActivation = info[11].As<Napi::Boolean>().Value();
+    std::string modelID = info[12].As<Napi::String>().Utf8Value();
+    std::string layerID = info[13].As<Napi::String>().Utf8Value();
+
+    if (inputShape.size() != 3 || outputShape.size() != 3 || kernelShape.size() != 4) {
+        Napi::TypeError::New(env, "Convolution gradient shapes must have 3, 3, and 4 dimensions").ThrowAsJavaScriptException();
+        return env.Null();
+    }
 
     int size = incomingDelta.ElementLength();
 
@@ -526,15 +555,27 @@ Napi::Value fusedFinalDeltaProjector_ForConv_CPU(const Napi::CallbackInfo& info)
     int W = outputShape[1];
     int Cout = outputShape[2];
 
+    if (inputH <= 0 || inputW <= 0 || Cin <= 0 || H <= 0 || W <= 0 ||
+        numFilters <= 0 || Kh <= 0 || Kw <= 0 || stride <= 0 ||
+        d != Cin || Cout != numFilters || size != H * W * Cout ||
+        zs_array.ElementLength() != size || layerOutput.ElementLength() != size ||
+        layerInput.ElementLength() != inputH * inputW * Cin ||
+        weightGrads_array.ElementLength() != numFilters * Kh * Kw * Cin ||
+        biasGrads_array.ElementLength() != numFilters) {
+        Napi::RangeError::New(env, "Convolution gradient inputs do not match the provided shapes").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
     int padH = H == inputH ? (Kh - 1) / 2 : 0;
     int padW = W == inputW ? (Kw - 1) / 2 : 0;
 
     Napi::Float32Array finalDelta = getOrCreateBuffer(env, modelID, layerID + "_final_delta", size);
 
     if (applyDerivativeActivation && activationType == "softmax") {
-        DSOFTMAX(cachedActivated_output, incomingDelta, finalDelta);
+        DSOFTMAX(layerOutput, incomingDelta, finalDelta);
     } else if (applyDerivativeActivation) {
-        std::unordered_map<std::string, void(*)(Napi::Float32Array& referenceDataBuffer, Napi::Float32Array& bufferToWriteOn)> activations = {
+        using ActivationDerivative = void (*)(Napi::Float32Array&, Napi::Float32Array&);
+        static const std::unordered_map<std::string, ActivationDerivative> activations = {
             {"linear", DLINEAR},
             {"relu", DRELU},
             {"sigmoid", DSIGMOID},
@@ -542,34 +583,32 @@ Napi::Value fusedFinalDeltaProjector_ForConv_CPU(const Napi::CallbackInfo& info)
         };
 
         auto activation = activations.find(activationType);
-
         if (activation == activations.end()) {
-            Napi::TypeError::New(env, "Unsupported dense activation derivative: " + activationType).ThrowAsJavaScriptException();
+            Napi::TypeError::New(env, "Unsupported convolution activation derivative: " + activationType).ThrowAsJavaScriptException();
             return env.Null();
         }
 
         activation->second(zs_array, finalDelta);
-    } else {
-        const float* incoming_delta = incomingDelta.Data();
-        float* final_delta = finalDelta.Data();
+
+        const float* incomingDeltaData = incomingDelta.Data();
+        float* finalDeltaData = finalDelta.Data();
         #pragma omp parallel for
         for (int i = 0; i < size; i++) {
-            final_delta[i] = incoming_delta[i];
-        }   
+            finalDeltaData[i] *= incomingDeltaData[i];
+        }
+    } else {
+        const float* incomingDeltaData = incomingDelta.Data();
+        float* finalDeltaData = finalDelta.Data();
+        #pragma omp parallel for
+        for (int i = 0; i < size; i++) {
+            finalDeltaData[i] = incomingDeltaData[i];
+        }
     }
 
     float* delta = finalDelta.Data();
-    float* incoming_delta = incomingDelta.Data();
-    float* input = cachedActivated_output.Data();
+    const float* input = layerInput.Data();
     float* biasGrads = biasGrads_array.Data();
     float* weightGrads = weightGrads_array.Data();
-
-    if (applyDerivativeActivation && activationType != "softmax") {
-        #pragma omp parallel for
-        for (int i = 0; i < size; i++) {
-            delta[i] *= incoming_delta[i];
-        }
-    }
 
 
     // gradient accumulation

@@ -434,7 +434,156 @@ Napi::Value transConvBackwardWrapper(const Napi::CallbackInfo& info) {
     return transConvBackward_CPU(info);
 }
 
+Napi::Value fusedFinalDeltaProjector_ForTransConv_CPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    Napi::Float32Array zs_array = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array layerInput = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array layerOutput = info[2].As<Napi::Float32Array>();
+    Napi::Float32Array incomingDelta = info[3].As<Napi::Float32Array>();
+    Napi::Float32Array weightGrads_array = info[4].As<Napi::Float32Array>();
+    Napi::Float32Array biasGrads_array = info[5].As<Napi::Float32Array>();
+    IntArray inputShape = Vectorize(info[6].As<Napi::Array>());
+    IntArray outputShape = Vectorize(info[7].As<Napi::Array>());
+    IntArray kernelShape = Vectorize(info[8].As<Napi::Array>());
+    int strides = info[9].As<Napi::Number>().Int32Value();
+    std::string activationType = info[10].As<Napi::String>().Utf8Value();
+    bool applyDerivativeActivation = info[11].As<Napi::Boolean>().Value();
+    std::string modelID = info[12].As<Napi::String>().Utf8Value();
+    std::string layerID = info[13].As<Napi::String>().Utf8Value();
+
+    if (inputShape.size() != 3 || outputShape.size() != 3 || kernelShape.size() != 4) {
+        Napi::TypeError::New(env, "Transposed convolution gradient shapes must have 3, 3, and 4 dimensions").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    int iH = inputShape[0];
+    int iW = inputShape[1];
+    int iD = inputShape[2];
+
+    int oH = outputShape[0];
+    int oW = outputShape[1];
+    int oD = outputShape[2];
+
+    int filters = kernelShape[0];
+    int kh = kernelShape[1];
+    int kw = kernelShape[2];
+    int kernelInputDepth = kernelShape[3];
+    int size = incomingDelta.ElementLength();
+
+    if (iH <= 0 || iW <= 0 || iD <= 0 || oH <= 0 || oW <= 0 ||
+        filters <= 0 || kh <= 0 || kw <= 0 || strides <= 0 ||
+        iD != kernelInputDepth || oD != filters ||
+        size != oH * oW * filters ||
+        zs_array.ElementLength() != size || layerOutput.ElementLength() != size ||
+        layerInput.ElementLength() != iH * iW * iD ||
+        weightGrads_array.ElementLength() != filters * kh * kw * iD ||
+        biasGrads_array.ElementLength() != filters) {
+        Napi::RangeError::New(env, "Transposed convolution gradient inputs do not match the provided shapes").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    int padH = std::max(0, (iH - 1) * strides + kh - oH);
+    int padW = std::max(0, (iW - 1) * strides + kw - oW);
+    int padTop = padH / 2;
+    int padLeft = padW / 2;
+
+    Napi::Float32Array finalDelta = getOrCreateBuffer(env, modelID, layerID + "_final_delta", size);
+
+    if (applyDerivativeActivation && activationType == "softmax") {
+        DSOFTMAX(layerOutput, incomingDelta, finalDelta);
+    } else if (applyDerivativeActivation) {
+        using ActivationDerivative = void (*)(Napi::Float32Array&, Napi::Float32Array&);
+        static const std::unordered_map<std::string, ActivationDerivative> activations = {
+            {"linear", DLINEAR},
+            {"relu", DRELU},
+            {"sigmoid", DSIGMOID},
+            {"tanh", DTANH}
+        };
+
+        auto activation = activations.find(activationType);
+        if (activation == activations.end()) {
+            Napi::TypeError::New(env, "Unsupported transposed convolution activation derivative: " + activationType).ThrowAsJavaScriptException();
+            return env.Null();
+        }
+
+        activation->second(zs_array, finalDelta);
+
+        const float* incomingDeltaData = incomingDelta.Data();
+        float* finalDeltaData = finalDelta.Data();
+
+        #pragma omp parallel for
+        for (int i = 0; i < size; i++) {
+            finalDeltaData[i] *= incomingDeltaData[i];
+        }
+    } else {
+        const float* incomingDeltaData = incomingDelta.Data();
+        float* finalDeltaData = finalDelta.Data();
+        #pragma omp parallel for
+        for (int i = 0; i < size; i++) {
+            finalDeltaData[i] = incomingDeltaData[i];
+        }
+    }
+
+    const float* layerInputData = layerInput.Data();
+    const float* deltaData = finalDelta.Data();
+    float* weightGradsData = weightGrads_array.Data();
+    float* biasGradsData = biasGrads_array.Data();
+
+    for (int iy = 0; iy < iH; iy++) {
+        for (int ix = 0; ix < iW; ix++) {
+            int inputBase = (iy * iW + ix) * iD;
+
+            for (int ky = 0; ky < kh; ky++) {
+                int oy = iy * strides + ky - padTop;
+                if (oy < 0 || oy >= oH) continue;
+
+                for (int kx = 0; kx < kw; kx++) {
+                    int ox = ix * strides + kx - padLeft;
+                    if (ox < 0 || ox >= oW) continue;
+
+                    int deltaBase = (oy * oW + ox) * filters;
+
+                    for (int filter = 0; filter < filters; filter++) {
+                        float deltaVal = deltaData[deltaBase + filter];
+                        int gradBase = ((filter * kh + ky) * kw + kx) * iD;
+
+                        for (int c = 0; c < iD; c++) {
+                            weightGradsData[gradBase + c] += layerInputData[inputBase + c] * deltaVal;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    for (int f = 0; f < filters; f++) {
+        float sum = 0.0f;
+
+        for (int h = 0; h < oH; h++) {
+            for (int w = 0; w < oW; w++) {
+                int idx = (h * oW + w) * filters + f;
+                sum += deltaData[idx];
+            }
+        }
+
+        biasGradsData[f] += sum;
+    }
+
+    Napi::Object output = Napi::Object::New(env);
+    output.Set("delta", finalDelta);
+    output.Set("weightGrads", weightGrads_array);
+    output.Set("biasGrads", biasGrads_array);
+
+    return output;
+}
+
+Napi::Value fusedFinalDeltaProjector_ForTransConv_wrapper(const Napi::CallbackInfo& info) {
+    return fusedFinalDeltaProjector_ForTransConv_CPU(info);
+}
+
 void transConvFunc(Napi::Env env, Napi::Object exports) {
     exports.Set("transConvForward", Napi::Function::New(env, transConvForwardWrapper));
     exports.Set("transConvBackward", Napi::Function::New(env, transConvBackwardWrapper));
+    exports.Set("fusedFinalDeltaProjector_ForTransConv", Napi::Function::New(env, fusedFinalDeltaProjector_ForTransConv_wrapper));
 }
