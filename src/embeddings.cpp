@@ -92,14 +92,14 @@ Napi::Value GetEmbeddings_CPU(const Napi::CallbackInfo& info) {
 Napi::Value ReturnEmbeddings_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
-    IntArray layerInput = Vectorize(info[0].As<Napi::Array>());
+    IntArray tokenArray = Vectorize(info[0].As<Napi::Array>());
     Napi::Float32Array delta = info[1].As<Napi::Float32Array>();
     Napi::Float32Array weightGrads = info[2].As<Napi::Float32Array>();
     int embeddingDim = info[3].As<Napi::Number>().Int32Value();
     std::string modelID = info[4].As<Napi::String>().Utf8Value();
     std::string layerID = info[5].As<Napi::String>().Utf8Value();
 
-    int sequence_length = activation_outputs.size();
+    int sequence_length = tokenArray.size();
     int deltaSize = delta.ElementLength();
     int weightGradSize = weightGrads.ElementLength();
 
@@ -143,7 +143,7 @@ Napi::Value ReturnEmbeddings_CPU(const Napi::CallbackInfo& info) {
     float* deltaData = delta.Data();
     float* gradsData = weightGrads.Data();
     
-    for (int i = 0; i < (int)activation_outputs.size(); i++) {
+    for (int i = 0; i < (int)tokenArray.size(); i++) {
         int tokenId = tokenArray[i];
 
         if (tokenId == 0) continue;  // skip PAD tokens (ID 0)
