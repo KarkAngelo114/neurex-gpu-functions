@@ -86,9 +86,8 @@ Napi::Value LayerNorm_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array gammaTensor = info[2].As<Napi::Float32Array>();
     Napi::Float32Array betaTensor = info[3].As<Napi::Float32Array>();
     float eps = info[4].As<Napi::Number>().FloatValue();
-    int pointer = info[5].As<Napi::Number>().Int32Value();
-    std::string modelID = info[6].As<Napi::String>().Utf8Value();
-    std::string layerID = info[7].As<Napi::String>().Utf8Value();
+    std::string modelID = info[5].As<Napi::String>().Utf8Value();
+    std::string layerID = info[6].As<Napi::String>().Utf8Value();
 
     float* input = inputTensor.Data();
     int deltaSize = inputTensor.ElementLength();
@@ -127,8 +126,8 @@ Napi::Value LayerNorm_GPU(const Napi::CallbackInfo& info) {
     cl_mem _input= gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_layer_norm_input", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, _input, CL_FALSE, 0, sizeof(float) * deltaSize, inputTensor.Data(), 0, nullptr, nullptr);
     
-    cl_mem _gamma = gpu.getWeights(modelID, pointer);
-    cl_mem _beta = gpu.getBiases(modelID, pointer);
+    cl_mem _gamma = gpu.getWeights(modelID, layerID);
+    cl_mem _beta = gpu.getBiases(modelID, layerID);
     cl_mem output = gpu.getOrCreate_ActivationOutput(modelID, layerID, static_cast<size_t>(size));
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &_input);
@@ -157,8 +156,8 @@ Napi::Value LayerNorm_CPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array gammaTensor = info[2].As<Napi::Float32Array>();
     Napi::Float32Array betaTensor = info[3].As<Napi::Float32Array>();
     float eps = info[4].As<Napi::Number>().FloatValue();
-    std::string modelID = info[6].As<Napi::String>().Utf8Value();
-    std::string layerID = info[7].As<Napi::String>().Utf8Value();
+    std::string modelID = info[5].As<Napi::String>().Utf8Value();
+    std::string layerID = info[6].As<Napi::String>().Utf8Value();
 
     Napi::Float32Array outputTensor = getOrCreateBuffer(env, modelID, layerID+"_layerNorm_forward", size);
 
@@ -207,9 +206,8 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array bias_grads = info[4].As<Napi::Float32Array>();
     int size = info[5].As<Napi::Number>().Int32Value();
     float eps = info[6].As<Napi::Number>().FloatValue();
-    int pointer = info[7].As<Napi::Number>().Int32Value();
-    std::string modelID = info[8].As<Napi::String>().Utf8Value();
-    std::string layerID = info[9].As<Napi::String>().Utf8Value();
+    std::string modelID = info[7].As<Napi::String>().Utf8Value();
+    std::string layerID = info[8].As<Napi::String>().Utf8Value();
 
     if (size <= 0 ||dy.ElementLength() < static_cast<size_t>(size) || x.ElementLength() < static_cast<size_t>(size)) {
         Napi::TypeError::New(env,"Invalid layer normalization input size").ThrowAsJavaScriptException();
@@ -229,7 +227,7 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
     clEnqueueWriteBuffer(queue, xBuffer, CL_FALSE, 0, sizeof(float) * size, x.Data(), 0, nullptr, nullptr);
     cl_mem dyBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_dyBuffer", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, dyBuffer, CL_FALSE, 0, sizeof(float) * size, dy.Data(), 0, nullptr, nullptr);
-    cl_mem gammaBuffer = gpu.getWeights(modelID, pointer);
+    cl_mem gammaBuffer = gpu.getWeights(modelID, layerID);
     cl_mem dxBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_dxBuffer", static_cast<size_t>(size));
     cl_mem dgammaBuffer = gpu.getOrCreate_dGamma(modelID, layerID, static_cast<size_t>(size)); // create cacheable dGamma
     cl_mem dbetaBuffer = gpu.getOrCreate_dBeta(modelID, layerID, static_cast<size_t>(size)); // create cacheable dBeta
@@ -314,8 +312,8 @@ Napi::Value LayerNormBackward_CPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array bias_grads = info[4].As<Napi::Float32Array>();
     int size = info[5].As<Napi::Number>().Int32Value();
     float eps = info[6].As<Napi::Number>().FloatValue();
-    std::string modelID = info[8].As<Napi::String>().Utf8Value();
-    std::string layerID = info[9].As<Napi::String>().Utf8Value();
+    std::string modelID = info[7].As<Napi::String>().Utf8Value();
+    std::string layerID = info[8].As<Napi::String>().Utf8Value();
 
     Napi::Float32Array dx = getOrCreateBuffer(env, modelID, layerID+"_dx", size);
     Napi::Float32Array dgamma = getOrCreateBuffer(env, modelID, layerID+"_dgamma", size);

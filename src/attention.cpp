@@ -156,7 +156,6 @@ Napi::Value CoreAttention_CPU(const Napi::CallbackInfo& info) {
     int seqLen = info[4].As<Napi::Number>().Int32Value();
     float dkRoot = info[5].As<Napi::Number>().FloatValue();
 
-    // int pointer = info[6].As<Napi::Number>().Int32Value(); // use only on GPU side
     // String ModelID = info[7].As<Napi::String>().Utf8Value(); // use only on GPU side
 
     /**
@@ -257,7 +256,6 @@ Napi::Value CoreAttentionBackward_CPU(const Napi::CallbackInfo& info) {
     int seqLen = info[7].As<Napi::Number>().Int32Value();
     float dkRoot = info[8].As<Napi::Number>().FloatValue();
 
-    // int pointer = info[9].As<Napi::Number>().Int32Value(); // GPU side only
     // String modelID = info[10].As<Napi::String>().Utf8Value(); // GPU side only
 
     const float* incomingDelta = incomingDeltaTensor.Data();
@@ -380,7 +378,6 @@ Napi::Value CoreMultiHeadAttention_CPU(const Napi::CallbackInfo& info) {
     float dkRoot = info[7].As<Napi::Number>().FloatValue();
     bool useCausalMasking = info[8].As<Napi::Boolean>().Value();
 
-    // int pointer = info[9].As<Napi::Number>().Int32Value(); // use only on GPU side
     // String ModelID = info[10].As<Napi::String>().Utf8Value(); // use only on GPU side
 
     const float* input = inputTensor.Data();
@@ -503,7 +500,6 @@ Napi::Value CoreMultiHeadAttentionBackward_CPU(const Napi::CallbackInfo& info) {
     float dkRoot = info[10].As<Napi::Number>().FloatValue();
     bool useCausalMasking = info[11].As<Napi::Boolean>().Value();
 
-    // int pointer = info[12].As<Napi::Number>().Int32Value(); // GPU side only
     // String modelID = info[13].As<Napi::String>().Utf8Value(); // GPU side only
 
     const float* incomingDelta = incomingDeltaTensor.Data();
@@ -658,9 +654,8 @@ Napi::Value CoreMultiHeadAttention_GPU(const Napi::CallbackInfo& info) {
     int headDim = info[6].As<Napi::Number>().Int32Value();
     float dkRoot = info[7].As<Napi::Number>().FloatValue();
     bool causal = info[8].As<Napi::Boolean>().Value();
-    int pointer = info[9].As<Napi::Number>().Int32Value();
-    std::string modelID = info[10].As<Napi::String>().Utf8Value();
-    std::string layerID = info[11].As<Napi::String>().Utf8Value();
+    std::string modelID = info[9].As<Napi::String>().Utf8Value();
+    std::string layerID = info[10].As<Napi::String>().Utf8Value();
     int causalInt = causal ? 1 : 0;
     const float zero = 0.0f;
 
@@ -672,8 +667,8 @@ Napi::Value CoreMultiHeadAttention_GPU(const Napi::CallbackInfo& info) {
     cl_mem inputBuffer = gpu.getOrCreate_Input(modelID, layerID+"_mha_incoming_input", static_cast<size_t>(inputSize));
     clEnqueueWriteBuffer(queue, inputBuffer, CL_FALSE, 0, sizeof(float) * input.ElementLength(), input.Data(), 0, nullptr, nullptr);
 
-    cl_mem packedW = gpu.getWeights(modelID, pointer);
-    cl_mem packedB = gpu.getBiases(modelID, pointer);
+    cl_mem packedW = gpu.getWeights(modelID, layerID);
+    cl_mem packedB = gpu.getBiases(modelID, layerID);
 
     size_t matrixBytes = sizeof(float) * embedDim * embedDim;
     size_t biasBytes = sizeof(float) * embedDim;
@@ -772,16 +767,15 @@ Napi::Value CoreMultiHeadAttentionBackward_GPU(const Napi::CallbackInfo& info) {
     int headDim = info[9].As<Napi::Number>().Int32Value();
     float dkRoot = info[10].As<Napi::Number>().FloatValue();
     bool causal = info[11].As<Napi::Boolean>().Value();
-    int pointer = info[12].As<Napi::Number>().Int32Value();
-    std::string modelID = info[13].As<Napi::String>().Utf8Value();
-    std::string layerID = info[14].As<Napi::String>().Utf8Value();
+    std::string modelID = info[12].As<Napi::String>().Utf8Value();
+    std::string layerID = info[13].As<Napi::String>().Utf8Value();
     int causalInt = causal ? 1 : 0; 
 
     auto& gpu = GpuContext::instance();
     cl_context context = gpu.context();
     cl_command_queue queue = gpu.queue();
 
-    cl_mem packedW = gpu.getWeights(modelID, pointer);
+    cl_mem packedW = gpu.getWeights(modelID, layerID);
     size_t matrixBytes = sizeof(float) * embedDim * embedDim;
     size_t tensorBytes = sizeof(float) * seqLen * embedDim;
 

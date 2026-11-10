@@ -229,15 +229,12 @@ bool GpuContext::shutdown() {
     
 }
 
-// Creates the buffer for layer `idx` on first use (same clCreateBuffer call as before).
+// Creates a layer buffer on first use.
 // On later calls, if the layer's size is unchanged, it rewrites the existing buffer in
 // place with clEnqueueWriteBuffer. It only reallocates when the element count changed.
-static bool upsertParamBuffer(cl_context ctx, cl_command_queue queue, CL_MEM_ARRAY& slots, size_t idx, const FloatArray& host, std::string& errorOut) {
+static bool upsertParamBuffer(cl_context ctx, cl_command_queue queue, std::unordered_map<std::string, cl_mem>& slots, const std::string& layerID, const FloatArray& host, std::string& errorOut) {
     const size_t bytes = sizeof(float) * host.size();
-
-    if (slots.size() <= idx) slots.resize(idx + 1, nullptr);
-
-    cl_mem& slot = slots[idx];
+    cl_mem& slot = slots[layerID];
     if (slot) {
         size_t currentBytes = 0;
         cl_int err = clGetMemObjectInfo(slot, CL_MEM_SIZE, sizeof(currentBytes), &currentBytes, nullptr);
@@ -246,7 +243,7 @@ static bool upsertParamBuffer(cl_context ctx, cl_command_queue queue, CL_MEM_ARR
             // Blocking write: `host` is a caller-owned reference that may be freed once we return.
             err = clEnqueueWriteBuffer(queue, slot, CL_TRUE, 0, bytes, host.data(), 0, nullptr, nullptr);
             if (err != CL_SUCCESS) {
-                errorOut = "Failed to write GPU buffer at layer " + std::to_string(idx) + ".";
+                errorOut = "Failed to write GPU buffer for layerID='" + layerID + "'.";
                 return false;
             }
             return true;
@@ -261,54 +258,59 @@ static bool upsertParamBuffer(cl_context ctx, cl_command_queue queue, CL_MEM_ARR
     
     if (err != CL_SUCCESS || slot == nullptr) {
         slot = nullptr;
-        errorOut = "Failed to allocate GPU buffer at layer " + std::to_string(idx) + ".";
+        errorOut = "Failed to allocate GPU buffer for layerID='" + layerID + "'.";
         return false;
     }
     return true;
 }
 
-// Releases buffers for layers that no longer exist (model got shallower).
-static void trimParamBuffers(CL_MEM_ARRAY& slots, size_t keep) {
-    for (size_t i = keep; i < slots.size(); ++i) {
-        if (slots[i]) clReleaseMemObject(slots[i]);
-    }
-    if (slots.size() > keep) slots.resize(keep);
-}
-
-bool GpuContext::uploadParams(const std::string& modelID, const Matrix& weightMatrix, const Matrix& biasMatrix, std::string& errorOut) {
+bool GpuContext::uploadParams(const std::string& modelID, const std::vector<LayerParameters>& parameters, std::string& errorOut) {
     if (!has_gpu_) {
         errorOut = "GPU context is not initialized.";
         return false;
     }
 
 
-    CL_MEM_ARRAY& weights = weightsByModel_[modelID];
-    CL_MEM_ARRAY& biases  = biasesByModel_[modelID];
+    auto& weights = weightsByModel_[modelID];
+    auto& biases = biasesByModel_[modelID];
+    std::unordered_set<std::string> layerIDs;
 
-    for (size_t i = 0; i < weightMatrix.size(); ++i) {
-        if (!upsertParamBuffer(context_, queue_, weights, i, weightMatrix[i], errorOut)) return false;
+    for (const auto& layer : parameters) {
+        if (layer.layerID.empty() || !layerIDs.insert(layer.layerID).second) {
+            errorOut = "Parameter metadata contains a missing or duplicate layerID.";
+            return false;
+        }
+        if (!upsertParamBuffer(context_, queue_, weights, layer.layerID, layer.weights, errorOut) ||
+            !upsertParamBuffer(context_, queue_, biases, layer.layerID, layer.biases, errorOut)) {
+            return false;
+        }
     }
 
-    trimParamBuffers(weights, weightMatrix.size());
-
-    for (size_t i = 0; i < biasMatrix.size(); ++i) {
-        if (!upsertParamBuffer(context_, queue_, biases, i, biasMatrix[i], errorOut)) return false;
-    }
-
-    trimParamBuffers(biases, biasMatrix.size());
+    auto removeStaleBuffers = [&layerIDs](auto& buffers) {
+        for (auto it = buffers.begin(); it != buffers.end();) {
+            if (!layerIDs.count(it->first)) {
+                if (it->second) clReleaseMemObject(it->second);
+                it = buffers.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    };
+    removeStaleBuffers(weights);
+    removeStaleBuffers(biases);
 
     return true;
 }
 void GpuContext::clearParams(const std::string& modelID) {
     auto itWeights = weightsByModel_.find(modelID);
     if (itWeights != weightsByModel_.end()) {
-        for (auto buf : itWeights->second) if (buf) clReleaseMemObject(buf);
+        for (const auto& entry : itWeights->second) if (entry.second) clReleaseMemObject(entry.second);
         weightsByModel_.erase(itWeights);
     }
 
     auto itBiases = biasesByModel_.find(modelID);
     if (itBiases != biasesByModel_.end()) {
-        for (auto buf : itBiases->second) if (buf) clReleaseMemObject(buf);
+        for (const auto& entry : itBiases->second) if (entry.second) clReleaseMemObject(entry.second);
         biasesByModel_.erase(itBiases);
     }
 
@@ -335,8 +337,15 @@ void GpuContext::clearParams(const std::string& modelID) {
  * if a `neurex` instance calls `shutdown()`, other instances will also be affected.
  */
 void GpuContext::clearAllParams() {
-    for (auto& entry : weightsByModel_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
-    for (auto& entry : biasesByModel_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
+    auto releaseBuffers = [](const BufferCache& cache) {
+        for (const auto& modelEntry : cache) {
+            for (const auto& bufferEntry : modelEntry.second) {
+                if (bufferEntry.second) clReleaseMemObject(bufferEntry.second);
+            }
+        }
+    };
+    releaseBuffers(weightsByModel_);
+    releaseBuffers(biasesByModel_);
     auto releaseCache = [](const BufferCache& cache) {
         for (const auto& modelEntry : cache) {
             for (const auto& bufferEntry : modelEntry.second) {
@@ -352,14 +361,14 @@ void GpuContext::clearAllParams() {
     releaseCache(dGammaByModel_);
     releaseCache(inputsByModel_); 
     releaseCache(somethingToWriteOn_);
-    for (auto& entry : mStatesWeights_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
-    for (auto& entry : mStatesBiases_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
-    for (auto& entry : vStatesWeights_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
-    for (auto& entry : vStatesBiases_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
-    for (auto& entry : velocityWeights_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
-    for (auto& entry : velocityBiases_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
-    for (auto& entry : sqAvgWeights_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
-    for (auto& entry : sqAvgBiases_) for (auto buf : entry.second) if (buf) clReleaseMemObject(buf);
+    releaseBuffers(mStatesWeights_);
+    releaseBuffers(mStatesBiases_);
+    releaseBuffers(vStatesWeights_);
+    releaseBuffers(vStatesBiases_);
+    releaseBuffers(velocityWeights_);
+    releaseBuffers(velocityBiases_);
+    releaseBuffers(sqAvgWeights_);
+    releaseBuffers(sqAvgBiases_);
     
     weightsByModel_.clear();
     biasesByModel_.clear();
@@ -388,37 +397,47 @@ cl_kernel GpuContext::kernel(const std::string& name) const {
 
 // ===================== Optimizer state caching =====================
 
-cl_mem GpuContext::getOrCreateStateBuffer(std::unordered_map<std::string, CL_MEM_ARRAY>& store, const std::string& modelID, int pointer, size_t length, const float* initialData) {
-    auto& layerBuffers = store[modelID]; // creates empty vector on first touch for this model
-
-    size_t idx = static_cast<size_t>(pointer);
-    if (idx >= layerBuffers.size()) {
-        layerBuffers.resize(idx + 1, nullptr);
+cl_mem GpuContext::getOrCreateStateBuffer(BufferCache& store, const std::string& modelID, const std::string& layerID, size_t length, const float* initialData) {
+    if (layerID.empty()) {
+        throw std::invalid_argument("GpuContext: optimizer state requires a layerID.");
     }
 
-    if (layerBuffers[idx] == nullptr) {
-        cl_int err;
-        // COPY_HOST_PTR seeds the buffer with initialData (zeros on first-ever step).
-        // From then on this exact buffer persists and is updated in place by the kernel.
-        layerBuffers[idx] = clCreateBuffer(context_, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * length, const_cast<float*>(initialData), &err);
+    auto& layerBuffers = store[modelID];
+    auto found = layerBuffers.find(layerID);
+    if (found != layerBuffers.end()) {
+        size_t currentSize = 0;
+        cl_int err = clGetMemObjectInfo(found->second, CL_MEM_SIZE, sizeof(currentSize), &currentSize, nullptr);
+        if (err == CL_SUCCESS && currentSize >= sizeof(float) * length) {
+            return found->second;
+        }
+        if (found->second) clReleaseMemObject(found->second);
+        layerBuffers.erase(found);
     }
 
-    return layerBuffers[idx];
+    cl_int err = CL_SUCCESS;
+    cl_mem buffer = clCreateBuffer(context_, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * length, const_cast<float*>(initialData), &err);
+    if (err != CL_SUCCESS || buffer == nullptr) {
+        throw std::runtime_error("GpuContext: failed to allocate optimizer state for layerID='" + layerID + "'.");
+    }
+    layerBuffers.emplace(layerID, buffer);
+    return buffer;
 }
 
-cl_mem GpuContext::getOrCreateCacheBuffer(BufferCache& store, const std::string& modelID, const BufferKey& key, size_t length) {
-    validateBufferKey(key);
+cl_mem GpuContext::getOrCreateCacheBuffer(BufferCache& store, const std::string& modelID, const std::string& layerID, size_t length) {
+    if (layerID.empty()) {
+        throw std::invalid_argument("GpuContext: layerID must not be empty.");
+    }
     if (length == 0 || length > std::numeric_limits<size_t>::max() / sizeof(float)) {
         throw std::invalid_argument("GpuContext: cached buffer length must be positive and fit in bytes.");
     }
 
     auto& layerBuffers = store[modelID];
-    auto bufferIt = layerBuffers.find(key);
+    auto bufferIt = layerBuffers.find(layerID);
     if (bufferIt != layerBuffers.end()) {
         size_t currentSize = 0;
         cl_int err = clGetMemObjectInfo(bufferIt->second, CL_MEM_SIZE, sizeof(currentSize), &currentSize, nullptr);
         if (err != CL_SUCCESS) {
-            throw std::runtime_error("GpuContext: failed to inspect cached buffer for modelID='" + modelID + "' (" + describeBufferKey(key) + ").");
+            throw std::runtime_error("GpuContext: failed to inspect cached buffer for modelID='" + modelID + "' layerID='" + layerID + "'.");
         }
         if (currentSize >= sizeof(float) * length) {
             return bufferIt->second;
@@ -429,11 +448,11 @@ cl_mem GpuContext::getOrCreateCacheBuffer(BufferCache& store, const std::string&
     cl_mem buffer = clCreateBuffer(context_, CL_MEM_READ_WRITE, sizeof(float) * length, nullptr, &err);
     if (err != CL_SUCCESS || buffer == nullptr) {
         if (buffer) clReleaseMemObject(buffer);
-        throw std::runtime_error("GpuContext: failed to allocate cached buffer for modelID='" + modelID + "' (" + describeBufferKey(key) + ").");
+        throw std::runtime_error("GpuContext: failed to allocate cached buffer for modelID='" + modelID + "' layerID='" + layerID + "'.");
     }
 
     if (bufferIt == layerBuffers.end()) {
-        layerBuffers.emplace(key, buffer);
+        layerBuffers.emplace(layerID, buffer);
     } else {
         cl_mem oldBuffer = bufferIt->second;
         bufferIt->second = buffer;
@@ -442,28 +461,20 @@ cl_mem GpuContext::getOrCreateCacheBuffer(BufferCache& store, const std::string&
     return buffer;
 }
 
-cl_mem GpuContext::getOrCreate_M(const std::string& modelID, int pointer, bool isWeights, size_t length, const float* initialData) {
-    return getOrCreateStateBuffer(isWeights ? mStatesWeights_ : mStatesBiases_, modelID, pointer, length, initialData);
+cl_mem GpuContext::getOrCreate_M(const std::string& modelID, const std::string& layerID, bool isWeights, size_t length, const float* initialData) {
+    return getOrCreateStateBuffer(isWeights ? mStatesWeights_ : mStatesBiases_, modelID, layerID, length, initialData);
 }
 
-cl_mem GpuContext::getOrCreate_V(const std::string& modelID, int pointer, bool isWeights, size_t length, const float* initialData) {
-    return getOrCreateStateBuffer(isWeights ? vStatesWeights_ : vStatesBiases_, modelID, pointer, length, initialData);
+cl_mem GpuContext::getOrCreate_V(const std::string& modelID, const std::string& layerID, bool isWeights, size_t length, const float* initialData) {
+    return getOrCreateStateBuffer(isWeights ? vStatesWeights_ : vStatesBiases_, modelID, layerID, length, initialData);
 }
 
-cl_mem GpuContext::getOrCreate_Velocity(const std::string& modelID, int pointer, bool isWeights, size_t length, const float* initialData) {
-    return getOrCreateStateBuffer(isWeights ? velocityWeights_ : velocityBiases_, modelID, pointer, length, initialData);
+cl_mem GpuContext::getOrCreate_Velocity(const std::string& modelID, const std::string& layerID, bool isWeights, size_t length, const float* initialData) {
+    return getOrCreateStateBuffer(isWeights ? velocityWeights_ : velocityBiases_, modelID, layerID, length, initialData);
 }
 
-cl_mem GpuContext::getOrCreate_SqAvg(const std::string& modelID, int pointer, bool isWeights, size_t length, const float* initialData) {
-    return getOrCreateStateBuffer(isWeights ? sqAvgWeights_ : sqAvgBiases_, modelID, pointer, length, initialData);
-}
-
-static void releaseAndClearModelEntry(std::unordered_map<std::string, CL_MEM_ARRAY>& store, const std::string& modelID) {
-    auto it = store.find(modelID);
-    if (it != store.end()) {
-        for (auto buf : it->second) if (buf) clReleaseMemObject(buf);
-        store.erase(it);
-    }
+cl_mem GpuContext::getOrCreate_SqAvg(const std::string& modelID, const std::string& layerID, bool isWeights, size_t length, const float* initialData) {
+    return getOrCreateStateBuffer(isWeights ? sqAvgWeights_ : sqAvgBiases_, modelID, layerID, length, initialData);
 }
 
 static void releaseAndClearModelEntry(BufferCache& store, const std::string& modelID) {
@@ -479,35 +490,35 @@ static void releaseAndClearModelEntry(BufferCache& store, const std::string& mod
 // ===================== Forward/backward activation caching =====================
 
 cl_mem GpuContext::getOrCreate_Z(const std::string& modelID, const std::string& layerID, size_t length) {
-    return getOrCreateCacheBuffer(zByModel_, modelID, BufferKey{layerID}, length);
+    return getOrCreateCacheBuffer(zByModel_, modelID, layerID, length);
 }
 
 cl_mem GpuContext::getOrCreate_ActivationOutput(const std::string& modelID, const std::string& layerID, size_t length) {
-    return getOrCreateCacheBuffer(activationOutputsByModel_, modelID, BufferKey{layerID}, length);
+    return getOrCreateCacheBuffer(activationOutputsByModel_, modelID, layerID, length);
 }
 
 cl_mem GpuContext::getOrCreate_DAct(const std::string& modelID, const std::string& layerID, size_t length) {
-    return getOrCreateCacheBuffer(dActByModel_, modelID, BufferKey{layerID}, length);
+    return getOrCreateCacheBuffer(dActByModel_, modelID, layerID, length);
 }
 
 cl_mem GpuContext::getOrCreate_Delta(const std::string& modelID, const std::string& layerID, size_t length) {
-    return getOrCreateCacheBuffer(deltasByModel_, modelID, BufferKey{layerID}, length);
+    return getOrCreateCacheBuffer(deltasByModel_, modelID, layerID, length);
 }
 
 cl_mem GpuContext::getOrCreate_dBeta(const std::string& modelID, const std::string& layerID, size_t length) {
-    return getOrCreateCacheBuffer(dBetaByModel_, modelID, BufferKey{layerID}, length);
+    return getOrCreateCacheBuffer(dBetaByModel_, modelID, layerID, length);
 }
 
 cl_mem GpuContext::getOrCreate_dGamma(const std::string& modelID, const std::string& layerID, size_t length) {
-    return getOrCreateCacheBuffer(dGammaByModel_, modelID, BufferKey{layerID}, length);
+    return getOrCreateCacheBuffer(dGammaByModel_, modelID, layerID, length);
 }
 
 cl_mem GpuContext::getOrCreate_Input(const std::string& modelID, const std::string& layerID, size_t length) {
-    return getOrCreateCacheBuffer(inputsByModel_, modelID, BufferKey{layerID}, length);
+    return getOrCreateCacheBuffer(inputsByModel_, modelID, layerID, length);
 }
 
 cl_mem GpuContext::getOrCreate_SomethingToWriteOn(const std::string& globalReferenceID, const std::string& localReferenceID, size_t length) {
-    return getOrCreateCacheBuffer(somethingToWriteOn_, globalReferenceID, BufferKey{localReferenceID}, length);
+    return getOrCreateCacheBuffer(somethingToWriteOn_, globalReferenceID, localReferenceID, length);
 }
 
 void GpuContext::clearOptimizerStates(const std::string& modelID) {

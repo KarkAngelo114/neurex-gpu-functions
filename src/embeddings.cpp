@@ -21,9 +21,8 @@ Napi::Value GetEmbeddings_GPU(const Napi::CallbackInfo& info) {
     IntArray tokenArray = Vectorize(info[0].As<Napi::Array>());
     int embeddingDim = info[1].As<Napi::Number>().Int32Value();
     Napi::Float32Array params = info[2].As<Napi::Float32Array>();
-    int pointer = info[3].As<Napi::Number>().Int32Value();
-    std::string modelID = info[4].As<Napi::String>().Utf8Value();
-    std::string layerID = info[5].As<Napi::String>().Utf8Value();
+    std::string modelID = info[3].As<Napi::String>().Utf8Value();
+    std::string layerID = info[4].As<Napi::String>().Utf8Value();
 
     int sequence_length = tokenArray.size();
     int totalSize = sequence_length * embeddingDim; // token array length * embeddingDim = output size
@@ -37,7 +36,7 @@ Napi::Value GetEmbeddings_GPU(const Napi::CallbackInfo& info) {
 
     cl_mem tokenBuffer = gpu.getOrCreate_Input(modelID, layerID, static_cast<size_t>(totalSize));
     clEnqueueWriteBuffer(queue, tokenBuffer, CL_FALSE, 0, sizeof(int) * sequence_length, tokenArray.data(), 0, nullptr, nullptr);
-    cl_mem lookup = gpu.getWeights(modelID, pointer);
+    cl_mem lookup = gpu.getWeights(modelID, layerID);
     cl_mem output = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_forward_embeddings", static_cast<size_t>(totalSize));
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &tokenBuffer);
@@ -63,8 +62,8 @@ Napi::Value GetEmbeddings_CPU(const Napi::CallbackInfo& info) {
     IntArray tokenArray = Vectorize(info[0].As<Napi::Array>());
     int embeddingDim = info[1].As<Napi::Number>().Int32Value();
     Napi::Float32Array params = info[2].As<Napi::Float32Array>();
-    std::string modelID = info[4].As<Napi::String>().Utf8Value();
-    std::string layerID = info[5].As<Napi::String>().Utf8Value();
+    std::string modelID = info[3].As<Napi::String>().Utf8Value();
+    std::string layerID = info[4].As<Napi::String>().Utf8Value();
     int sequenceLength = tokenArray.size();
     int totalSize = sequenceLength * embeddingDim;
 

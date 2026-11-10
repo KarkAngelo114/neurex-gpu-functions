@@ -85,27 +85,41 @@ Napi::Value setComputeBackendType(const Napi::CallbackInfo& info) {
 Napi::Value UploadParamsFromJS(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
-    if (info.Length() < 3 || !info[0].IsString() || !info[1].IsArray() || !info[2].IsArray()) {
-        Napi::TypeError::New(env, "Expected: modelID (string), weights (array), biases (array).").ThrowAsJavaScriptException();
+    if (info.Length() < 3 || !info[0].IsString() || !info[1].IsArray()) {
+        Napi::TypeError::New(env, "Expected: modelID (string), layerParameters (array), computeBackend (string).").ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
     std::string modelID = info[0].As<Napi::String>().Utf8Value();
-    Napi::Array jsWeights = info[1].As<Napi::Array>();
-    Napi::Array jsBiases = info[2].As<Napi::Array>();
-    std::string computeBackend = info[3].As<Napi::String>().Utf8Value();
+    Napi::Array jsParameters = info[1].As<Napi::Array>();
+    std::string computeBackend = info[2].As<Napi::String>().Utf8Value();
+    std::vector<LayerParameters> parameters;
+    parameters.reserve(jsParameters.Length());
 
-    Matrix weightMatrix(jsWeights.Length());
-    Matrix biasMatrix(jsBiases.Length());
+    for (uint32_t i = 0; i < jsParameters.Length(); i++) {
+        Napi::Value value = jsParameters.Get(i);
+        if (!value.IsObject()) {
+            Napi::TypeError::New(env, "Each layer parameter entry must be an object.").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+        Napi::Object layer = value.As<Napi::Object>();
+        Napi::Value idValue = layer.Get("layerID");
+        Napi::Value weightsValue = layer.Get("weights");
+        Napi::Value biasesValue = layer.Get("biases");
+        if (!idValue.IsString() || !weightsValue.IsTypedArray() || !biasesValue.IsTypedArray() ||
+            weightsValue.As<Napi::TypedArray>().TypedArrayType() != napi_float32_array ||
+            biasesValue.As<Napi::TypedArray>().TypedArrayType() != napi_float32_array) {
+            Napi::TypeError::New(env, "Layer parameters require layerID and Float32Array weights and biases.").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
 
-    for (uint32_t i = 0; i < jsWeights.Length(); i++) {
-        Napi::Float32Array w = jsWeights.Get(i).As<Napi::Float32Array>();
-        weightMatrix[i].assign(w.Data(), w.Data() + w.ElementLength());
-    }
-
-    for (uint32_t i = 0; i < jsBiases.Length(); i++) {
-        Napi::Float32Array b = jsBiases.Get(i).As<Napi::Float32Array>();
-        biasMatrix[i].assign(b.Data(), b.Data() + b.ElementLength());
+        Napi::Float32Array weights = weightsValue.As<Napi::Float32Array>();
+        Napi::Float32Array biases = biasesValue.As<Napi::Float32Array>();
+        parameters.push_back({
+            idValue.As<Napi::String>().Utf8Value(),
+            std::vector<float>(weights.Data(), weights.Data() + weights.ElementLength()),
+            std::vector<float>(biases.Data(), biases.Data() + biases.ElementLength())
+        });
     }
 
 
@@ -114,7 +128,7 @@ Napi::Value UploadParamsFromJS(const Napi::CallbackInfo& info) {
          auto& openCL = GpuContext::instance();
 
         std::string err;
-        bool success = openCL.uploadParams(modelID, weightMatrix, biasMatrix, err);
+        bool success = openCL.uploadParams(modelID, parameters, err);
 
         if (!success) {
             Napi::Error::New(env, err).ThrowAsJavaScriptException();

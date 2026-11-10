@@ -29,9 +29,8 @@ Napi::Value DenseForward_GPU(const Napi::CallbackInfo& info) {
     Napi::Float32Array input = info[0].As<Napi::Float32Array>();
     IntArray weightShape = Vectorize(info[1].As<Napi::Array>());
     std::string activationType = info[2].As<Napi::String>().Utf8Value();
-    int pointer = info[5].As<Napi::Number>().Int32Value();
-    std::string modelID = info[6].As<Napi::String>().Utf8Value();
-    std::string layerID = info[7].As<Napi::String>().Utf8Value();
+    std::string modelID = info[5].As<Napi::String>().Utf8Value();
+    std::string layerID = info[6].As<Napi::String>().Utf8Value();
 
     int inputSize = weightShape[0];
     int outputSize = weightShape[1];
@@ -47,8 +46,8 @@ Napi::Value DenseForward_GPU(const Napi::CallbackInfo& info) {
 
     cl_mem inputTensor = gpu.getOrCreate_Input(modelID, layerID, static_cast<size_t>(inputSize));
     clEnqueueWriteBuffer(queue, inputTensor, CL_FALSE, 0, sizeof(float) * inputSize, input.Data(), 0, nullptr, nullptr);
-    cl_mem weights = gpu.getWeights(modelID, pointer);
-    cl_mem biases = gpu.getBiases(modelID, pointer);
+    cl_mem weights = gpu.getWeights(modelID, layerID);
+    cl_mem biases = gpu.getBiases(modelID, layerID);
     cl_mem z_values = gpu.getOrCreate_Z(modelID, layerID, static_cast<size_t>(outputSize));
     cl_mem activated_output = gpu.getOrCreate_ActivationOutput(modelID, layerID, static_cast<size_t>(outputSize));
     
@@ -120,8 +119,8 @@ Napi::Value DenseForward_CPU(const Napi::CallbackInfo& info) {
     std::string activationType = info[2].As<Napi::String>().Utf8Value();
     Napi::Float32Array weights = info[3].As<Napi::Float32Array>();
     Napi::Float32Array biases = info[4].As<Napi::Float32Array>();
-    std::string modelID = info[6].As<Napi::String>().Utf8Value();
-    std::string layerID = info[7].As<Napi::String>().Utf8Value();
+    std::string modelID = info[5].As<Napi::String>().Utf8Value();
+    std::string layerID = info[6].As<Napi::String>().Utf8Value();
 
     int inputSize = weightShape[0];
     int outputSize = weightShape[1];
@@ -174,9 +173,8 @@ Napi::Value DeltaMatMul_GPU(const Napi::CallbackInfo& info) {
     int inputSize  = info[1].As<Napi::Number>().Int32Value();
     int outputSize = info[2].As<Napi::Number>().Int32Value();
     Napi::Float32Array weightsArray = info[3].As<Napi::Float32Array>();
-    int pointer = info[4].As<Napi::Number>().Int32Value();
-    std::string modelID = info[5].As<Napi::String>().Utf8Value();
-    std::string layerID = info[6].As<Napi::String>().Utf8Value();
+    std::string modelID = info[4].As<Napi::String>().Utf8Value();
+    std::string layerID = info[5].As<Napi::String>().Utf8Value();
 
     Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID+"_matmul_backward", inputSize);
 
@@ -190,7 +188,7 @@ Napi::Value DeltaMatMul_GPU(const Napi::CallbackInfo& info) {
     cl_mem dDelta = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_incoming_delta_matmul", static_cast<size_t>(outputSize));
     clEnqueueWriteBuffer(queue, dDelta, CL_FALSE, 0, sizeof(float) * deltaSize, delta.Data(), 0, nullptr, nullptr);
     cl_mem dOut = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_output_delta_matmul", static_cast<size_t>(inputSize));
-    cl_mem dW = gpu.getWeights(modelID, pointer);
+    cl_mem dW = gpu.getWeights(modelID, layerID);
 
     clSetKernelArg(k, 0, sizeof(cl_mem), &dDelta);
     clSetKernelArg(k, 1, sizeof(cl_mem), &dW);

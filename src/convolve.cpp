@@ -31,9 +31,8 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     IntArray outputShape = Vectorize(info[2].As<Napi::Array>());
     IntArray kernelShape = Vectorize(info[3].As<Napi::Array>());
     std::string activationType = info[4].As<Napi::String>().Utf8Value();
-    int pointer = info[7].As<Napi::Number>().Int32Value();
-    std::string modelID = info[8].As<Napi::String>().Utf8Value();
-    std::string layerID = info[9].As<Napi::String>().Utf8Value();
+    std::string modelID = info[7].As<Napi::String>().Utf8Value();
+    std::string layerID = info[8].As<Napi::String>().Utf8Value();
     size_t inputSize = input.ElementLength();
 
     int numFilters = kernelShape[0];
@@ -60,8 +59,8 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
 
     cl_mem inputTensor = gpu.getOrCreate_Input(modelID, layerID, static_cast<size_t>(inputSize));
     clEnqueueWriteBuffer(queue, inputTensor, CL_FALSE, 0, sizeof(float) * inputSize, input.Data(), 0, nullptr, nullptr);
-    cl_mem weights = gpu.getWeights(modelID, pointer);
-    cl_mem biases = gpu.getBiases(modelID, pointer);
+    cl_mem weights = gpu.getWeights(modelID, layerID);
+    cl_mem biases = gpu.getBiases(modelID, layerID);
     cl_mem z_values = gpu.getOrCreate_Z(modelID, layerID, static_cast<size_t>(outputSize));
     cl_mem activated_output = gpu.getOrCreate_ActivationOutput(modelID, layerID, static_cast<size_t>(outputSize));
 
@@ -143,9 +142,8 @@ Napi::Value Convolve_CPU(const Napi::CallbackInfo& info) {
     std::string activationType = info[4].As<Napi::String>().Utf8Value();
     Napi::Float32Array weightsArray = info[5].As<Napi::Float32Array>();
     Napi::Float32Array biasesArray = info[6].As<Napi::Float32Array>();
-    int pointer = info[7].As<Napi::Number>().Int32Value();
-    std::string modelID = info[8].As<Napi::String>().Utf8Value();
-    std::string layerID = info[9].As<Napi::String>().Utf8Value();
+    std::string modelID = info[7].As<Napi::String>().Utf8Value();
+    std::string layerID = info[8].As<Napi::String>().Utf8Value();
 
     std::unordered_map<std::string, void(*)(Napi::Float32Array& referenceDataBuffer, Napi::Float32Array& bufferToWriteOn)> activations = {
         {"linear", LINEAR},
@@ -236,9 +234,8 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     IntArray outputShape = Vectorize(info[1].As<Napi::Array>());
     IntArray deltaShape = Vectorize(info[2].As<Napi::Array>());
     IntArray kernelShape = Vectorize(info[3].As<Napi::Array>());
-    int pointer = info[5].As<Napi::Number>().Int32Value();
-    std::string modelID = info[6].As<Napi::String>().Utf8Value();
-    std::string layerID = info[7].As<Napi::String>().Utf8Value();
+    std::string modelID = info[5].As<Napi::String>().Utf8Value();
+    std::string layerID = info[6].As<Napi::String>().Utf8Value();
 
     int F = kernelShape[0];
     int KH = kernelShape[1];
@@ -269,7 +266,7 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("delta_convolve");
 
-    cl_mem weights = gpu.getWeights(modelID, pointer);
+    cl_mem weights = gpu.getWeights(modelID, layerID);
     cl_mem delta = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_conv_incoming_delta", deltaSize);
     clEnqueueWriteBuffer(queue, delta, CL_FALSE, 0, sizeof(float) * deltaSize, inputTensor.Data(), 0, nullptr, nullptr);
     cl_mem outputBuf = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_output_conv_backward", static_cast<size_t>(targetSize));

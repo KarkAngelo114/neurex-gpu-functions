@@ -31,9 +31,8 @@ Napi::Value transConvForward_GPU(const Napi::CallbackInfo& info) {
     int filters = info[4].As<Napi::Number>().Int32Value();
     IntArray weightShape = Vectorize(info[5].As<Napi::Array>());
     std::string activationType = info[6].As<Napi::String>().Utf8Value();
-    int pointer = info[9].As<Napi::Number>().Int32Value();
-    std::string modelID = info[10].As<Napi::String>().Utf8Value();
-    std::string layerID = info[11].As<Napi::String>().Utf8Value();
+    std::string modelID = info[9].As<Napi::String>().Utf8Value();
+    std::string layerID = info[10].As<Napi::String>().Utf8Value();
 
     int iH = inputShape[0];
     int iW = inputShape[1];
@@ -66,8 +65,8 @@ Napi::Value transConvForward_GPU(const Napi::CallbackInfo& info) {
 
     cl_mem input = gpu.getOrCreate_Input(modelID, layerID, static_cast<size_t>(inputSize));
     clEnqueueWriteBuffer(queue, input, CL_FALSE, 0, sizeof(float) * inputSize, inputTensor.Data(), 0, nullptr, nullptr);
-    cl_mem weights = gpu.getWeights(modelID, pointer);
-    cl_mem biases = gpu.getBiases(modelID, pointer);
+    cl_mem weights = gpu.getWeights(modelID, layerID);
+    cl_mem biases = gpu.getBiases(modelID, layerID);
     cl_mem z_values = gpu.getOrCreate_Z(modelID, layerID, static_cast<size_t>(outputSize));
     cl_mem activated_output = gpu.getOrCreate_ActivationOutput(modelID, layerID, static_cast<size_t>(outputSize));
 
@@ -277,9 +276,8 @@ Napi::Value transConvBackward_GPU(const Napi::CallbackInfo& info) {
     int filters = info[4].As<Napi::Number>().Int32Value();
     IntArray weightShape = Vectorize(info[5].As<Napi::Array>());
     Napi::Float32Array weightsArray = info[6].As<Napi::Float32Array>();
-    int pointer = info[7].As<Napi::Number>().Int32Value();
-    std::string modelID = info[8].As<Napi::String>().Utf8Value();
-    std::string layerID = info[9].As<Napi::String>().Utf8Value();
+    std::string modelID = info[7].As<Napi::String>().Utf8Value();
+    std::string layerID = info[8].As<Napi::String>().Utf8Value();
 
     int iH = inputShape[0];
     int iW = inputShape[1];
@@ -312,7 +310,7 @@ Napi::Value transConvBackward_GPU(const Napi::CallbackInfo& info) {
     cl_mem delta = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_trans_conv_incoming_delta", static_cast<size_t>(deltaSize));
     clEnqueueWriteBuffer(queue, delta, CL_FALSE, 0, sizeof(float) * deltaSize, deltaTensor.Data(), 0, nullptr, nullptr);
     cl_mem output = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_trans_conv_backward_output", static_cast<size_t>(outputSize));
-    cl_mem weights = gpu.getWeights(modelID, pointer);
+    cl_mem weights = gpu.getWeights(modelID, layerID);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &delta);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &weights);
