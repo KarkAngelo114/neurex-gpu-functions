@@ -295,8 +295,8 @@ Napi::Value ConvolveDelta_CPU(const Napi::CallbackInfo& info) {
     IntArray deltaShape = Vectorize(info[2].As<Napi::Array>());
     IntArray kernelShape = Vectorize(info[3].As<Napi::Array>());
     Napi::Float32Array kernelsArray = info[4].As<Napi::Float32Array>();
-    std::string modelID = info[6].As<Napi::String>().Utf8Value();
-    std::string layerID = info[7].As<Napi::String>().Utf8Value();
+    std::string modelID = info[5].As<Napi::String>().Utf8Value();
+    std::string layerID = info[6].As<Napi::String>().Utf8Value();
 
     const int outputH = outputShape[0];
     const int outputW = outputShape[1];
