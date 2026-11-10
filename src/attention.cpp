@@ -377,8 +377,9 @@ Napi::Value CoreMultiHeadAttention_CPU(const Napi::CallbackInfo& info) {
     int headDim = info[6].As<Napi::Number>().Int32Value();
     float dkRoot = info[7].As<Napi::Number>().FloatValue();
     bool useCausalMasking = info[8].As<Napi::Boolean>().Value();
+    std::string modelID = info[9].As<Napi::String>().Utf8Value();
+    std::string layerID = info[10].As<Napi::String>().Utf8Value();
 
-    // String ModelID = info[10].As<Napi::String>().Utf8Value(); // use only on GPU side
 
     const float* input = inputTensor.Data();
     const float* w = weights.Data();
@@ -396,12 +397,15 @@ Napi::Value CoreMultiHeadAttention_CPU(const Napi::CallbackInfo& info) {
     const float* O_b = b + embedDim * 3;
 
     // outputs needed for caching (X, Q, K, V, S_perHead) plus the layer's final output
-    Napi::Float32Array Q = Napi::Float32Array::New(env, seqLen * embedDim);
-    Napi::Float32Array K = Napi::Float32Array::New(env, seqLen * embedDim);
-    Napi::Float32Array V = Napi::Float32Array::New(env, seqLen * embedDim);
-    Napi::Float32Array mhaOutput = Napi::Float32Array::New(env, seqLen * embedDim);
-    Napi::Float32Array S_perHead = Napi::Float32Array::New(env, numHeads * seqLen * seqLen);
-    Napi::Float32Array finalOutput = Napi::Float32Array::New(env, seqLen * embedDim);
+    int size = seqLen * embedDim;
+    int s_per_head_size = numHeads * seqLen * seqLen;
+
+    Napi::Float32Array Q = getOrCreateBuffer(env, modelID, layerID, size);
+    Napi::Float32Array K = getOrCreateBuffer(env, modelID, layerID, size);
+    Napi::Float32Array V = getOrCreateBuffer(env, modelID, layerID, size);
+    Napi::Float32Array mhaOutput = getOrCreateBuffer(env, modelID, layerID, size);
+    Napi::Float32Array finalOutput = getOrCreateBuffer(env, modelID, layerID, size);
+    Napi::Float32Array S_perHead = getOrCreateBuffer(env, modelID, layerID, s_per_head_size);
 
     float* Q_ptr = Q.Data();
     float* K_ptr = K.Data();
@@ -656,6 +660,7 @@ Napi::Value CoreMultiHeadAttention_GPU(const Napi::CallbackInfo& info) {
     bool causal = info[8].As<Napi::Boolean>().Value();
     std::string modelID = info[9].As<Napi::String>().Utf8Value();
     std::string layerID = info[10].As<Napi::String>().Utf8Value();
+    
     int causalInt = causal ? 1 : 0;
     const float zero = 0.0f;
 

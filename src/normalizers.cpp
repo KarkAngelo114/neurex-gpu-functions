@@ -123,7 +123,7 @@ Napi::Value LayerNorm_GPU(const Napi::CallbackInfo& info) {
     // get standardization value by getting the square root of sum of variance and epsilon
     float std = std::sqrt(variance + eps);
 
-    cl_mem _input= gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_layer_norm_input", static_cast<size_t>(size));
+    cl_mem _input= gpu.getOrCreate_Input(modelID, layerID, static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, _input, CL_FALSE, 0, sizeof(float) * deltaSize, inputTensor.Data(), 0, nullptr, nullptr);
     
     cl_mem _gamma = gpu.getWeights(modelID, layerID);
@@ -223,8 +223,7 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
     cl_kernel gradientAccumulationKernel = gpu.kernel("accumulate_gamma_beta_grads");
 
 
-    cl_mem xBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_xBuffer", static_cast<size_t>(size));
-    clEnqueueWriteBuffer(queue, xBuffer, CL_FALSE, 0, sizeof(float) * size, x.Data(), 0, nullptr, nullptr);
+    cl_mem xBuffer = gpu.getInput(modelID, layerID);
     cl_mem dyBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_dyBuffer", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, dyBuffer, CL_FALSE, 0, sizeof(float) * size, dy.Data(), 0, nullptr, nullptr);
     cl_mem gammaBuffer = gpu.getWeights(modelID, layerID);

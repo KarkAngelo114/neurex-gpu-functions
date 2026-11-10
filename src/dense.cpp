@@ -64,9 +64,6 @@ Napi::Value DenseForward_GPU(const Napi::CallbackInfo& info) {
     // run matmul
     clEnqueueNDRangeKernel(queue, matmulKernel, 1, nullptr, &global, nullptr, 0, nullptr, nullptr);
 
-    // prepare z values vector
-    clEnqueueReadBuffer(queue, z_values, CL_TRUE, 0, sizeof(float) * outputSize, z_values_vector.Data(), 0, nullptr, nullptr);
-
     if (activationType != "softmax") {
         clSetKernelArg(activationKernel, 0, sizeof(cl_mem), &z_values);
         clSetKernelArg(activationKernel, 1, sizeof(cl_mem), &activated_output);
@@ -74,8 +71,6 @@ Napi::Value DenseForward_GPU(const Napi::CallbackInfo& info) {
 
         // run activation function
         clEnqueueNDRangeKernel(queue, activationKernel, 1, nullptr, &global, nullptr, 0, nullptr, nullptr);
-        
-        clEnqueueReadBuffer(queue, activated_output, CL_TRUE, 0, sizeof(float) * outputSize, activated_output_vector.Data(), 0, nullptr, nullptr);
     }
     else {
         float* data = z_values_vector.Data();
@@ -100,9 +95,10 @@ Napi::Value DenseForward_GPU(const Napi::CallbackInfo& info) {
 
         clEnqueueNDRangeKernel(queue, activationKernel, 1, nullptr, &softmax_branch_global_work_size, nullptr, 0, nullptr, nullptr);
 
-        clEnqueueReadBuffer(queue, activated_output, CL_TRUE, 0, sizeof(float) * outputSize, activated_output_vector.Data(), 0, nullptr, nullptr);
     }
     
+    clEnqueueReadBuffer(queue, z_values, CL_FALSE, 0, sizeof(float) * outputSize, z_values_vector.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, activated_output, CL_TRUE, 0, sizeof(float) * outputSize, activated_output_vector.Data(), 0, nullptr, nullptr);
 
     Napi::Object output = Napi::Object::New(env);
     output.Set("z_values", z_values_vector);
@@ -211,8 +207,8 @@ Napi::Value DeltaMatMul_CPU(const Napi::CallbackInfo& info) {
     int inputSize  = info[1].As<Napi::Number>().Int32Value();
     size_t outputSize = info[2].As<Napi::Number>().Int32Value();
     Napi::Float32Array weights = info[3].As<Napi::Float32Array>();
-    std::string modelID = info[5].As<Napi::String>().Utf8Value();
-    std::string layerID = info[6].As<Napi::String>().Utf8Value();
+    std::string modelID = info[4].As<Napi::String>().Utf8Value();
+    std::string layerID = info[5].As<Napi::String>().Utf8Value();
 
     Napi::Float32Array output = getOrCreateBuffer(env, modelID, layerID+"_matmul_backward", inputSize);
 
@@ -250,23 +246,10 @@ Napi::Value fusedFinalDeltaProjector_ForDense_GPU(const Napi::CallbackInfo& info
     std::string modelID = info[9].As<Napi::String>().Utf8Value();
     std::string layerID = info[10].As<Napi::String>().Utf8Value();
 
-    if (weightShape.size() != 2) {
-        Napi::TypeError::New(env, "Dense weight shape must have 2 dimensions").ThrowAsJavaScriptException();
-        return env.Null();
-    }
-
     int inputSize = weightShape[0];
     int outputSize = weightShape[1];
 
     int size = incomingDelta.ElementLength();
-    if (inputSize <= 0 || outputSize <= 0 || size != outputSize ||
-        zs_array.ElementLength() != size || layerOutput.ElementLength() != size ||
-        layerInput.ElementLength() != inputSize ||
-        weightGrads_array.ElementLength() != inputSize * outputSize ||
-        biasGrads_array.ElementLength() != outputSize) {
-        Napi::RangeError::New(env, "Dense gradient inputs do not match the provided weight shape").ThrowAsJavaScriptException();
-        return env.Null();
-    }
 
     Napi::Float32Array finalDelta = getOrCreateBuffer(env, modelID, layerID + "_final_delta", size);
 
@@ -275,13 +258,11 @@ Napi::Value fusedFinalDeltaProjector_ForDense_GPU(const Napi::CallbackInfo& info
     cl_kernel gradientAccumulationKernel = gpu.kernel("accumulateWeightsAndBiasGradsDense");
 
     cl_mem z_values = gpu.getZ(modelID, layerID);
-    cl_mem layerInputBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_dense_gradient_input", layerInput.ElementLength());
-    cl_mem layerOutputBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_dense_gradient_output", layerOutput.ElementLength());
+    cl_mem layerInputBuffer = gpu.getInput(modelID, layerID);
+    cl_mem layerOutputBuffer = gpu.getActivationOutput(modelID, layerID);
     cl_mem finalDeltaBuffer = gpu.getOrCreate_Delta(modelID, layerID, static_cast<size_t>(size));
     cl_mem incoming_deltaBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_incoming_delta", static_cast<size_t>(size));
     cl_mem dAct = gpu.getOrCreate_DAct(modelID, layerID, static_cast<size_t>(size));
-    clEnqueueWriteBuffer(queue, layerInputBuffer, CL_FALSE, 0, sizeof(float) * layerInput.ElementLength(), layerInput.Data(), 0, nullptr, nullptr);
-    clEnqueueWriteBuffer(queue, layerOutputBuffer, CL_FALSE, 0, sizeof(float) * layerOutput.ElementLength(), layerOutput.Data(), 0, nullptr, nullptr);
     clEnqueueWriteBuffer(queue, incoming_deltaBuffer, CL_FALSE, 0, sizeof(float) * size, incomingDelta.Data(), 0, nullptr, nullptr);
 
     size_t weightGradsSize = weightGrads_array.ElementLength();
@@ -316,11 +297,6 @@ Napi::Value fusedFinalDeltaProjector_ForDense_GPU(const Napi::CallbackInfo& info
 
         clEnqueueNDRangeKernel(queue, activationKernel, 1, nullptr, &scalarSize, nullptr, 0, nullptr, nullptr);
     } else if (applyDerivativeActivation) {
-        if (activationType != "linear" && activationType != "relu" &&
-            activationType != "sigmoid" && activationType != "tanh") {
-            Napi::TypeError::New(env, "Unsupported dense activation derivative: " + activationType).ThrowAsJavaScriptException();
-            return env.Null();
-        }
         cl_kernel activationKernel = gpu.kernel("d" + activationType);
         cl_kernel elementWiseKernel = gpu.kernel("element_wise_mul");
         clSetKernelArg(activationKernel, 0, sizeof(cl_mem), &z_values);
@@ -350,8 +326,8 @@ Napi::Value fusedFinalDeltaProjector_ForDense_GPU(const Napi::CallbackInfo& info
 
     clEnqueueNDRangeKernel(queue, gradientAccumulationKernel, 2, nullptr, matrix_size, nullptr, 0, nullptr, nullptr);
 
-    clEnqueueReadBuffer(queue, finalDeltaBuffer, CL_TRUE, 0, sizeof(float) * size, finalDelta.Data(), 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, weightGrads, CL_TRUE, 0, sizeof(float) * weightGradsSize, weightGrads_array.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, finalDeltaBuffer, CL_FALSE, 0, sizeof(float) * size, finalDelta.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, weightGrads, CL_FALSE, 0, sizeof(float) * weightGradsSize, weightGrads_array.Data(), 0, nullptr, nullptr);
     clEnqueueReadBuffer(queue, biasGrads, CL_TRUE, 0, sizeof(float) * biasGradsSize, biasGrads_array.Data(), 0, nullptr, nullptr);
 
     Napi::Object output = Napi::Object::New(env);

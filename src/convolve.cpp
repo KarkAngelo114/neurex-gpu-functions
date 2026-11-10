@@ -87,7 +87,6 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     size_t activationSize = (size_t)outputSize;
 
     clEnqueueNDRangeKernel(queue, convolveKernel, 3, nullptr, global, nullptr, 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, z_values, CL_TRUE, 0, sizeof(float) * outputSize, z_values_vector.Data(), 0, nullptr, nullptr);
 
     if (activationType != "softmax") {
         clSetKernelArg(activationKernel, 0, sizeof(cl_mem), &z_values);
@@ -97,7 +96,6 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
         // run activation function
         clEnqueueNDRangeKernel(queue, activationKernel, 1, nullptr, &activationSize, nullptr, 0, nullptr, nullptr);
         
-        clEnqueueReadBuffer(queue, activated_output, CL_TRUE, 0, sizeof(float) * outputSize, activated_output_vector.Data(), 0, nullptr, nullptr);
     }
     else {
         float* data = z_values_vector.Data();
@@ -122,8 +120,11 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
 
         clEnqueueNDRangeKernel(queue, activationKernel, 1, nullptr, &softmax_branch_global_work_size, nullptr, 0, nullptr, nullptr);
 
-        clEnqueueReadBuffer(queue, activated_output, CL_TRUE, 0, sizeof(float) * outputSize, activated_output_vector.Data(), 0, nullptr, nullptr);
+        
     }
+
+    clEnqueueReadBuffer(queue, z_values, CL_FALSE, 0, sizeof(float) * outputSize, z_values_vector.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, activated_output, CL_TRUE, 0, sizeof(float) * outputSize, activated_output_vector.Data(), 0, nullptr, nullptr);
 
     Napi::Object output_obj = Napi::Object::New(env);
     output_obj.Set("z_values", z_values_vector);
@@ -234,6 +235,7 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     IntArray outputShape = Vectorize(info[1].As<Napi::Array>());
     IntArray deltaShape = Vectorize(info[2].As<Napi::Array>());
     IntArray kernelShape = Vectorize(info[3].As<Napi::Array>());
+    Napi::Float32Array weights_array = info[4].As<Napi::Float32Array>();
     std::string modelID = info[5].As<Napi::String>().Utf8Value();
     std::string layerID = info[6].As<Napi::String>().Utf8Value();
 
@@ -247,16 +249,6 @@ Napi::Value ConvolveDelta_GPU(const Napi::CallbackInfo& info) {
     int oH = outputShape[0];
     int oW = outputShape[1];
     int outputDepth = outputShape[2];
-
-    if (deltaDepth != F || outputDepth != C_k) {
-        throw std::invalid_argument("ConvolveBackward delta, output, and kernel depths do not match.");
-    }
-    if (inputTensor.ElementLength() != static_cast<size_t>(deltaH) * deltaW * deltaDepth) {
-        throw std::invalid_argument("ConvolveBackward input length does not match deltaShape.");
-    }
-    if (info[4].As<Napi::Float32Array>().ElementLength() != static_cast<size_t>(F) * KH * KW * C_k) {
-        throw std::invalid_argument("ConvolveBackward weight length does not match kernelShape.");
-    }
 
     int targetSize = oH * oW * outputDepth;
     const size_t deltaSize = static_cast<size_t>(deltaH) * deltaW * deltaDepth;
@@ -316,16 +308,6 @@ Napi::Value ConvolveDelta_CPU(const Napi::CallbackInfo& info) {
     const int kernelH = kernelShape[1];
     const int kernelW = kernelShape[2];
     const int depth = kernelShape[3];
-
-    if (deltaDepth != numFilters || outputDepth != depth) {
-        throw std::invalid_argument("ConvolveBackward delta, output, and kernel depths do not match.");
-    }
-    if (inputTensor.ElementLength() != static_cast<size_t>(deltaH) * deltaW * deltaDepth) {
-        throw std::invalid_argument("ConvolveBackward input length does not match deltaShape.");
-    }
-    if (kernelsArray.ElementLength() != static_cast<size_t>(numFilters) * kernelH * kernelW * depth) {
-        throw std::invalid_argument("ConvolveBackward weight length does not match kernelShape.");
-    }
 
     int outputSize = outputH * outputW * outputDepth;
     Napi::Float32Array outputTensor = getOrCreateBuffer(env, modelID, layerID+"_convolve_backward",  outputSize);
@@ -403,17 +385,6 @@ Napi::Value fusedFinalDeltaProjector_ForConv_GPU(const Napi::CallbackInfo& info)
     int W = outputShape[1];
     int Cout = outputShape[2];
 
-    if (inputH <= 0 || inputW <= 0 || Cin <= 0 || H <= 0 || W <= 0 ||
-        numFilters <= 0 || Kh <= 0 || Kw <= 0 || stride <= 0 ||
-        d != Cin || Cout != numFilters || size != H * W * Cout ||
-        zs_array.ElementLength() != size || layerOutput.ElementLength() != size ||
-        layerInput.ElementLength() != inputH * inputW * Cin ||
-        weightGrads_array.ElementLength() != numFilters * Kh * Kw * Cin ||
-        biasGrads_array.ElementLength() != numFilters) {
-        Napi::RangeError::New(env, "Convolution gradient inputs do not match the provided shapes").ThrowAsJavaScriptException();
-        return env.Null();
-    }
-
     int padH = H == inputH ? (Kh - 1) / 2 : 0;
     int padW = W == inputW ? (Kw - 1) / 2 : 0;
 
@@ -424,12 +395,10 @@ Napi::Value fusedFinalDeltaProjector_ForConv_GPU(const Napi::CallbackInfo& info)
     cl_kernel gradientAccumulationKernel = gpu.kernel("accumulateConvWeightandBiasGrads");
 
     cl_mem z_values = gpu.getZ(modelID, layerID);
-    cl_mem layerInputBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_conv_gradient_input", layerInput.ElementLength());
-    cl_mem layerOutputBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_conv_gradient_output", layerOutput.ElementLength());
+    cl_mem layerInputBuffer = gpu.getInput(modelID, layerID);
+    cl_mem layerOutputBuffer = gpu.getActivationOutput(modelID, layerID);
     cl_mem finalDeltaBuffer = gpu.getOrCreate_Delta(modelID, layerID, static_cast<size_t>(size));
-    cl_mem incoming_deltaBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_incoming_delta", static_cast<size_t>(size));
-    clEnqueueWriteBuffer(queue, layerInputBuffer, CL_FALSE, 0, sizeof(float) * layerInput.ElementLength(), layerInput.Data(), 0, nullptr, nullptr);
-    clEnqueueWriteBuffer(queue, layerOutputBuffer, CL_FALSE, 0, sizeof(float) * layerOutput.ElementLength(), layerOutput.Data(), 0, nullptr, nullptr);
+    cl_mem incoming_deltaBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_conv_incoming_delta", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, incoming_deltaBuffer, CL_FALSE, 0, sizeof(float) * size, incomingDelta.Data(), 0, nullptr, nullptr);
     cl_mem dAct = gpu.getOrCreate_DAct(modelID, layerID, static_cast<size_t>(size));
 
@@ -462,11 +431,7 @@ Napi::Value fusedFinalDeltaProjector_ForConv_GPU(const Napi::CallbackInfo& info)
 
         clEnqueueNDRangeKernel(queue, activationKernel, 1, nullptr, &scalarSize, nullptr, 0, nullptr, nullptr);
     } else if (applyDerivativeActivation) {
-        if (activationType != "linear" && activationType != "relu" &&
-            activationType != "sigmoid" && activationType != "tanh") {
-            Napi::TypeError::New(env, "Unsupported convolution activation derivative: " + activationType).ThrowAsJavaScriptException();
-            return env.Null();
-        }
+        
         cl_kernel activationKernel = gpu.kernel("d" + activationType);
         cl_kernel elementWiseKernel = gpu.kernel("element_wise_mul");
 
@@ -505,7 +470,8 @@ Napi::Value fusedFinalDeltaProjector_ForConv_GPU(const Napi::CallbackInfo& info)
     clEnqueueNDRangeKernel(queue, gradientAccumulationKernel, 1, nullptr, &gradientAccumulationSize, nullptr, 0, nullptr, nullptr);
 
     clEnqueueReadBuffer(queue, weightGrads, CL_FALSE, 0, sizeof(float) * weightGradsSize, weightGrads_array.Data(), 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, biasGrads, CL_TRUE, 0, sizeof(float) * biasGradsSize, biasGrads_array.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, biasGrads, CL_FALSE, 0, sizeof(float) * biasGradsSize, biasGrads_array.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, finalDeltaBuffer, CL_TRUE, 0, sizeof(float) * size, finalDelta.Data(), 0, nullptr, nullptr);
     
     Napi::Object output = Napi::Object::New(env);
     output.Set("delta", finalDelta);

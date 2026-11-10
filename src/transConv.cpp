@@ -31,6 +31,8 @@ Napi::Value transConvForward_GPU(const Napi::CallbackInfo& info) {
     int filters = info[4].As<Napi::Number>().Int32Value();
     IntArray weightShape = Vectorize(info[5].As<Napi::Array>());
     std::string activationType = info[6].As<Napi::String>().Utf8Value();
+    Napi::Float32Array kernel_weights = info[7].As<Napi::Float32Array>();
+    Napi::Float32Array biase_array = info[8].As<Napi::Float32Array>();
     std::string modelID = info[9].As<Napi::String>().Utf8Value();
     std::string layerID = info[10].As<Napi::String>().Utf8Value();
 
@@ -153,8 +155,8 @@ Napi::Value transConvForward_CPU(const Napi::CallbackInfo& info) {
     std::string activationType = info[6].As<Napi::String>().Utf8Value();
     Napi::Float32Array weightsArray = info[7].As<Napi::Float32Array>();
     Napi::Float32Array biasesArray = info[8].As<Napi::Float32Array>();
-    std::string modelID = info[10].As<Napi::String>().Utf8Value();
-    std::string layerID = info[11].As<Napi::String>().Utf8Value();
+    std::string modelID = info[9].As<Napi::String>().Utf8Value();
+    std::string layerID = info[10].As<Napi::String>().Utf8Value();
 
     int iH = inputShape[0];
     int iW = inputShape[1];
@@ -351,8 +353,8 @@ Napi::Value transConvBackward_CPU(const Napi::CallbackInfo& info) {
     int filters = info[4].As<Napi::Number>().Int32Value();
     IntArray weightShape = Vectorize(info[5].As<Napi::Array>());
     Napi::Float32Array weightsArray = info[6].As<Napi::Float32Array>();
-    std::string modelID = info[8].As<Napi::String>().Utf8Value();
-    std::string layerID = info[9].As<Napi::String>().Utf8Value();
+    std::string modelID = info[7].As<Napi::String>().Utf8Value();
+    std::string layerID = info[8].As<Napi::String>().Utf8Value();
 
     int iH = inputShape[0];
     int iW = inputShape[1];
@@ -418,20 +420,6 @@ Napi::Value transConvBackward_CPU(const Napi::CallbackInfo& info) {
     return outputTensor;
 }
 
-Napi::Value transConvForwardWrapper(const Napi::CallbackInfo& info) {
-    if (getComputeBackendType() == "opencl") {
-        return transConvForward_GPU(info);
-    }
-    return transConvForward_CPU(info);
-}
-
-Napi::Value transConvBackwardWrapper(const Napi::CallbackInfo& info) {
-    if (getComputeBackendType() == "opencl") {
-        return transConvBackward_GPU(info);
-    }
-    return transConvBackward_CPU(info);
-}
-
 Napi::Value fusedFinalDeltaProjector_ForTransConv_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
@@ -450,11 +438,6 @@ Napi::Value fusedFinalDeltaProjector_ForTransConv_CPU(const Napi::CallbackInfo& 
     std::string modelID = info[12].As<Napi::String>().Utf8Value();
     std::string layerID = info[13].As<Napi::String>().Utf8Value();
 
-    if (inputShape.size() != 3 || outputShape.size() != 3 || kernelShape.size() != 4) {
-        Napi::TypeError::New(env, "Transposed convolution gradient shapes must have 3, 3, and 4 dimensions").ThrowAsJavaScriptException();
-        return env.Null();
-    }
-
     int iH = inputShape[0];
     int iW = inputShape[1];
     int iD = inputShape[2];
@@ -468,18 +451,6 @@ Napi::Value fusedFinalDeltaProjector_ForTransConv_CPU(const Napi::CallbackInfo& 
     int kw = kernelShape[2];
     int kernelInputDepth = kernelShape[3];
     int size = incomingDelta.ElementLength();
-
-    if (iH <= 0 || iW <= 0 || iD <= 0 || oH <= 0 || oW <= 0 ||
-        filters <= 0 || kh <= 0 || kw <= 0 || strides <= 0 ||
-        iD != kernelInputDepth || oD != filters ||
-        size != oH * oW * filters ||
-        zs_array.ElementLength() != size || layerOutput.ElementLength() != size ||
-        layerInput.ElementLength() != iH * iW * iD ||
-        weightGrads_array.ElementLength() != filters * kh * kw * iD ||
-        biasGrads_array.ElementLength() != filters) {
-        Napi::RangeError::New(env, "Transposed convolution gradient inputs do not match the provided shapes").ThrowAsJavaScriptException();
-        return env.Null();
-    }
 
     int padH = std::max(0, (iH - 1) * strides + kh - oH);
     int padW = std::max(0, (iW - 1) * strides + kw - oW);
@@ -500,10 +471,6 @@ Napi::Value fusedFinalDeltaProjector_ForTransConv_CPU(const Napi::CallbackInfo& 
         };
 
         auto activation = activations.find(activationType);
-        if (activation == activations.end()) {
-            Napi::TypeError::New(env, "Unsupported transposed convolution activation derivative: " + activationType).ThrowAsJavaScriptException();
-            return env.Null();
-        }
 
         activation->second(zs_array, finalDelta);
 
@@ -574,6 +541,20 @@ Napi::Value fusedFinalDeltaProjector_ForTransConv_CPU(const Napi::CallbackInfo& 
     output.Set("biasGrads", biasGrads_array);
 
     return output;
+}
+
+Napi::Value transConvForwardWrapper(const Napi::CallbackInfo& info) {
+    if (getComputeBackendType() == "opencl") {
+        return transConvForward_GPU(info);
+    }
+    return transConvForward_CPU(info);
+}
+
+Napi::Value transConvBackwardWrapper(const Napi::CallbackInfo& info) {
+    if (getComputeBackendType() == "opencl") {
+        return transConvBackward_GPU(info);
+    }
+    return transConvBackward_CPU(info);
 }
 
 Napi::Value fusedFinalDeltaProjector_ForTransConv_wrapper(const Napi::CallbackInfo& info) {
