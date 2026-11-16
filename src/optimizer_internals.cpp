@@ -56,29 +56,47 @@ Napi::Value SGD_GPU(const Napi::CallbackInfo& info) {
 
 Napi::Value SGD_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    Napi::Float32Array params = info[0].As<Napi::Float32Array>();
-    Napi::Float32Array grads = info[1].As<Napi::Float32Array>();
-    Napi::Float32Array velocity = info[2].As<Napi::Float32Array>();
-    float lr = info[3].As<Napi::Number>().FloatValue();
-    float momentum = info[4].As<Napi::Number>().FloatValue();
-    int batchSize = info[5].As<Napi::Number>().Int32Value();
 
-    int element_length = params.ElementLength();
+    Napi::Float32Array weights_array = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array weight_grads = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array weight_velocity = info[2].As<Napi::Float32Array>();
+    Napi::Float32Array biases_array = info[3].As<Napi::Float32Array>();
+    Napi::Float32Array biases_grads = info[4].As<Napi::Float32Array>();
+    Napi::Float32Array biases_velocity = info[5].As<Napi::Float32Array>();
+    float lr = info[6].As<Napi::Number>().FloatValue();
+    float momentum = info[7].As<Napi::Number>().FloatValue();
+    int batchSize = info[8].As<Napi::Number>().Int32Value();
+    bool useBias = info[9].As<Napi::Boolean>().Value();
 
-    float* p = params.Data();
-    float* g = grads.Data();
-    float* v = velocity.Data();
+    int weight_size = weights_array.ElementLength();
+    int bias_size = weights_array.ElementLength();
+
+    float* w = weights_array.Data();
+    float* wg = weight_grads.Data();
+    float* wv = weight_velocity.Data();
+    float* b = biases_array.Data();
+    float* bg = biases_grads.Data();
+    float* bv = biases_velocity.Data();
 
     #pragma omp parallel for
-    
-    for (int i = 0; i < element_length; i++) {
-        v[i] = momentum * v[i] + (g[i] / batchSize);
-        p[i] -= lr * v[i];
+    for (int i = 0; i < weight_size; i++) {
+        mv[i] = momentum * wv[i] + (wg[i] / batchSize);
+        w[i] -= lr * mv[i];
+    }
+
+    if (useBias) {
+        #pragma omp parallel for
+        for (int i = 0; i < bias_size; i++) {
+            bv[i] = momentum * bv[i] + (bg[i] / batchSize);
+            b[i] -= lr * bv[i];
+        }
     }
 
     Napi::Object output = Napi::Object::New(env);
-    output.Set("params", params);
-    output.Set("velocity", velocity);
+    output.Set("weights", weights_array);
+    output.Set("weightVelocity", weight_velocity);
+    output.Set("biases",biases_array);
+    output.Set("biasVelocity",biases_velocity);
 
     return output;
 }
@@ -143,43 +161,72 @@ Napi::Value Adam_GPU(const Napi::CallbackInfo& info) {
 
 Napi::Value Adam_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    Napi::Float32Array params = info[0].As<Napi::Float32Array>();
-    Napi::Float32Array grads = info[1].As<Napi::Float32Array>();
-    Napi::Float32Array stateM = info[2].As<Napi::Float32Array>();
-    Napi::Float32Array stateV = info[3].As<Napi::Float32Array>();
-    int stateT = info[4].As<Napi::Number>().Int32Value();
-    float learning_rate = info[5].As<Napi::Number>().FloatValue();
-    float beta1 = info[6].As<Napi::Number>().FloatValue();
-    float beta2 = info[7].As<Napi::Number>().FloatValue();
-    float epsilon = info[8].As<Napi::Number>().FloatValue();
-    int batchSize = info[9].As<Napi::Number>().Int32Value();
 
-    int params_len = params.ElementLength();
+    Napi::Float32Array weights = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array weightGrads = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array biases = info[2].As<Napi::Float32Array>();
+    Napi::Float32Array biasGrads = info[3].As<Napi::Float32Array>();
+    Napi::Float32Array m_weights = info[4].As<Napi::Float32Array>();
+    Napi::Float32Array m_biases = info[5].As<Napi::Float32Array>();
+    Napi::Float32Array v_weights = info[6].As<Napi::Float32Array>();
+    Napi::Float32Array v_biases = info[7].As<Napi::Float32Array>();
+    int stateT = info[8].As<Napi::Number>().Int32Value();
+    float learning_rate = info[9].As<Napi::Number>().FloatValue();
+    float beta1 = info[10].As<Napi::Number>().FloatValue();
+    float beta2 = info[11].As<Napi::Number>().FloatValue();
+    float epsilon = info[12].As<Napi::Number>().FloatValue();
+    int batchSize = info[13].As<Napi::Number>().Int32Value();
+    bool useBias = info[14].As<Napi::Boolean>().Value();
+
+    int weightSize = weights.ElementLength();
+    int biasSize = biases.ElementLength();
 
 
-    float* p = params.Data();
-    float* g = grads.Data();
-    float* sm = stateM.Data();
-    float* sv = stateV.Data();
+    float* w = weights.Data();
+    float* wg = weightGrads.Data();
+    float* mw = m_weights.Data();
+    float* vw = v_weights.Data();
+    float* b = biases.Data();
+    float* bg = biasGrads.Data();
+    float* mb = m_biases.Data();
+    float* vb = v_biases.Data();
+    
 
     #pragma omp parallel for
-    
-    for (int i = 0; i < params_len; i++) {
-        float grad = (g[i] / batchSize);
+    for (int i = 0; i < weightSize; i++) {
+        float grad = (wg[i] / batchSize);
 
-        sm[i] = beta1 * sm[i] + (1 - beta1) * grad;
-        sv[i] = beta2 * sv[i] + (1 - beta2) * grad * grad;
+        mw[i] = beta1 * mw[i] + (1 - beta1) * grad;
+        vw[i] = beta2 * vw[i] + (1 - beta2) * grad * grad;
 
-        float mHat = sm[i] / (1.0f - pow(beta1, stateT));
-        float vHat = sv[i] / (1.0f - pow(beta2, stateT));
+        float mHat = mw[i] / (1.0f - pow(beta1, stateT));
+        float vHat = vw[i] / (1.0f - pow(beta2, stateT));
 
-        p[i] -= learning_rate * mHat / (sqrt(vHat) + epsilon);
+        w[i] -= learning_rate * mHat / (sqrt(vHat) + epsilon);
+    }
+
+    if (useBias) {
+        #pragma omp parallel for
+        for (int i = 0; i < biasSize; i++) {
+            float grad = (bg[i] / batchSize);
+
+            mb[i] = beta1 * mb[i] + (1 - beta1) * grad;
+            vb[i] = beta2 * vb[i] + (1 - beta2) * grad * grad;
+
+            float mHat = mb[i] / (1.0f - pow(beta1, stateT));
+            float vHat = vb[i] / (1.0f - pow(beta2, stateT));
+
+            b[i] -= learning_rate * mHat / (sqrt(vHat) + epsilon);
+        }
     }
 
     Napi::Object output = Napi::Object::New(env);
-    output.Set("params", params);
-    output.Set("m", stateM);
-    output.Set("v", stateV);
+    output.Set("weights", weights);
+    output.Set("biases", biases);
+    output.Set("m_weights", m_weights);
+    output.Set("m_biases", m_biases);
+    output.Set("v_weights", v_weights);
+    output.Set("v_biases", v_biases);
 
     return output;
 }
@@ -234,31 +281,54 @@ Napi::Value RMSProp_GPU(const Napi::CallbackInfo& info) {
 
 Napi::Value RMSProp_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    Napi::Float32Array paramTensor = info[0].As<Napi::Float32Array>();
-    Napi::Float32Array gradTensor = info[1].As<Napi::Float32Array>();
-    Napi::Float32Array sqAvgTensor = info[2].As<Napi::Float32Array>();
-    float lr = info[3].As<Napi::Number>().FloatValue();
-    float epsilon = info[4].As<Napi::Number>().FloatValue();
-    float decayRate = info[5].As<Napi::Number>().FloatValue();
-    int batchSize = info[6].As<Napi::Number>().Int32Value();
 
-    int size = paramTensor.ElementLength();
+    Napi::Float32Array weights = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array weightGrads = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array biases = info[2].As<Napi::Float32Array>();
+    Napi::Float32Array biasGrads = info[3].As<Napi::Float32Array>();
+    Napi::Float32Array sqAvg_weights = info[4].As<Napi::Float32Array>();
+    Napi::Float32Array sqAvg_biases = info[5].As<Napi::Float32Array>();
+    float lr = info[6].As<Napi::Number>().FloatValue();
+    float epsilon = info[7].As<Napi::Number>().FloatValue();
+    float decayRate = info[8].As<Napi::Number>().FloatValue();
+    int batchSize = info[9].As<Napi::Number>().Int32Value();
+    bool useBias = info[10].As<Napi::Boolean>().Value();
 
-    float* params = paramTensor.Data();
-    float* grads = gradTensor.Data();
-    float* sqAvg = sqAvgTensor.Data();
+    int weightSize = weights.ElementLength();
+    int biasSize = biases.ElementLength();
+
+    float* w = weights.Data();
+    float* wg = weightGrads.Data();
+    float* sqAvg_w = sqAvg_weights.Data();
+    float* b = biases.Data();
+    float* bg = biasGrads.Data();
+    float* sqAvg_b = sqAvg_biases.Data();
 
     #pragma omp parallel for
-    for (int i = 0; i < size; i++) {
-        float g = (grads[i] / batchSize);
-        sqAvg[i] = decayRate * sqAvg[i] + (1 - decayRate) * (g * g);
-        params[i] -= (lr / (sqrt(sqAvg[i]) + epsilon)) * g;
+    for (int i = 0; i < weightSize; i++) {
+        float g = (wg[i] / batchSize);
+
+        sqAvg_w[i] = decayRate * sqAvg_w[i] + (1 - decayRate) * (g * g);
+        w[i] -= (lr / (sqrt(sqAvg_w[i]) + epsilon)) * g;
+    }
+
+    if (useBias) {
+        #pragma omp parallel for
+        for (int i = 0; i < biasSize; i++) {
+            float g = (bg[i] / batchSize);
+
+            sqAvg_b[i] = decayRate * sqAvg_b[i] + (1 - decayRate) * (g * g);
+            b[i] -= (lr / (sqrt(sqAvg_b[i]) + epsilon)) * g;
+        }
     }
 
 
     Napi::Object output = Napi::Object::New(env);
-    output.Set("params", paramTensor);
-    output.Set("sqAvg", sqAvgTensor);
+    output.Set("weights", weights);
+    output.Set("biases", biases);
+    output.Set("sqAvg_weights", sqAvg_weights);
+    output.Set("sqAvg_biases", sqAvg_biases);
+    
     return output;
 }
 
