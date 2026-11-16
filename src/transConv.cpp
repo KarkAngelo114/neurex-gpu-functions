@@ -420,6 +420,141 @@ Napi::Value transConvBackward_CPU(const Napi::CallbackInfo& info) {
     return outputTensor;
 }
 
+Napi::Value fusedFinalDeltaProjector_ForTransConv_GPU(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    Napi::Float32Array zs_array = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array layerInput = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array layerOutput = info[2].As<Napi::Float32Array>();
+    Napi::Float32Array incomingDelta = info[3].As<Napi::Float32Array>();
+    Napi::Float32Array weightGrads_array = info[4].As<Napi::Float32Array>();
+    Napi::Float32Array biasGrads_array = info[5].As<Napi::Float32Array>();
+    IntArray inputShape = Vectorize(info[6].As<Napi::Array>());
+    IntArray outputShape = Vectorize(info[7].As<Napi::Array>());
+    IntArray kernelShape = Vectorize(info[8].As<Napi::Array>());
+    int strides = info[9].As<Napi::Number>().Int32Value();
+    std::string activationType = info[10].As<Napi::String>().Utf8Value();
+    bool applyDerivativeActivation = info[11].As<Napi::Boolean>().Value();
+    std::string modelID = info[12].As<Napi::String>().Utf8Value();
+    std::string layerID = info[13].As<Napi::String>().Utf8Value();
+
+    int iH = inputShape[0];
+    int iW = inputShape[1];
+    int iD = inputShape[2];
+
+    int oH = outputShape[0];
+    int oW = outputShape[1];
+    int oD = outputShape[2];
+
+    int filters = kernelShape[0];
+    int kh = kernelShape[1];
+    int kw = kernelShape[2];
+    int kernelInputDepth = kernelShape[3];
+    int size = incomingDelta.ElementLength();
+
+    int padH = std::max(0, (iH - 1) * strides + kh - oH);
+    int padW = std::max(0, (iW - 1) * strides + kw - oW);
+    int padTop = padH / 2;
+    int padLeft = padW / 2;
+
+    Napi::Float32Array finalDelta = getOrCreateBuffer(env, modelID, layerID + "_final_delta", size);
+    int weightGradsSize = weightGrads_array.ElementLength();
+    int biasGradsSize = biasGrads_array.ElementLength();
+
+    auto& gpu = GpuContext::instance();
+    cl_command_queue queue = gpu.queue();
+    cl_context context = gpu.context();
+    cl_kernel gradientAccumulationKernel = gpu.kernel("accumulateTransConvWeightAndBiasGrads");
+
+    cl_mem z_values = gpu.getZ(modelID, layerID);
+    cl_mem layerInputBuffer = gpu.getInput(modelID, layerID);
+    cl_mem layerOutputBuffer = gpu.getActivationOutput(modelID, layerID);
+    cl_mem finalDeltaBuffer = gpu.getOrCreate_Delta(modelID, layerID, static_cast<size_t>(size));
+    cl_mem weightGrads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_trans_conv_weight_grads", static_cast<size_t>(weightGradsSize));
+    cl_mem biasGrads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_trans_conv_bias_grads", static_cast<size_t>(biasGradsSize));
+    cl_mem incoming_deltaBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_trans_conv_incoming_delta", static_cast<size_t>(size));
+    cl_mem dAct = gpu.getOrCreate_DAct(modelID, layerID, static_cast<size_t>(size));
+    clEnqueueWriteBuffer(queue, incoming_deltaBuffer, CL_FALSE, 0, sizeof(float) * size, incomingDelta.Data(), 0, nullptr, nullptr);
+    clEnqueueWriteBuffer(queue, weightGrads, CL_FALSE, 0, sizeof(float) * weightGradsSize, weightGrads_array.Data(), 0, nullptr, nullptr);
+    clEnqueueWriteBuffer(queue, biasGrads, CL_FALSE, 0, sizeof(float) * biasGradsSize, biasGrads_array.Data(), 0, nullptr, nullptr);
+    
+    size_t scalarSize = static_cast<size_t>(size);
+    size_t gradient_accumulation_size[3] = {
+        static_cast<size_t>(filters),
+        static_cast<size_t>(kh),
+        static_cast<size_t>(kw) * static_cast<size_t>(iD)
+    };
+
+    // activation function + element-wise mul
+    if (applyDerivativeActivation && activationType == "softmax") {
+        cl_kernel activationKernel = gpu.kernel("dsoftmax");
+        const float* probabilities = layerOutput.Data();
+        const float* delta = incomingDelta.Data();
+
+        float dotProduct = 0.0f;
+        #pragma omp unroll partial(4)
+        for (int i = 0; i < size; i++) {
+            dotProduct += probabilities[i] * delta[i];
+        }
+
+        clSetKernelArg(activationKernel, 0, sizeof(cl_mem), &layerOutputBuffer);
+        clSetKernelArg(activationKernel, 1, sizeof(cl_mem), &incoming_deltaBuffer);
+        clSetKernelArg(activationKernel, 2, sizeof(cl_mem), &finalDeltaBuffer);
+        clSetKernelArg(activationKernel, 3, sizeof(float), &dotProduct);
+        clSetKernelArg(activationKernel, 4, sizeof(int), &size);
+
+        clEnqueueNDRangeKernel(queue, activationKernel, 1, nullptr, &scalarSize, nullptr, 0, nullptr, nullptr);
+    } else if (applyDerivativeActivation) {
+        
+        cl_kernel activationKernel = gpu.kernel("d" + activationType);
+        cl_kernel elementWiseKernel = gpu.kernel("element_wise_mul");
+
+        clSetKernelArg(activationKernel, 0, sizeof(cl_mem), &z_values);
+        clSetKernelArg(activationKernel, 1, sizeof(cl_mem), &dAct);
+        clSetKernelArg(activationKernel, 2, sizeof(int), &size);
+        clEnqueueNDRangeKernel(queue, activationKernel, 1, nullptr, &scalarSize, nullptr, 0, nullptr, nullptr);
+
+        clSetKernelArg(elementWiseKernel, 0, sizeof(cl_mem), &dAct);
+        clSetKernelArg(elementWiseKernel, 1, sizeof(cl_mem), &incoming_deltaBuffer);
+        clSetKernelArg(elementWiseKernel, 2, sizeof(cl_mem), &finalDeltaBuffer);
+        clSetKernelArg(elementWiseKernel, 3, sizeof(int), &size);
+
+        clEnqueueNDRangeKernel(queue, elementWiseKernel, 1, nullptr, &scalarSize, nullptr, 0, nullptr, nullptr);
+    } else {
+        clEnqueueCopyBuffer(queue, incoming_deltaBuffer, finalDeltaBuffer, 0, 0, sizeof(float) * size, 0, nullptr, nullptr);
+    }
+
+    // gradient accumulation
+    clSetKernelArg(gradientAccumulationKernel, 0, sizeof(cl_mem), &layerInputBuffer);
+    clSetKernelArg(gradientAccumulationKernel, 1, sizeof(cl_mem), &finalDeltaBuffer);
+    clSetKernelArg(gradientAccumulationKernel, 2, sizeof(cl_mem), &weightGrads);
+    clSetKernelArg(gradientAccumulationKernel, 3, sizeof(cl_mem), &biasGrads);
+    clSetKernelArg(gradientAccumulationKernel, 4, sizeof(int), &iH);
+    clSetKernelArg(gradientAccumulationKernel, 5, sizeof(int), &iW);
+    clSetKernelArg(gradientAccumulationKernel, 6, sizeof(int), &iD);
+    clSetKernelArg(gradientAccumulationKernel, 7, sizeof(int), &oH);
+    clSetKernelArg(gradientAccumulationKernel, 8, sizeof(int), &oW);
+    clSetKernelArg(gradientAccumulationKernel, 9, sizeof(int), &filters);
+    clSetKernelArg(gradientAccumulationKernel, 10, sizeof(int), &kh);
+    clSetKernelArg(gradientAccumulationKernel, 11, sizeof(int), &kw);
+    clSetKernelArg(gradientAccumulationKernel, 12, sizeof(int), &strides);
+    clSetKernelArg(gradientAccumulationKernel, 13, sizeof(int), &padTop);
+    clSetKernelArg(gradientAccumulationKernel, 14, sizeof(int), &padLeft);
+
+    clEnqueueNDRangeKernel(queue, gradientAccumulationKernel, 3, nullptr, gradient_accumulation_size, nullptr, 0, nullptr, nullptr);
+
+    clEnqueueReadBuffer(queue, weightGrads, CL_FALSE, 0, sizeof(float) * weightGradsSize, weightGrads_array.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, biasGrads, CL_FALSE, 0, sizeof(float) * biasGradsSize, biasGrads_array.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, finalDeltaBuffer, CL_TRUE, 0, sizeof(float) * size, finalDelta.Data(), 0, nullptr, nullptr);
+
+    Napi::Object output = Napi::Object::New(env);
+    output.Set("delta", finalDelta);
+    output.Set("weightGrads", weightGrads_array);
+    output.Set("biasGrads", biasGrads_array);
+
+    return output;
+}
+
 Napi::Value fusedFinalDeltaProjector_ForTransConv_CPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
@@ -558,6 +693,7 @@ Napi::Value transConvBackwardWrapper(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value fusedFinalDeltaProjector_ForTransConv_wrapper(const Napi::CallbackInfo& info) {
+    if (getComputeBackendType() == "opencl") return fusedFinalDeltaProjector_ForTransConv_GPU(info);
     return fusedFinalDeltaProjector_ForTransConv_CPU(info);
 }
 
