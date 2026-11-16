@@ -87,7 +87,9 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
     size_t activationSize = (size_t)outputSize;
 
     clEnqueueNDRangeKernel(queue, convolveKernel, 3, nullptr, global, nullptr, 0, nullptr, nullptr);
-
+    
+    clEnqueueReadBuffer(queue, z_values, CL_TRUE, 0, sizeof(float) * outputSize, z_values_vector.Data(), 0, nullptr, nullptr);
+    
     if (activationType != "softmax") {
         clSetKernelArg(activationKernel, 0, sizeof(cl_mem), &z_values);
         clSetKernelArg(activationKernel, 1, sizeof(cl_mem), &activated_output);
@@ -123,7 +125,6 @@ Napi::Value Convolve_GPU(const Napi::CallbackInfo& info) {
         
     }
 
-    clEnqueueReadBuffer(queue, z_values, CL_FALSE, 0, sizeof(float) * outputSize, z_values_vector.Data(), 0, nullptr, nullptr);
     clEnqueueReadBuffer(queue, activated_output, CL_TRUE, 0, sizeof(float) * outputSize, activated_output_vector.Data(), 0, nullptr, nullptr);
 
     Napi::Object output_obj = Napi::Object::New(env);

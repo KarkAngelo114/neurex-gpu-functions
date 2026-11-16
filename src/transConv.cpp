@@ -108,7 +108,6 @@ Napi::Value transConvForward_GPU(const Napi::CallbackInfo& info) {
         // run activation function
         clEnqueueNDRangeKernel(queue, activationKernel, 1, nullptr, &activationSize, nullptr, 0, nullptr, nullptr);
         
-        clEnqueueReadBuffer(queue, activated_output, CL_TRUE, 0, sizeof(float) * outputSize, activated_output_vector.Data(), 0, nullptr, nullptr);
     }
     else {
         float* data = z_values_vector.Data();
@@ -133,8 +132,10 @@ Napi::Value transConvForward_GPU(const Napi::CallbackInfo& info) {
 
         clEnqueueNDRangeKernel(queue, activationKernel, 1, nullptr, &softmax_branch_global_work_size, nullptr, 0, nullptr, nullptr);
 
-        clEnqueueReadBuffer(queue, activated_output, CL_TRUE, 0, sizeof(float) * outputSize, activated_output_vector.Data(), 0, nullptr, nullptr);
+        
     }
+
+    clEnqueueReadBuffer(queue, activated_output, CL_TRUE, 0, sizeof(float) * outputSize, activated_output_vector.Data(), 0, nullptr, nullptr);
 
     Napi::Object output_obj = Napi::Object::New(env);
     output_obj.Set("z_values", z_values_vector);
