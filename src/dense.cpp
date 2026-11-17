@@ -183,9 +183,9 @@ Napi::Value DeltaMatMul_GPU(const Napi::CallbackInfo& info) {
 
     int deltaSize = delta.ElementLength();
 
-    cl_mem dDelta = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_incoming_delta_matmul", static_cast<size_t>(outputSize));
+    cl_mem dDelta = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_incoming_delta_matmul", static_cast<size_t>(outputSize));
     clEnqueueWriteBuffer(queue, dDelta, CL_FALSE, 0, sizeof(float) * deltaSize, delta.Data(), 0, nullptr, nullptr);
-    cl_mem dOut = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_output_delta_matmul", static_cast<size_t>(inputSize));
+    cl_mem dOut = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_output_delta_matmul", static_cast<size_t>(inputSize));
     cl_mem dW = gpu.getWeights(modelID, layerID);
 
     clSetKernelArg(k, 0, sizeof(cl_mem), &dDelta);
@@ -263,14 +263,14 @@ Napi::Value fusedFinalDeltaProjector_ForDense_GPU(const Napi::CallbackInfo& info
     cl_mem layerInputBuffer = gpu.getInput(modelID, layerID);
     cl_mem layerOutputBuffer = gpu.getActivationOutput(modelID, layerID);
     cl_mem finalDeltaBuffer = gpu.getOrCreate_Delta(modelID, layerID, static_cast<size_t>(size));
-    cl_mem incoming_deltaBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_incoming_delta", static_cast<size_t>(size));
+    cl_mem incoming_deltaBuffer = gpu.getOrCreateOpenCLBuffer(modelID, layerID + "_incoming_delta", static_cast<size_t>(size));
     cl_mem dAct = gpu.getOrCreate_DAct(modelID, layerID, static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, incoming_deltaBuffer, CL_FALSE, 0, sizeof(float) * size, incomingDelta.Data(), 0, nullptr, nullptr);
 
     size_t weightGradsSize = weightGrads_array.ElementLength();
     size_t biasGradsSize = biasGrads_array.ElementLength();
-    cl_mem weightGrads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_dense_weight_grads", weightGradsSize);
-    cl_mem biasGrads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_dense_bias_grads", biasGradsSize);
+    cl_mem weightGrads = gpu.getOrCreateOpenCLBuffer(modelID, layerID + "_dense_weight_grads", weightGradsSize);
+    cl_mem biasGrads = gpu.getOrCreateOpenCLBuffer(modelID, layerID + "_dense_bias_grads", biasGradsSize);
     clEnqueueWriteBuffer(queue, weightGrads, CL_FALSE, 0, sizeof(float) * weightGradsSize, weightGrads_array.Data(), 0, nullptr, nullptr);
     clEnqueueWriteBuffer(queue, biasGrads, CL_FALSE, 0, sizeof(float) * biasGradsSize, biasGrads_array.Data(), 0, nullptr, nullptr);
 

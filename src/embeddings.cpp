@@ -37,7 +37,7 @@ Napi::Value GetEmbeddings_GPU(const Napi::CallbackInfo& info) {
     cl_mem tokenBuffer = gpu.getOrCreate_Input(modelID, layerID, static_cast<size_t>(totalSize));
     clEnqueueWriteBuffer(queue, tokenBuffer, CL_FALSE, 0, sizeof(int) * sequence_length, tokenArray.data(), 0, nullptr, nullptr);
     cl_mem lookup = gpu.getWeights(modelID, layerID);
-    cl_mem output = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_forward_embeddings", static_cast<size_t>(totalSize));
+    cl_mem output = gpu.getOrCreateOpenCLBuffer(modelID, layerID + "_forward_embeddings", static_cast<size_t>(totalSize));
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &tokenBuffer);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &lookup);
@@ -109,9 +109,9 @@ Napi::Value ReturnEmbeddings_GPU(const Napi::CallbackInfo& info) {
     cl_kernel kernel = gpu.kernel("returnEmbeddings");
 
     cl_mem tokenBuffer = gpu.getInput(modelID, layerID);
-    cl_mem delta_input = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_embeddings_incoming_delta", static_cast<size_t>(deltaSize));
+    cl_mem delta_input = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_embeddings_incoming_delta", static_cast<size_t>(deltaSize));
     clEnqueueWriteBuffer(queue, delta_input, CL_FALSE, 0, sizeof(float) * deltaSize, delta.Data(), 0, nullptr, nullptr);
-    cl_mem gradients = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_embeddings_gradients", static_cast<size_t>(weightGradSize));
+    cl_mem gradients = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_embeddings_gradients", static_cast<size_t>(weightGradSize));
     clEnqueueWriteBuffer(queue, gradients, CL_FALSE, 0, sizeof(float) * weightGradSize, weightGrads.Data(), 0, nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &tokenBuffer);

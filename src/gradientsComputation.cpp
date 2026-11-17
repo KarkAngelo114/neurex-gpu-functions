@@ -139,11 +139,11 @@ Napi::Value accumulateWeightandBiasGradsForTransConv_GPU(const Napi::CallbackInf
     cl_mem delta_input = gpu.getDelta(modelID, layerID);
     
     cl_event weightWriteEvent;
-    cl_mem weightGradsBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_trans_conv_weight_grads", weightGradsSize);
+    cl_mem weightGradsBuffer = gpu.getOrCreateOpenCLBuffer(modelID, layerID + "_trans_conv_weight_grads", weightGradsSize);
     clEnqueueWriteBuffer(queue, weightGradsBuffer, CL_FALSE, 0, sizeof(float) * weightGradsSize, weightGrads.Data(), 0, nullptr, &weightWriteEvent);
 
     cl_event biasWriteEvent;
-    cl_mem biasGradsBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_trans_conv_bias_grads", biasGradsSize);
+    cl_mem biasGradsBuffer = gpu.getOrCreateOpenCLBuffer(modelID, layerID + "_trans_conv_bias_grads", biasGradsSize);
     clEnqueueWriteBuffer(queue, biasGradsBuffer, CL_FALSE, 0, sizeof(float) * biasGradsSize, biasGrads.Data(), 0, nullptr, &biasWriteEvent);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &activations);
@@ -359,12 +359,12 @@ Napi::Value accumulate_MHA_WeightsAndBiasGrads_GPU(const Napi::CallbackInfo& inf
 
     cl_mem input = gpu.getInput(modelID, layerID + "_mha_incoming_input");
     cl_mem mha = gpu.getInput(modelID, layerID + "_mha");
-    cl_mem q = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_dQ", tensorSize);
-    cl_mem k = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_dK", tensorSize);
-    cl_mem v = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_dV", tensorSize);
-    cl_mem dmha = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_dMha", dmhaSize);
-    cl_mem weightGradients = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_mha_weightGrads", weightGradSize);
-    cl_mem biasGradients = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_mha_biasGrads", biasGradSize);
+    cl_mem q = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_dQ", tensorSize);
+    cl_mem k = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_dK", tensorSize);
+    cl_mem v = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_dV", tensorSize);
+    cl_mem dmha = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_dMha", dmhaSize);
+    cl_mem weightGradients = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_mha_weightGrads", weightGradSize);
+    cl_mem biasGradients = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_mha_biasGrads", biasGradSize);
     clEnqueueWriteBuffer(queue, weightGradients, CL_FALSE, 0, gradientBytes, weightGrads.Data(), 0, nullptr, nullptr);
     clEnqueueWriteBuffer(queue, biasGradients, CL_FALSE, 0, biasGradBytes, biasGrads.Data(), 0, nullptr, nullptr);
 

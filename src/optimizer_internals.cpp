@@ -9,47 +9,70 @@
 Napi::Value SGD_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
-    Napi::Float32Array params = info[0].As<Napi::Float32Array>();
-    Napi::Float32Array grads = info[1].As<Napi::Float32Array>();
-    Napi::Float32Array velocity = info[2].As<Napi::Float32Array>();
-    float lr = info[3].As<Napi::Number>().FloatValue();
-    float momentum = info[4].As<Napi::Number>().FloatValue();
-    int batchSize = info[5].As<Napi::Number>().Int32Value();
-    std::string paramType = info[6].As<Napi::String>().Utf8Value();
-    std::string modelID = info[7].As<Napi::String>().Utf8Value();
-    std::string layerID = info[8].As<Napi::String>().Utf8Value();
+    Napi::Float32Array weights_array = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array weight_grads = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array weight_velocity = info[2].As<Napi::Float32Array>();
+    Napi::Float32Array biases_array = info[3].As<Napi::Float32Array>();
+    Napi::Float32Array biases_grads = info[4].As<Napi::Float32Array>();
+    Napi::Float32Array biases_velocity = info[5].As<Napi::Float32Array>();
+    float lr = info[6].As<Napi::Number>().FloatValue();
+    float momentum = info[7].As<Napi::Number>().FloatValue();
+    int batchSize = info[8].As<Napi::Number>().Int32Value();
+    bool useBias = info[9].As<Napi::Boolean>().Value();
+    std::string modelID = info[10].As<Napi::String>().Utf8Value();
+    std::string layerID = info[11].As<Napi::String>().Utf8Value();
 
-    int param_length = params.ElementLength();
+    size_t weight_size = weights_array.ElementLength();
+    size_t bias_size = weights_array.ElementLength();
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
     cl_context context = gpu.context();
-    cl_kernel kernel = gpu.kernel("sgd");
+    cl_kernel weight_update_kernel = gpu.kernel("sgd");
+    cl_kernel bias_update_kernel = gpu.kernel("sgd");
 
-    bool isWeights = (paramType == "weights");
-    std::string tag = isWeights ? "_weightGrads" : "_biasGrads";
-    cl_mem gradients = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+tag, static_cast<size_t>(param_length));
-    clEnqueueWriteBuffer(queue, gradients, CL_FALSE, 0, sizeof(float) * param_length, grads.Data(), 0, nullptr, nullptr);
-    cl_mem parameters = isWeights ? gpu.getWeights(modelID, layerID) : gpu.getBiases(modelID, layerID);
-    cl_mem velocity_array = gpu.getOrCreate_Velocity(modelID, layerID, isWeights, static_cast<size_t>(param_length), velocity.Data());
+    cl_mem weights = gpu.getWeights(modelID, layerID);
+    cl_mem biases = gpu.getBiases(modelID, layerID);
+    cl_mem weightVelocity = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_weight_velocity", weight_size);
+    cl_mem biasVelocity = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_bias_velocity", bias_size);
+    cl_mem weightGrads = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_weight_grads", weight_size);
+    cl_mem biasGrads = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_bias_grads", bias_size);
+    clEnqueueWriteBuffer(queue, weightGrads, CL_FALSE, 0, sizeof(float) * weight_size, weight_grads.Data(), 0, nullptr, nullptr);
+    clEnqueueWriteBuffer(queue, biasGrads, CL_FALSE, 0, sizeof(float) * bias_size, biases_grads.Data(), 0, nullptr, nullptr);
+
+    clSetKernelArg(weight_update_kernel, 0, sizeof(cl_mem), &weights);
+    clSetKernelArg(weight_update_kernel, 1, sizeof(cl_mem), &weightGrads);
+    clSetKernelArg(weight_update_kernel, 2, sizeof(cl_mem), &weightVelocity);
+    clSetKernelArg(weight_update_kernel, 3, sizeof(float), &lr);
+    clSetKernelArg(weight_update_kernel, 4, sizeof(float), &momentum);
+    clSetKernelArg(weight_update_kernel, 5, sizeof(int), &static_cast<int>(weight_size));
+    clSetKernelArg(weight_update_kernel, 5, sizeof(int), &batchSize);
+
+    clSetKernelArg(bias_update_kernel, 0, sizeof(cl_mem), &biases);
+    clSetKernelArg(bias_update_kernel, 1, sizeof(cl_mem), &biasGrads);
+    clSetKernelArg(bias_update_kernel, 2, sizeof(cl_mem), &biasVelocity);
+    clSetKernelArg(bias_update_kernel, 3, sizeof(float), &lr);
+    clSetKernelArg(bias_update_kernel, 4, sizeof(float), &momentum);
+    clSetKernelArg(bias_update_kernel, 5, sizeof(int), &static_cast<int>(bias_size));
+    clSetKernelArg(bias_update_kernel, 5, sizeof(int), &batchSize);
+
+    clEnqueueNDRangeKernel(queue, weight_update_kernel, 1, 0, &weight_size, nullptr, 0, nullptr, nullptr);
     
-    clSetKernelArg(kernel, 0, sizeof(cl_mem), &parameters);
-    clSetKernelArg(kernel, 1, sizeof(cl_mem), &gradients);
-    clSetKernelArg(kernel, 2, sizeof(cl_mem), &velocity_array);
-    clSetKernelArg(kernel, 3, sizeof(float), &lr);
-    clSetKernelArg(kernel, 4, sizeof(float), &momentum);
-    clSetKernelArg(kernel, 5, sizeof(int), &param_length);
-    clSetKernelArg(kernel, 6, sizeof(int), &batchSize);
+    if (useBias) {
+        clEnqueueNDRangeKernel(queue, bias_update_kernel, 1, 0, &bias_size, nullptr, 0, nullptr, nullptr);
 
-    size_t globalSize = (size_t)param_length;
-    clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
+        clEnqueueReadBuffer(queue, biases, CL_FALSE, 0, sizeof(float)* bias_size, biases_array.Data(), 0, nullptr, nullptr);
+        clEnqueueReadBuffer(queue, biasVelocity, CL_FALSE, 0, sizeof(float)* bias_size, biases_velocity.Data(), 0, nullptr, nullptr);
+    }
 
-    clEnqueueReadBuffer(queue, parameters, CL_FALSE, 0, sizeof(float)* param_length, params.Data(), 0, nullptr, nullptr );
-    clEnqueueReadBuffer(queue, velocity_array, CL_TRUE, 0, sizeof(float)* param_length, velocity.Data(), 0, nullptr, nullptr );
+    clEnqueueReadBuffer(queue, weights, CL_FALSE, 0, sizeof(float)* weight_size, weights_array.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, weightVelocity, CL_TRUE, 0, sizeof(float)* weight_size, weight_velocity.Data(), 0, nullptr, nullptr);
 
     Napi::Object output = Napi::Object::New(env);
-    output.Set("params", params);
-    output.Set("velocity", velocity);
+    output.Set("weights", weights_array);
+    output.Set("weightVelocity", weight_velocity);
+    output.Set("biases",biases_array);
+    output.Set("biasVelocity",biases_velocity);
 
     return output;
 }
@@ -81,7 +104,7 @@ Napi::Value SGD_CPU(const Napi::CallbackInfo& info) {
     #pragma omp parallel for
     for (int i = 0; i < weight_size; i++) {
         wv[i] = momentum * wv[i] + (wg[i] / batchSize);
-        w[i] -= lr * mv[i];
+        w[i] -= lr * wv[i];
     }
 
     if (useBias) {
@@ -102,59 +125,91 @@ Napi::Value SGD_CPU(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value Adam_GPU(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-    Napi::Float32Array params = info[0].As<Napi::Float32Array>();
-    Napi::Float32Array grads = info[1].As<Napi::Float32Array>();
-    Napi::Float32Array stateM = info[2].As<Napi::Float32Array>();
-    Napi::Float32Array stateV = info[3].As<Napi::Float32Array>();
-    int stateT = info[4].As<Napi::Number>().Int32Value();
-    float learning_rate = info[5].As<Napi::Number>().FloatValue();
-    float beta1 = info[6].As<Napi::Number>().FloatValue();
-    float beta2 = info[7].As<Napi::Number>().FloatValue();
-    float epsilon = info[8].As<Napi::Number>().FloatValue();
-    int batchSize = info[9].As<Napi::Number>().Int32Value();
-    std::string paramType = info[10].As<Napi::String>().Utf8Value();
-    std::string modelID = info[11].As<Napi::String>().Utf8Value();
-    std::string layerID = info[12].As<Napi::String>().Utf8Value();
-    int params_len = params.ElementLength();
+     Napi::Env env = info.Env();
+
+    Napi::Float32Array weights_array = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array weight_grads = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array biases_array = info[2].As<Napi::Float32Array>();
+    Napi::Float32Array biases_grads = info[3].As<Napi::Float32Array>();
+    Napi::Float32Array m_weights = info[4].As<Napi::Float32Array>();
+    Napi::Float32Array m_biases = info[5].As<Napi::Float32Array>();
+    Napi::Float32Array v_weights = info[6].As<Napi::Float32Array>();
+    Napi::Float32Array v_biases = info[7].As<Napi::Float32Array>();
+    int stateT = info[8].As<Napi::Number>().Int32Value();
+    float learning_rate = info[9].As<Napi::Number>().FloatValue();
+    float beta1 = info[10].As<Napi::Number>().FloatValue();
+    float beta2 = info[11].As<Napi::Number>().FloatValue();
+    float epsilon = info[12].As<Napi::Number>().FloatValue();
+    int batchSize = info[13].As<Napi::Number>().Int32Value();
+    bool useBias = info[14].As<Napi::Boolean>().Value();
+    std::string modelID = info[15].As<Napi::String>().Utf8Value();
+    std::string layerID = info[16].As<Napi::String>().Utf8Value();
+
+    size_t weightSize = weights_array.ElementLength();
+    size_t biasSize = biases_array.ElementLength();
     
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
     cl_context context = gpu.context();
-    cl_kernel kernel = gpu.kernel("adam");
+    cl_kernel weight_update_kernel = gpu.kernel("adam");
+    cl_kernel bias_update_kernel = gpu.kernel("adam");
 
-    bool isWeights = (paramType == "weights");
-    std::string tag = isWeights ? "_weightGrads" : "_biasGrads";
-    cl_mem gradients = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+tag, static_cast<size_t>(params_len));
-    clEnqueueWriteBuffer(queue, gradients, CL_FALSE, 0, sizeof(float) * params_len, grads.Data(), 0, nullptr, nullptr);
-    cl_mem parameters = isWeights ? gpu.getWeights(modelID, layerID) : gpu.getBiases(modelID, layerID);
-    cl_mem M = gpu.getOrCreate_M(modelID, layerID, isWeights, static_cast<size_t>(params_len), stateM.Data());
-    cl_mem V = gpu.getOrCreate_V(modelID, layerID, isWeights, static_cast<size_t>(params_len), stateV.Data());
+    cl_mem weights = gpu.getWeights(modelID, layerID);
+    cl_mem biases = gpu.getBiases(modelID, layerID);
+    cl_mem m_weight_state_buffer = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_m_weight_state_buffer", weightSize);
+    cl_mem v_weight_state_buffer = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_v_weight_state_buffer", weightSize);
+    cl_mem m_bias_state_buffer = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"m_bias_state_buffer", biasSize);
+    cl_mem v_bias_state_buffer = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"v_bias_state_buffer", biasSize);
+    cl_mem weightGrads = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_weight_grads", weight_size);
+    cl_mem biasGrads = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_bias_grads", bias_size);
+    clEnqueueWriteBuffer(queue, weightGrads, CL_FALSE, 0, sizeof(float) * weight_size, weight_grads.Data(), 0, nullptr, nullptr);
+    clEnqueueWriteBuffer(queue, biasGrads, CL_FALSE, 0, sizeof(float) * bias_size, biases_grads.Data(), 0, nullptr, nullptr);
 
-    clSetKernelArg(kernel, 0, sizeof(cl_mem), &parameters);
-    clSetKernelArg(kernel, 1, sizeof(cl_mem), &gradients);
-    clSetKernelArg(kernel, 2, sizeof(cl_mem), &M);
-    clSetKernelArg(kernel, 3, sizeof(cl_mem), &V);
-    clSetKernelArg(kernel, 4, sizeof(int), &stateT);
-    clSetKernelArg(kernel, 5, sizeof(float), &learning_rate);
-    clSetKernelArg(kernel, 6, sizeof(float), &beta1);
-    clSetKernelArg(kernel, 7, sizeof(float), &beta2);
-    clSetKernelArg(kernel, 8, sizeof(float), &epsilon);
-    clSetKernelArg(kernel, 9, sizeof(int), &params_len);
-    clSetKernelArg(kernel, 10, sizeof(int), &batchSize);
+    clSetKernelArg(weight_update_kernel, 0, sizeof(cl_mem), &weights);
+    clSetKernelArg(weight_update_kernel, 1, sizeof(cl_mem), &weightGrads);
+    clSetKernelArg(weight_update_kernel, 2, sizeof(cl_mem), &m_weight_state_buffer);
+    clSetKernelArg(weight_update_kernel, 3, sizeof(cl_mem), &v_weight_state_buffer);
+    clSetKernelArg(weight_update_kernel, 4, sizeof(int), &stateT);
+    clSetKernelArg(weight_update_kernel, 5, sizeof(float), &learning_rate);
+    clSetKernelArg(weight_update_kernel, 6, sizeof(float), &beta1);
+    clSetKernelArg(weight_update_kernel, 7, sizeof(float), &beta2);
+    clSetKernelArg(weight_update_kernel, 8, sizeof(float), &epsilon);
+    clSetKernelArg(weight_update_kernel, 9, sizeof(int), &static_cast<int>(weightSize));
+    clSetKernelArg(weight_update_kernel, 10, sizeof(int), &batchSize);
 
-    size_t globalSize = (size_t)params_len;
-    clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
+    clSetKernelArg(bias_update_kernel, 0, sizeof(cl_mem), &biases);
+    clSetKernelArg(bias_update_kernel, 1, sizeof(cl_mem), &biasGrads);
+    clSetKernelArg(bias_update_kernel, 2, sizeof(cl_mem), &m_bias_state_buffer);
+    clSetKernelArg(bias_update_kernel, 3, sizeof(cl_mem), &v_bias_state_buffer);
+    clSetKernelArg(bias_update_kernel, 4, sizeof(int), &stateT);
+    clSetKernelArg(bias_update_kernel, 5, sizeof(float), &learning_rate);
+    clSetKernelArg(bias_update_kernel, 6, sizeof(float), &beta1);
+    clSetKernelArg(bias_update_kernel, 7, sizeof(float), &beta2);
+    clSetKernelArg(bias_update_kernel, 8, sizeof(float), &epsilon);
+    clSetKernelArg(bias_update_kernel, 9, sizeof(int), &static_cast<int>(biasSize));
+    clSetKernelArg(bias_update_kernel, 10, sizeof(int), &batchSize);
+
+    clEnqueueNDRangeKernel(queue, weight_update_kernel, 1, 0, &weightSize, nullptr, 0, nullptr, nullptr);
+
+    if (useBias) {
+        clEnqueueNDRangeKernel(queue, bias_update_kernel, 1, 0, &biasSize, nullptr, 0, nullptr, nullptr);
+        clEnqueueReadBuffer(queue, biases, CL_FALSE, 0, sizeof(float)* biasSize, biases_array.Data(), 0, nullptr, nullptr );
+        clEnqueueReadBuffer(queue, m_bias_state_buffer, CL_FALSE, 0, sizeof(float)* biasSize, m_biases.Data(), 0, nullptr, nullptr);
+        clEnqueueReadBuffer(queue, v_bias_state_buffer, CL_FALSE, 0, sizeof(float)* biasSize, v_biases.Data(), 0, nullptr, nullptr);
+    }
+
     
-    // reads the paramters, M, and V buffers
-    clEnqueueReadBuffer(queue, parameters, CL_FALSE, 0, sizeof(float)* params_len, params.Data(), 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, M, CL_FALSE, 0, sizeof(float)* params_len, stateM.Data(), 0, nullptr, nullptr);
-    clEnqueueReadBuffer(queue, V, CL_TRUE, 0, sizeof(float)* params_len, stateV.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, m_weight_state_buffer, CL_FALSE, 0, sizeof(float)* weightSize, m_weights.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, v_weight_state_buffer, CL_FALSE, 0, sizeof(float)* weightSize, v_weights.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, weights, CL_TRUE, 0, sizeof(float)* weightSize, weights_array.Data(), 0, nullptr, nullptr );
 
     Napi::Object output = Napi::Object::New(env);
-    output.Set("params", params);
-    output.Set("m", stateM);
-    output.Set("v", stateV);
+    output.Set("weights", weights_array);
+    output.Set("biases", biases_array);
+    output.Set("m_weights", m_weights);
+    output.Set("m_biases", m_biases);
+    output.Set("v_weights", v_weights);
+    output.Set("v_biases", v_biases);
 
     return output;
 }
@@ -233,49 +288,76 @@ Napi::Value Adam_CPU(const Napi::CallbackInfo& info) {
 
 Napi::Value RMSProp_GPU(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    Napi::Float32Array paramTensor = info[0].As<Napi::Float32Array>();
-    Napi::Float32Array gradTensor = info[1].As<Napi::Float32Array>();
-    Napi::Float32Array sqAvgTensor = info[2].As<Napi::Float32Array>();
-    float lr = info[3].As<Napi::Number>().FloatValue();
-    float epsilon = info[4].As<Napi::Number>().FloatValue();
-    float decayRate = info[5].As<Napi::Number>().FloatValue();
-    int batchSize = info[6].As<Napi::Number>().Int32Value();
-    std::string paramType = info[7].As<Napi::String>().Utf8Value();
-    std::string modelID = info[8].As<Napi::String>().Utf8Value();
-    std::string layerID = info[9].As<Napi::String>().Utf8Value();
 
-    int size = paramTensor.ElementLength();
+    Napi::Float32Array weights_array = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array weightGrads = info[1].As<Napi::Float32Array>();
+    Napi::Float32Array biases_array = info[2].As<Napi::Float32Array>();
+    Napi::Float32Array biasGrads = info[3].As<Napi::Float32Array>();
+    Napi::Float32Array sqAvg_weights = info[4].As<Napi::Float32Array>();
+    Napi::Float32Array sqAvg_biases = info[5].As<Napi::Float32Array>();
+    float lr = info[6].As<Napi::Number>().FloatValue();
+    float epsilon = info[7].As<Napi::Number>().FloatValue();
+    float decayRate = info[8].As<Napi::Number>().FloatValue();
+    int batchSize = info[9].As<Napi::Number>().Int32Value();
+    bool useBias = info[10].As<Napi::Boolean>().Value();
+    std::string modelID = info[11].As<Napi::String>().Utf8Value();
+    std::string layerID = info[12].As<Napi::String>().Utf8Value();
+
+    size_t weightSize = weights_array.ElementLength();
+    size_t biasSize = biases_array.ElementLength();
 
     auto& gpu = GpuContext::instance();
     cl_command_queue queue = gpu.queue();
     cl_context context = gpu.context();
-    cl_kernel kernel = gpu.kernel("rmsprop");
+    cl_kernel weight_update_kernel = gpu.kernel("rmsprop");
+    cl_kernel bias_update_kernel = gpu.kernel("rmsprop");
 
-    bool isWeights = (paramType == "weights");
-    std::string tag = isWeights ? "_weightGrads" : "_biasGrads";
-    cl_mem grads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+tag, static_cast<size_t>(size));
-    clEnqueueWriteBuffer(queue, grads, CL_FALSE, 0, sizeof(float) * size, gradTensor.Data(), 0, nullptr, nullptr);
-    cl_mem params = isWeights ? gpu.getWeights(modelID, layerID) : gpu.getBiases(modelID, layerID);
-    cl_mem sqAvg = gpu.getOrCreate_SqAvg(modelID, layerID, isWeights, static_cast<size_t>(size), sqAvgTensor.Data());
+    cl_mem weights = gpu.getWeights(modelID, layerID);
+    cl_mem biases = gpu.getBiases(modelID, layerID);
+    cl_mem sqAvg_weight_buffer = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_sqAvg_weight_buffer", weightSize);
+    cl_mem sqAvg_bias_buffer = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_sqAvg_bias_buffer", biasSize);
+    cl_mem weightGrads_buffer = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_weight_grads", weightSize);
+    cl_mem biasGrads_buffer = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_bias_grads", biasSize);
+    clEnqueueWriteBuffer(queue, weightGrads_buffer, CL_FALSE, 0, sizeof(float) * weightSize, weightGrads.Data(), 0, nullptr, nullptr);
+    clEnqueueWriteBuffer(queue, biasGrads_buffer, CL_FALSE, 0, sizeof(float) * biasSize, biasGrads.Data(), 0, nullptr, nullptr);
 
-    clSetKernelArg(kernel, 0, sizeof(cl_mem), &params);
-    clSetKernelArg(kernel, 1, sizeof(cl_mem), &grads);
-    clSetKernelArg(kernel, 2, sizeof(cl_mem), &sqAvg);
-    clSetKernelArg(kernel, 3, sizeof(float), &lr);
-    clSetKernelArg(kernel, 4, sizeof(float), &epsilon);
-    clSetKernelArg(kernel, 5, sizeof(float), &decayRate);
-    clSetKernelArg(kernel, 6, sizeof(int), &size);
-    clSetKernelArg(kernel, 7, sizeof(int), &batchSize);
 
-    size_t globalSize = (size_t)size;
-    clEnqueueNDRangeKernel(queue, kernel, 1, 0, &globalSize, nullptr, 0, nullptr, nullptr);
+    clSetKernelArg(weight_update_kernel, 0, sizeof(cl_mem), &weights);
+    clSetKernelArg(weight_update_kernel, 1, sizeof(cl_mem), &weightGrads_buffer);
+    clSetKernelArg(weight_update_kernel, 2, sizeof(cl_mem), &sqAvg_weight_buffer);
+    clSetKernelArg(weight_update_kernel, 3, sizeof(float), &lr);
+    clSetKernelArg(weight_update_kernel, 4, sizeof(float), &epsilon);
+    clSetKernelArg(weight_update_kernel, 5, sizeof(float), &decayRate);
+    clSetKernelArg(weight_update_kernel, 6, sizeof(int), &static_cast<int>(weightSize));
+    clSetKernelArg(weight_update_kernel, 7, sizeof(int), &batchSize);
 
-    clEnqueueReadBuffer(queue, params, CL_FALSE, 0, sizeof(float)* size, paramTensor.Data(), 0, nullptr, nullptr );
-    clEnqueueReadBuffer(queue, sqAvg, CL_TRUE, 0, sizeof(float)* size, sqAvgTensor.Data(), 0, nullptr, nullptr );
+    clSetKernelArg(bias_update_kernel, 0, sizeof(cl_mem), &biases);
+    clSetKernelArg(bias_update_kernel, 1, sizeof(cl_mem), &biasGrads_buffer);
+    clSetKernelArg(bias_update_kernel, 2, sizeof(cl_mem), &sqAvg_bias_buffer);
+    clSetKernelArg(bias_update_kernel, 3, sizeof(float), &lr);
+    clSetKernelArg(bias_update_kernel, 4, sizeof(float), &epsilon);
+    clSetKernelArg(bias_update_kernel, 5, sizeof(float), &decayRate);
+    clSetKernelArg(bias_update_kernel, 6, sizeof(int), &static_cast<int>(biasSize));
+    clSetKernelArg(bias_update_kernel, 7, sizeof(int), &batchSize);
+
+    clEnqueueNDRangeKernel(queue, weight_update_kernel, 1, 0, &weightSize, nullptr, 0, nullptr, nullptr);
+
+    if (useBias) {
+        clEnqueueNDRangeKernel(queue, bias_update_kernel, 1, 0, &biasSize, nullptr, 0, nullptr, nullptr);
+
+        clEnqueueReadBuffer(queue, biases, CL_FALSE, 0, sizeof(float)* bias_size, biases_array.Data(), 0, nullptr, nullptr);
+        clEnqueueReadBuffer(queue, sqAvg_bias_buffer, CL_FALSE, 0, sizeof(float)* bias_size, sqAvg_biases.Data(), 0, nullptr, nullptr);
+    }
+    
+    clEnqueueReadBuffer(queue, sqAvg_weight_buffer, CL_FALSE, 0, sizeof(float)* weightSize, sqAvg_weights.Data(), 0, nullptr, nullptr);
+    clEnqueueReadBuffer(queue, weights, CL_TRUE, 0, sizeof(float)* weightSize, weights_array.Data(), 0, nullptr, nullptr);
 
     Napi::Object output = Napi::Object::New(env);
-    output.Set("params", paramTensor);
-    output.Set("sqAvg", sqAvgTensor);
+    output.Set("weights", weights_array);
+    output.Set("biases", biases_array);
+    output.Set("sqAvg_weights", sqAvg_weights);
+    output.Set("sqAvg_biases", sqAvg_biases);
+    
     return output;
 }
 

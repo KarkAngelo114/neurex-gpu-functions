@@ -24,7 +24,7 @@ Napi::Value element_wise_mul_GPU(const Napi::CallbackInfo& info) {
 
     cl_mem dActBuffer = gpu.getDAct(modelID, layerID); // cached raw derivative — no upload
     cl_mem output_arr = gpu.getOrCreate_Delta(modelID, layerID, static_cast<size_t>(arr_length)); // final delta, cached for gradient accumulation to consume next
-    cl_mem deltaBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_incoming_delta", static_cast<size_t>(arr_length));
+    cl_mem deltaBuffer = gpu.getOrCreateOpenCLBuffer(modelID, layerID + "_incoming_delta", static_cast<size_t>(arr_length));
     clEnqueueWriteBuffer(queue, deltaBuffer, CL_FALSE, 0, sizeof(float) * arr_length, arr2.Data(), 0, nullptr, nullptr);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &dActBuffer);
@@ -81,13 +81,13 @@ Napi::Value element_wise_sub_GPU(const Napi::CallbackInfo& info) {
     cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("element_wise_sub");
 
-    cl_mem input_arr1 = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_element_wise_sub_input_arr1", static_cast<size_t>(size));
+    cl_mem input_arr1 = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_element_wise_sub_input_arr1", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, input_arr1, CL_FALSE, 0, sizeof(float) * size, arr1.Data(), 0, nullptr, nullptr);
 
-    cl_mem input_arr2 = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_element_wise_sub_input_arr2", static_cast<size_t>(size));
+    cl_mem input_arr2 = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_element_wise_sub_input_arr2", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, input_arr2, CL_FALSE, 0, sizeof(float) * size, arr2.Data(), 0, nullptr, nullptr);
 
-    cl_mem output_arr = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_element_wise_sub_output_buffer", static_cast<size_t>(size));
+    cl_mem output_arr = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_element_wise_sub_output_buffer", static_cast<size_t>(size));
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &input_arr1);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &input_arr2);
@@ -141,16 +141,16 @@ Napi::Value scaleDiff_GPU(const Napi::CallbackInfo& info) {
     cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("scale_diff");
 
-    cl_mem input_arr1 = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_scale_diff_arr1", static_cast<size_t>(size));
+    cl_mem input_arr1 = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_scale_diff_arr1", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, input_arr1, CL_FALSE, 0, sizeof(float) * size, arr1.Data(), 0, nullptr, nullptr);
 
-    cl_mem input_arr2 = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_scale_diff_arr2", static_cast<size_t>(size));
+    cl_mem input_arr2 = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_scale_diff_arr2", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, input_arr2, CL_FALSE, 0, sizeof(float) * size, arr2.Data(), 0, nullptr, nullptr);
 
-    cl_mem input_arr3 = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_scale_diff_arr3", static_cast<size_t>(size));
+    cl_mem input_arr3 = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_scale_diff_arr3", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, input_arr3, CL_FALSE, 0, sizeof(float) * size, arr3.Data(), 0, nullptr, nullptr);
 
-    cl_mem output_arr = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_scale_diff_output_buffer", static_cast<size_t>(size));
+    cl_mem output_arr = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_scale_diff_output_buffer", static_cast<size_t>(size));
 
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &input_arr1);
@@ -209,7 +209,7 @@ Napi::Value Scale_GPU(const Napi::CallbackInfo& info) {
     cl_kernel kernel = gpu.kernel("scale");
     cl_context context = gpu.context();
 
-    cl_mem input = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_scale_input_arr", static_cast<size_t>(size));
+    cl_mem input = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_scale_input_arr", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, input, CL_FALSE, 0, sizeof(float) * size, inputArray.Data(), 0, nullptr, nullptr);
 
     // 3. Set Arguments
@@ -305,9 +305,9 @@ Napi::Value element_wise_add_GPU(const Napi::CallbackInfo& info) {
     cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("element_wise_add");
 
-    cl_mem input1 = gpu.getOrCreate_SomethingToWriteOn(globalReferenceID, localReferenceID+"_element_wise_add_input_1", size);
-    cl_mem input2 = gpu.getOrCreate_SomethingToWriteOn(globalReferenceID, localReferenceID+"_element_wise_add_input_2", size);
-    cl_mem outputTensor = gpu.getOrCreate_SomethingToWriteOn(globalReferenceID, localReferenceID+"_element_wise_add_output", size);
+    cl_mem input1 = gpu.getOrCreateOpenCLBuffer(globalReferenceID, localReferenceID+"_element_wise_add_input_1", size);
+    cl_mem input2 = gpu.getOrCreateOpenCLBuffer(globalReferenceID, localReferenceID+"_element_wise_add_input_2", size);
+    cl_mem outputTensor = gpu.getOrCreateOpenCLBuffer(globalReferenceID, localReferenceID+"_element_wise_add_output", size);
     clEnqueueWriteBuffer(queue, input1, CL_FALSE, 0, sizeof(float) * size, arr1.Data(), 0, nullptr, nullptr);
     clEnqueueWriteBuffer(queue, input2, CL_FALSE, 0, sizeof(float) * size, arr2.Data(), 0, nullptr, nullptr);
 
@@ -348,7 +348,7 @@ Napi::Value fusedFinalDeltaProjector_GPU(const Napi::CallbackInfo& info) {
     cl_mem z_values = gpu.getZ(modelID, layerID);
     cl_mem cachedActivatedVector = gpu.getActivationOutput(modelID, layerID);
     cl_mem finalDelta = gpu.getOrCreate_Delta(modelID, layerID, static_cast<size_t>(size));
-    cl_mem deltaBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_incoming_delta", static_cast<size_t>(size));
+    cl_mem deltaBuffer = gpu.getOrCreateOpenCLBuffer(modelID, layerID + "_incoming_delta", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, deltaBuffer, CL_FALSE, 0, sizeof(float) * size, incomingDelta.Data(), 0, nullptr, nullptr);
     cl_mem dAct = gpu.getOrCreate_DAct(modelID, layerID, static_cast<size_t>(size));
 

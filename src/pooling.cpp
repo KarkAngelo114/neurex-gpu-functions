@@ -48,14 +48,14 @@ Napi::Value MaxPooling_GPU(const Napi::CallbackInfo& info) {
 
     // INPUT BUFFER
     // cl_mem inputTensor = clCreateBuffer(context,CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * inputSize, input_array.Data(),&err);
-    cl_mem inputTensor = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_maxpool_input_buffer", static_cast<size_t>(inputSize));
+    cl_mem inputTensor = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_maxpool_input_buffer", static_cast<size_t>(inputSize));
     clEnqueueWriteBuffer(queue, inputTensor, CL_FALSE, 0, sizeof(float) * inputSize, input_array.Data(), 0, nullptr, nullptr);
 
     // OUTPUT BUFFER
-    cl_mem outputTensor= gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_maxpool_output_buffer", static_cast<size_t>(outputSize));
+    cl_mem outputTensor= gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_maxpool_output_buffer", static_cast<size_t>(outputSize));
 
     // MAX INDEX BUFFER
-    cl_mem maxIndexTensor = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_maxpool_output_indices", static_cast<size_t>(outputSize));
+    cl_mem maxIndexTensor = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_maxpool_output_indices", static_cast<size_t>(outputSize));
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &inputTensor);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &outputTensor);
@@ -186,11 +186,11 @@ Napi::Value MaxPoolDelta_GPU(const Napi::CallbackInfo& info) {
     cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("maxpooldelta");
 
-    cl_mem inputData = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_maxpool_delta_input_buffer", static_cast<size_t>(inputSize));
+    cl_mem inputData = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_maxpool_delta_input_buffer", static_cast<size_t>(inputSize));
     clEnqueueWriteBuffer(queue, inputData, CL_FALSE, 0, sizeof(float) * inputSize, input_arr.Data(), 0, nullptr, nullptr);
-    cl_mem indices = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_maxpool_delta_indices_buffer", static_cast<size_t>(indices_Size));
+    cl_mem indices = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_maxpool_delta_indices_buffer", static_cast<size_t>(indices_Size));
     clEnqueueWriteBuffer(queue, indices, CL_FALSE, 0, sizeof(float) * indices_Size, indicesArray.Data(), 0, nullptr, nullptr);
-    cl_mem outputTensor = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_maxpool_delta_output_buffer", static_cast<size_t>(size));
+    cl_mem outputTensor = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_maxpool_delta_output_buffer", static_cast<size_t>(size));
     const float zero = 0.0f;
     clEnqueueFillBuffer(queue, outputTensor, &zero, sizeof(float), 0, sizeof(float) * size, 0, nullptr, nullptr);
 

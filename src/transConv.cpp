@@ -310,9 +310,9 @@ Napi::Value transConvBackward_GPU(const Napi::CallbackInfo& info) {
     cl_context context = gpu.context();
     cl_kernel kernel = gpu.kernel("transConvBackward");
 
-    cl_mem delta = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_trans_conv_incoming_delta", static_cast<size_t>(deltaSize));
+    cl_mem delta = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_trans_conv_incoming_delta", static_cast<size_t>(deltaSize));
     clEnqueueWriteBuffer(queue, delta, CL_FALSE, 0, sizeof(float) * deltaSize, deltaTensor.Data(), 0, nullptr, nullptr);
-    cl_mem output = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_trans_conv_backward_output", static_cast<size_t>(outputSize));
+    cl_mem output = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_trans_conv_backward_output", static_cast<size_t>(outputSize));
     cl_mem weights = gpu.getWeights(modelID, layerID);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &delta);
@@ -471,9 +471,9 @@ Napi::Value fusedFinalDeltaProjector_ForTransConv_GPU(const Napi::CallbackInfo& 
     cl_mem layerInputBuffer = gpu.getInput(modelID, layerID);
     cl_mem layerOutputBuffer = gpu.getActivationOutput(modelID, layerID);
     cl_mem finalDeltaBuffer = gpu.getOrCreate_Delta(modelID, layerID, static_cast<size_t>(size));
-    cl_mem weightGrads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_trans_conv_weight_grads", static_cast<size_t>(weightGradsSize));
-    cl_mem biasGrads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_trans_conv_bias_grads", static_cast<size_t>(biasGradsSize));
-    cl_mem incoming_deltaBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID + "_trans_conv_incoming_delta", static_cast<size_t>(size));
+    cl_mem weightGrads = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_trans_conv_weight_grads", static_cast<size_t>(weightGradsSize));
+    cl_mem biasGrads = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_trans_conv_bias_grads", static_cast<size_t>(biasGradsSize));
+    cl_mem incoming_deltaBuffer = gpu.getOrCreateOpenCLBuffer(modelID, layerID + "_trans_conv_incoming_delta", static_cast<size_t>(size));
     cl_mem dAct = gpu.getOrCreate_DAct(modelID, layerID, static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, incoming_deltaBuffer, CL_FALSE, 0, sizeof(float) * size, incomingDelta.Data(), 0, nullptr, nullptr);
     clEnqueueWriteBuffer(queue, weightGrads, CL_FALSE, 0, sizeof(float) * weightGradsSize, weightGrads_array.Data(), 0, nullptr, nullptr);

@@ -71,38 +71,6 @@ class GpuContext {
             return lookupCachedBuffer(biasesByModel_, "biasesByModel_", modelID, layerID);
         }
 
-        // ===================== Optimizer state caching =====================
-        //
-        // Same idea as weights/biases caching above: instead of creating a fresh
-        // clBuffer for m/v/velocity/sqAvg on every single optimizer step, we cache
-        // one persistent clBuffer per (modelID, layerID, weights-or-biases) and just
-        // update it in place. "getOrCreate" lazily allocates on first touch (seeded
-        // with the host-side initial state, usually all zeros) and simply returns
-        // the cached buffer on every call after that.
-
-        /**
-         * fetches (or lazily creates) the cached Adam "m" state buffer, scoped to modelID + layerID + param type
-         * @param modelID model this state belongs to
-         * @param layerID layer that owns the optimizer state
-         * @param isWeights true = weight-state map, false = bias-state map
-         * @param length requested element count; the cached allocation grows as needed
-         * @param initialData host data to seed the buffer with the first time it's created (may be nullptr for zero-init)
-         * @return a persistent clBuffer holding the m state
-         */
-        cl_mem getOrCreate_M(const std::string& modelID, const std::string& layerID, bool isWeights, size_t length, const float* initialData);
-
-        /** same as getOrCreate_M but for Adam's "v" (second moment) state */
-        cl_mem getOrCreate_V(const std::string& modelID, const std::string& layerID, bool isWeights, size_t length, const float* initialData);
-
-        /** same as getOrCreate_M but for SGD's "velocity" state */
-        cl_mem getOrCreate_Velocity(const std::string& modelID, const std::string& layerID, bool isWeights, size_t length, const float* initialData);
-
-        /** same as getOrCreate_M but for RMSProp's "sqAvg" (squared average) state */
-        cl_mem getOrCreate_SqAvg(const std::string& modelID, const std::string& layerID, bool isWeights, size_t length, const float* initialData);
-
-        // release every cached optimizer-state buffer for one model (called from clearParams)
-        void clearOptimizerStates(const std::string& modelID);
-
         // release every cached activation buffer for one model (called from ReleaseParams)
         void clearActivationCaches(const std::string& modelID);
 
@@ -206,12 +174,12 @@ class GpuContext {
         cl_mem getOrCreate_dBeta(const std::string& modelID, const std::string& layerID, size_t length);
 
         /**
-         * used to create buffer for dBeta
+         * use to create resuable OpenCL buffer. If a buffer exist having such global and local reference ID, it will return that buffer rather creating a fresh buffer.
          * @param globalReferenceID global reference ID
          * @param localReferenceID local reference ID
          * @param length requested element count; the cached allocation grows as needed
          */
-        cl_mem getOrCreate_SomethingToWriteOn(const std::string& globalReferenceID, const std::string& localReferenceID, size_t length);
+        cl_mem getOrCreateOpenCLBuffer(const std::string& globalReferenceID, const std::string& localReferenceID, size_t length);
 
         /**
          * exclusive only for layer norm's operation for gradient accumulation for gamma gradients
@@ -258,20 +226,9 @@ class GpuContext {
         BufferCache biasesByModel_;
         std::unordered_map<std::string, cl_kernel> kernels_;
 
-        // Optimizer state caches, keyed by modelID -> per-layer clBuffer, split by
-        // weights vs biases just like weightsByModel_ / biasesByModel_ above.
-        BufferCache mStatesWeights_;
-        BufferCache mStatesBiases_;
-        BufferCache vStatesWeights_;
-        BufferCache vStatesBiases_;
-        BufferCache velocityWeights_;
-        BufferCache velocityBiases_;
-        BufferCache sqAvgWeights_;
-        BufferCache sqAvgBiases_;
-
         // ===================== Forward/backward activation caching =====================
 
-        // Same caching idea as weights/biases and optimizer states above, but for the
+        // Same caching idea as weights/biases above, but for the
         // per-layer values produced during feedforward/backprop: z (matmul output),
         // activation_output (post-activation), dAct (raw activation derivative), and
         // delta (dAct * incoming delta). Caching these on the GPU means gradient
@@ -286,9 +243,6 @@ class GpuContext {
         BufferCache dBetaByModel_;
         BufferCache inputsByModel_;
         BufferCache somethingToWriteOn_;
-
-        // shared helper: fetch-or-create a cached buffer inside one of the maps above
-        cl_mem getOrCreateStateBuffer(BufferCache& store, const std::string& modelID, const std::string& layerID, size_t length, const float* initialData);
 
         // Shared allocator for kernel-written buffers, growing existing cache entries as needed.
         cl_mem getOrCreateCacheBuffer(BufferCache& store, const std::string& modelID, const std::string& layerID, size_t length);

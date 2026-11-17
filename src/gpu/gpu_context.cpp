@@ -314,22 +314,9 @@ void GpuContext::clearParams(const std::string& modelID) {
         biasesByModel_.erase(itBiases);
     }
 
-    // NOTE: optimizer states (m/v/velocity/sqAvg) are intentionally NOT cleared here.
-    // clearParams() is called from two places with two different intents:
-    //   - uploadParams(): re-syncing the SAME model's weights/biases mid-training.
-    //     The optimizer states must survive this, otherwise every training step
-    //     would reset them to zero and the whole point of caching them is lost.
-    //   - ReleaseParams() (JS-facing): the model is actually being torn down.
-    //     That call site explicitly calls clearOptimizerStates() itself; see globals.cpp.
-    //
-    // The forward/backward activation caches (z/activation_output/dAct/delta) are
-    // ALSO intentionally not cleared here, for a different reason: they're overwritten
-    // every single feedforward/backprop pass by design (see getOrCreateCacheBuffer),
-    // so leaving stale data behind after a mid-training uploadParams() is harmless —
-    // it'll be overwritten before anything ever reads it again. Freeing and
-    // reallocating them here would just be wasted churn since layer shapes (and thus
-    // buffer sizes) don't change between re-syncs. Like optimizer states, they're only
-    // released on full teardown; see clearActivationCaches().
+    // The forward/backward activation and reusable OpenCL buffers are intentionally
+    // retained across uploadParams() calls and released on full teardown by
+    // clearActivationCaches().
 }
 
 /** 
@@ -361,15 +348,6 @@ void GpuContext::clearAllParams() {
     releaseCache(dGammaByModel_);
     releaseCache(inputsByModel_); 
     releaseCache(somethingToWriteOn_);
-    releaseBuffers(mStatesWeights_);
-    releaseBuffers(mStatesBiases_);
-    releaseBuffers(vStatesWeights_);
-    releaseBuffers(vStatesBiases_);
-    releaseBuffers(velocityWeights_);
-    releaseBuffers(velocityBiases_);
-    releaseBuffers(sqAvgWeights_);
-    releaseBuffers(sqAvgBiases_);
-    
     weightsByModel_.clear();
     biasesByModel_.clear();
     zByModel_.clear();
@@ -380,47 +358,11 @@ void GpuContext::clearAllParams() {
     dBetaByModel_.clear();
     dGammaByModel_.clear();
     somethingToWriteOn_.clear();
-    mStatesWeights_.clear(); 
-    mStatesBiases_.clear();
-    vStatesWeights_.clear(); 
-    vStatesBiases_.clear();
-    velocityWeights_.clear(); 
-    velocityBiases_.clear();
-    sqAvgWeights_.clear(); 
-    sqAvgBiases_.clear();
 }
 
 cl_kernel GpuContext::kernel(const std::string& name) const {
     auto it = kernels_.find(name);
     return it == kernels_.end() ? nullptr : it->second;
-}
-
-// ===================== Optimizer state caching =====================
-
-cl_mem GpuContext::getOrCreateStateBuffer(BufferCache& store, const std::string& modelID, const std::string& layerID, size_t length, const float* initialData) {
-    if (layerID.empty()) {
-        throw std::invalid_argument("GpuContext: optimizer state requires a layerID.");
-    }
-
-    auto& layerBuffers = store[modelID];
-    auto found = layerBuffers.find(layerID);
-    if (found != layerBuffers.end()) {
-        size_t currentSize = 0;
-        cl_int err = clGetMemObjectInfo(found->second, CL_MEM_SIZE, sizeof(currentSize), &currentSize, nullptr);
-        if (err == CL_SUCCESS && currentSize >= sizeof(float) * length) {
-            return found->second;
-        }
-        if (found->second) clReleaseMemObject(found->second);
-        layerBuffers.erase(found);
-    }
-
-    cl_int err = CL_SUCCESS;
-    cl_mem buffer = clCreateBuffer(context_, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * length, const_cast<float*>(initialData), &err);
-    if (err != CL_SUCCESS || buffer == nullptr) {
-        throw std::runtime_error("GpuContext: failed to allocate optimizer state for layerID='" + layerID + "'.");
-    }
-    layerBuffers.emplace(layerID, buffer);
-    return buffer;
 }
 
 cl_mem GpuContext::getOrCreateCacheBuffer(BufferCache& store, const std::string& modelID, const std::string& layerID, size_t length) {
@@ -459,22 +401,6 @@ cl_mem GpuContext::getOrCreateCacheBuffer(BufferCache& store, const std::string&
         if (oldBuffer) clReleaseMemObject(oldBuffer);
     }
     return buffer;
-}
-
-cl_mem GpuContext::getOrCreate_M(const std::string& modelID, const std::string& layerID, bool isWeights, size_t length, const float* initialData) {
-    return getOrCreateStateBuffer(isWeights ? mStatesWeights_ : mStatesBiases_, modelID, layerID, length, initialData);
-}
-
-cl_mem GpuContext::getOrCreate_V(const std::string& modelID, const std::string& layerID, bool isWeights, size_t length, const float* initialData) {
-    return getOrCreateStateBuffer(isWeights ? vStatesWeights_ : vStatesBiases_, modelID, layerID, length, initialData);
-}
-
-cl_mem GpuContext::getOrCreate_Velocity(const std::string& modelID, const std::string& layerID, bool isWeights, size_t length, const float* initialData) {
-    return getOrCreateStateBuffer(isWeights ? velocityWeights_ : velocityBiases_, modelID, layerID, length, initialData);
-}
-
-cl_mem GpuContext::getOrCreate_SqAvg(const std::string& modelID, const std::string& layerID, bool isWeights, size_t length, const float* initialData) {
-    return getOrCreateStateBuffer(isWeights ? sqAvgWeights_ : sqAvgBiases_, modelID, layerID, length, initialData);
 }
 
 static void releaseAndClearModelEntry(BufferCache& store, const std::string& modelID) {
@@ -517,25 +443,11 @@ cl_mem GpuContext::getOrCreate_Input(const std::string& modelID, const std::stri
     return getOrCreateCacheBuffer(inputsByModel_, modelID, layerID, length);
 }
 
-cl_mem GpuContext::getOrCreate_SomethingToWriteOn(const std::string& globalReferenceID, const std::string& localReferenceID, size_t length) {
+cl_mem GpuContext::getOrCreateOpenCLBuffer(const std::string& globalReferenceID, const std::string& localReferenceID, size_t length) {
     return getOrCreateCacheBuffer(somethingToWriteOn_, globalReferenceID, localReferenceID, length);
 }
 
-void GpuContext::clearOptimizerStates(const std::string& modelID) {
-    releaseAndClearModelEntry(mStatesWeights_, modelID);
-    releaseAndClearModelEntry(mStatesBiases_, modelID);
-    releaseAndClearModelEntry(vStatesWeights_, modelID);
-    releaseAndClearModelEntry(vStatesBiases_, modelID);
-    releaseAndClearModelEntry(velocityWeights_, modelID);
-    releaseAndClearModelEntry(velocityBiases_, modelID);
-    releaseAndClearModelEntry(sqAvgWeights_, modelID);
-    releaseAndClearModelEntry(sqAvgBiases_, modelID);
-}
-
-// Releases this model's cached z/activation_output/dAct/delta buffers. Like
-// clearOptimizerStates(), this is for full model teardown — call this alongside
-// clearOptimizerStates() from the same JS-facing ReleaseParams() call site, NOT from
-// clearParams()/uploadParams(); see the note in clearParams() for why.
+// Releases this model's cached activation and reusable OpenCL buffers on teardown.
 void GpuContext::clearActivationCaches(const std::string& modelID) {
     releaseAndClearModelEntry(zByModel_, modelID);
     releaseAndClearModelEntry(activationOutputsByModel_, modelID);

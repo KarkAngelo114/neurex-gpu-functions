@@ -224,15 +224,15 @@ Napi::Value LayerNormBackward_GPU(const Napi::CallbackInfo& info) {
 
 
     cl_mem xBuffer = gpu.getInput(modelID, layerID);
-    cl_mem dyBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_dyBuffer", static_cast<size_t>(size));
+    cl_mem dyBuffer = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_dyBuffer", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, dyBuffer, CL_FALSE, 0, sizeof(float) * size, dy.Data(), 0, nullptr, nullptr);
     cl_mem gammaBuffer = gpu.getWeights(modelID, layerID);
-    cl_mem dxBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_dxBuffer", static_cast<size_t>(size));
+    cl_mem dxBuffer = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_dxBuffer", static_cast<size_t>(size));
     cl_mem dgammaBuffer = gpu.getOrCreate_dGamma(modelID, layerID, static_cast<size_t>(size)); // create cacheable dGamma
     cl_mem dbetaBuffer = gpu.getOrCreate_dBeta(modelID, layerID, static_cast<size_t>(size)); // create cacheable dBeta
-    cl_mem gammaGrads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_layerNorm_gamma_grads", static_cast<size_t>(size));
+    cl_mem gammaGrads = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_layerNorm_gamma_grads", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, gammaGrads, CL_FALSE, 0, sizeof(float) * size, weight_grads.Data(), 0, nullptr, nullptr); 
-    cl_mem betaGrads = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_layerNorm_beta_grads", static_cast<size_t>(size));
+    cl_mem betaGrads = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_layerNorm_beta_grads", static_cast<size_t>(size));
     clEnqueueWriteBuffer(queue, betaGrads, CL_FALSE, 0, sizeof(float) * size, bias_grads.Data(), 0, nullptr, nullptr);
 
     // Find the device and a legal power-of-two workgroup size.

@@ -153,10 +153,8 @@ Napi::Value ReleaseParams(const Napi::CallbackInfo& info) {
     if (compute_backend_string == "opencl") {
         auto& gpu = GpuContext::instance();
         gpu.clearParams(modelID);
-        // clearParams() only releases weights/biases now (see gpu_context.cpp for why).
         // ReleaseParams is JS's explicit "I'm done with this model" signal, so it's the
-        // right place to also drop the model's cached optimizer states and activation buffers.
-        gpu.clearOptimizerStates(modelID);
+        // right place to drop the model's cached activation and reusable OpenCL buffers.
         gpu.clearActivationCaches(modelID);
         gpu.clear_dBeta_And_dGamma_By_Model(modelID);
 

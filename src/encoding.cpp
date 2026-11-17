@@ -42,9 +42,9 @@ Napi::Value SPE_GPU(const Napi::CallbackInfo& info) {
     cl_command_queue queue = gpu.queue();
     cl_kernel kernel = gpu.kernel("spe");
 
-    cl_mem input = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_spe_incoming_data", size);
+    cl_mem input = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_spe_incoming_data", size);
     clEnqueueWriteBuffer(queue, input, CL_FALSE, 0, sizeof(float) * size, inputArray.Data(), 0, nullptr, nullptr);
-    cl_mem output = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_spe_incoming_data", size);
+    cl_mem output = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_spe_incoming_data", size);
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &input);
     clSetKernelArg(kernel, 1, sizeof(int), &embeddingDim);

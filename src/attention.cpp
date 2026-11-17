@@ -693,12 +693,12 @@ Napi::Value CoreMultiHeadAttention_GPU(const Napi::CallbackInfo& info) {
     size_t scoreSize = numHeads * seqLen * seqLen;
 
     // create Q, K, V, mha, scores and output (Note: these buffers might have old data. Ensure that in the kernel level ops, it doesn't use `+=`. Instead, use `=` to ensure overwrite)
-    cl_mem q = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_q", tensorSize);
-    cl_mem k = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_k", tensorSize);
-    cl_mem v = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_v", tensorSize);
+    cl_mem q = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_q", tensorSize);
+    cl_mem k = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_k", tensorSize);
+    cl_mem v = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_v", tensorSize);
     cl_mem mha = gpu.getOrCreate_Input(modelID, layerID+"_mha", tensorSize);
-    cl_mem scores = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_scores", scoreSize);
-    cl_mem output = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_output", tensorSize);
+    cl_mem scores = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_scores", scoreSize);
+    cl_mem output = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_output", tensorSize);
 
     cl_kernel kernel = gpu.kernel("multi_head_attention");
     cl_mem args[] = {inputBuffer, qW, kW, vW, oW, qB, kB, vB, oB, q, k, v, mha, scores, output};
@@ -794,21 +794,21 @@ Napi::Value CoreMultiHeadAttentionBackward_GPU(const Napi::CallbackInfo& info) {
 
     int incomingDeltaSize = incoming.ElementLength();
 
-    cl_mem inputBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_mha_incoming_delta", static_cast<size_t>(incomingDeltaSize));
+    cl_mem inputBuffer = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_mha_incoming_delta", static_cast<size_t>(incomingDeltaSize));
     clEnqueueWriteBuffer(queue, inputBuffer, CL_FALSE, 0, sizeof(float) * incomingDeltaSize, incoming.Data(), 0, nullptr, nullptr);
 
     // fetch q, k, v and s_perHead indexed using the `layerID+"_<key_prefix>"`. No need to call `clEnqueueWriteBuffer` since the forward pass already wrote and cache here.
-    cl_mem qBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_q", tensorSize);
-    cl_mem kBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_k", tensorSize);
-    cl_mem vBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_v", tensorSize);
-    cl_mem sBuffer = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_scores", scoreSize);
+    cl_mem qBuffer = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_q", tensorSize);
+    cl_mem kBuffer = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_k", tensorSize);
+    cl_mem vBuffer = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_v", tensorSize);
+    cl_mem sBuffer = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_scores", scoreSize);
     
     // cache dQ, dK, dV, dMha because they'll be used by the gradient accumulation function of MHA. Again, in the kernel level, don't use `+=`, instead use `=` safely overwrite to an existing data in these buffers.
-    cl_mem dQ = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_dQ", tensorSize);
-    cl_mem dK = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_dK", tensorSize);
-    cl_mem dV = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_dV", tensorSize);
-    cl_mem dMha = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_dMha", tensorSize);
-    cl_mem dX = gpu.getOrCreate_SomethingToWriteOn(modelID, layerID+"_dX", tensorSize);
+    cl_mem dQ = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_dQ", tensorSize);
+    cl_mem dK = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_dK", tensorSize);
+    cl_mem dV = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_dV", tensorSize);
+    cl_mem dMha = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_dMha", tensorSize);
+    cl_mem dX = gpu.getOrCreateOpenCLBuffer(modelID, layerID+"_dX", tensorSize);
 
     cl_kernel kernel = gpu.kernel("multi_head_attention_backward");
 
