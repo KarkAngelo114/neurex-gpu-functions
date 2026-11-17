@@ -80,7 +80,7 @@ Napi::Value SGD_CPU(const Napi::CallbackInfo& info) {
 
     #pragma omp parallel for
     for (int i = 0; i < weight_size; i++) {
-        mv[i] = momentum * wv[i] + (wg[i] / batchSize);
+        wv[i] = momentum * wv[i] + (wg[i] / batchSize);
         w[i] -= lr * mv[i];
     }
 
