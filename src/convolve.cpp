@@ -411,7 +411,12 @@ Napi::Value fusedFinalDeltaProjector_ForConv_GPU(const Napi::CallbackInfo& info)
     clEnqueueWriteBuffer(queue, biasGrads, CL_FALSE, 0, sizeof(float) * biasGradsSize, biasGrads_array.Data(), 0, nullptr, nullptr);
 
     size_t scalarSize = static_cast<size_t>(size);
-    size_t gradientAccumulationSize = static_cast<size_t>(numFilters);
+    
+    size_t gradientAccumulationSize[3] = {
+        static_cast<size_t>(numFilters),
+        static_cast<size_t>(Kh),
+        static_cast<size_t>(Kw) * static_cast<size_t>(Cin)
+    };
 
     if (applyDerivativeActivation && activationType == "softmax") {
         cl_kernel activationKernel = gpu.kernel("dsoftmax");
@@ -468,7 +473,7 @@ Napi::Value fusedFinalDeltaProjector_ForConv_GPU(const Napi::CallbackInfo& info)
     clSetKernelArg(gradientAccumulationKernel, 14, sizeof(int), &padW);
     clSetKernelArg(gradientAccumulationKernel, 15, sizeof(int), &stride);
 
-    clEnqueueNDRangeKernel(queue, gradientAccumulationKernel, 1, nullptr, &gradientAccumulationSize, nullptr, 0, nullptr, nullptr);
+    clEnqueueNDRangeKernel(queue, gradientAccumulationKernel, 3, nullptr, gradientAccumulationSize, nullptr, 0, nullptr, nullptr);
 
     clEnqueueReadBuffer(queue, weightGrads, CL_FALSE, 0, sizeof(float) * weightGradsSize, weightGrads_array.Data(), 0, nullptr, nullptr);
     clEnqueueReadBuffer(queue, biasGrads, CL_FALSE, 0, sizeof(float) * biasGradsSize, biasGrads_array.Data(), 0, nullptr, nullptr);
