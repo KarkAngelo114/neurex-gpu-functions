@@ -4,6 +4,7 @@
 #include <napi.h>
 using Array = std::vector<float>;
 
+/** returns a string of what type of compute backend to be use. */
 std::string getComputeBackendType();
 
 /**
